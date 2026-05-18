@@ -152,6 +152,21 @@ async function apiRoute(path: string, req: Request, store: Store): Promise<Respo
       ? json({ ok: true })
       : json({ error: "no such key" }, 404);
   }
+  if (path === "/api/tools/subscription" && req.method === "POST") {
+    const b: any = await req.json().catch(() => ({}));
+    if (!b.tool) return json({ error: "tool is required" }, 400);
+    const cost =
+      b.cost != null && b.cost !== "" && Number.isFinite(Number(b.cost))
+        ? Number(b.cost)
+        : null;
+    const ok = store.setSubscription({
+      name: b.tool,
+      plan: b.plan ? String(b.plan) : null,
+      monthlyCost: cost,
+      renewsOn: b.renews ? String(b.renews) : null,
+    });
+    return ok ? json({ ok: true }) : json({ error: "no such tool" }, 404);
+  }
   if (path === "/api/import/scan" && req.method === "POST") {
     const b: any = await req.json().catch(() => ({}));
     const dirs = Array.isArray(b.dirs) && b.dirs.length ? b.dirs : [process.cwd()];

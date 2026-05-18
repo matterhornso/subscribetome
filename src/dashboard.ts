@@ -182,6 +182,26 @@ export function dashboardHTML(): string {
   .msg.ok { color:var(--emerald-300); }
   .msg.err { color:var(--danger); }
   .source { font-size:12px; color:var(--text-dim); text-transform:capitalize; }
+
+  /* ---- copy-to-clipboard ---- */
+  code.copy {
+    cursor:pointer; border-radius:4px; padding:1px 3px;
+    transition:background .12s var(--ease);
+  }
+  code.copy:hover { background:rgba(52,211,154,.16); }
+  code.copy:active { background:rgba(52,211,154,.26); }
+  .toast {
+    position:fixed; left:50%; bottom:24px;
+    transform:translateX(-50%) translateY(8px);
+    max-width:90vw; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+    background:var(--surface-2); color:var(--text);
+    border:1px solid var(--border-strong); border-radius:999px;
+    padding:8px 16px; font-size:12.5px; box-shadow:var(--shadow-md);
+    opacity:0; pointer-events:none; z-index:50;
+    transition:opacity .15s var(--ease),transform .15s var(--ease);
+  }
+  .toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+
   @media (max-width:640px) {
     .grid.cols-2,.grid.cols-3 { grid-template-columns:1fr; }
     header,main { padding-left:calc(var(--space)*4); padding-right:calc(var(--space)*4); }
@@ -228,7 +248,7 @@ export function dashboardHTML(): string {
   </section>
 
   <section class="card">
-    <div class="card-head"><h2>API keys</h2></div>
+    <div class="card-head"><h2>API keys</h2><span class="meta">Click a placeholder to copy</span></div>
     <div class="table-wrap">
       <table>
         <thead><tr><th>Placeholder</th><th>Status</th><th>Source</th><th>Added</th><th></th></tr></thead>
@@ -238,7 +258,7 @@ export function dashboardHTML(): string {
     <div class="sub-head">Subscriptions</div>
     <div class="table-wrap">
       <table>
-        <thead><tr><th>Tool</th><th>Plan</th><th>Monthly</th><th>Renews</th></tr></thead>
+        <thead><tr><th>Tool</th><th>Plan</th><th>Monthly</th><th>Renews</th><th></th></tr></thead>
         <tbody id="tools"></tbody>
       </table>
     </div>
@@ -264,15 +284,43 @@ export function dashboardHTML(): string {
   </section>
 </main>
 
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+
 <script>
 var TOKEN = new URLSearchParams(location.search).get("token") || "";
 var scanned = [];
+var lastInv = null;
+var editingTool = null;
+var toastTimer = null;
 
 function esc(s){return String(s).replace(/[&<>"]/g,function(c){
   return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];});}
 function val(id){return document.getElementById(id).value.trim();}
 function el(id){return document.getElementById(id);}
 function setMsg(id,text,cls){var m=el(id);m.textContent=text;m.className="msg"+(cls?" "+cls:"");}
+function setMsgHTML(id,html,cls){var m=el(id);m.innerHTML=html;m.className="msg"+(cls?" "+cls:"");}
+
+function toast(msg){
+  var t=el("toast");t.textContent=msg;t.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(function(){t.classList.remove("show");},1900);
+}
+function copyText(text){
+  function ok(){toast("Copied  "+text);}
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).then(ok,function(){fallbackCopy(text,ok);});
+  }else{fallbackCopy(text,ok);}
+}
+function fallbackCopy(text,ok){
+  var ta=document.createElement("textarea");
+  ta.value=text;ta.style.position="fixed";ta.style.opacity="0";
+  document.body.appendChild(ta);ta.focus();ta.select();
+  try{document.execCommand("copy");ok();}catch(e){toast("Copy failed \\u2014 select it manually");}
+  document.body.removeChild(ta);
+}
+function copyChip(ph){
+  return '<code class="copy" data-ph="'+esc(ph)+'" title="Click to copy">'+esc(ph)+'</code>';
+}
 
 async function api(path,opts){
   opts=opts||{};
@@ -285,6 +333,11 @@ async function api(path,opts){
 
 async function refresh(){
   var inv=await api("/api/inventory");
+  lastInv=inv;
+  render(inv);
+}
+
+function render(inv){
   el("spend").textContent="$"+inv.monthlySpend.toFixed(2);
   var kb=el("keys");
   if(!inv.keys.length){
@@ -295,7 +348,7 @@ async function refresh(){
         ? '<button class="btn-ghost rev" style="height:28px;padding:0 12px" '
           +'data-tool="'+esc(k.tool)+'" data-label="'+esc(k.label)+'">Revoke</button>'
         : '';
-      return '<tr><td><code>'+esc(k.placeholder)+'</code></td>'
+      return '<tr><td>'+copyChip(k.placeholder)+'</td>'
         +'<td><span class="badge '+(k.status==="revoked"?"revoked":"active")+'">'
         +esc(k.status)+'</span></td>'
         +'<td class="source">'+esc(k.source)+'</td>'
@@ -303,17 +356,53 @@ async function refresh(){
         +'<td style="text-align:right">'+rev+'</td></tr>';
     }).join("");
   }
+  renderTools(inv.tools);
+}
+
+function renderTools(tools){
   var tb=el("tools");
-  if(!inv.tools.length){
-    tb.innerHTML='<tr><td colspan="4" class="empty">No subscriptions tracked yet.</td></tr>';
-  }else{
-    tb.innerHTML=inv.tools.map(function(t){
-      return '<tr><td>'+esc(t.display_name)+'</td>'
-        +'<td style="color:var(--text-muted)">'+esc(t.plan||"\\u2014")+'</td>'
-        +'<td class="num">'+(t.monthly_cost!=null?"$"+t.monthly_cost:'<span style="color:var(--text-dim)">\\u2014</span>')+'</td>'
-        +'<td class="num" style="color:var(--text-muted)">'+esc(t.renews_on||"\\u2014")+'</td></tr>';
-    }).join("");
+  if(!tools.length){
+    tb.innerHTML='<tr><td colspan="5" class="empty">No subscriptions tracked yet.</td></tr>';
+    return;
   }
+  tb.innerHTML=tools.map(function(t){
+    if(t.name===editingTool){
+      return '<tr data-tool="'+esc(t.name)+'">'
+        +'<td>'+esc(t.display_name)+'</td>'
+        +'<td><input class="ed-plan" value="'+esc(t.plan||"")+'" placeholder="Pro" '
+        +'autocomplete="off" style="height:30px"></td>'
+        +'<td><input class="ed-cost" type="number" min="0" step="0.01" '
+        +'value="'+(t.monthly_cost!=null?t.monthly_cost:"")+'" placeholder="20" style="height:30px"></td>'
+        +'<td><input class="ed-renews" type="date" value="'+esc(t.renews_on||"")+'" style="height:30px"></td>'
+        +'<td style="text-align:right;white-space:nowrap">'
+        +'<button class="btn-primary sub-save" style="height:30px;padding:0 12px" '
+        +'data-tool="'+esc(t.name)+'">Save</button> '
+        +'<button class="btn-ghost sub-cancel" style="height:30px;padding:0 10px">Cancel</button>'
+        +'</td></tr>';
+    }
+    return '<tr>'
+      +'<td>'+esc(t.display_name)+'</td>'
+      +'<td style="color:var(--text-muted)">'+esc(t.plan||"\\u2014")+'</td>'
+      +'<td class="num">'+(t.monthly_cost!=null?"$"+t.monthly_cost:'<span style="color:var(--text-dim)">\\u2014</span>')+'</td>'
+      +'<td class="num" style="color:var(--text-muted)">'+esc(t.renews_on||"\\u2014")+'</td>'
+      +'<td style="text-align:right"><button class="btn-ghost sub-edit" '
+      +'style="height:28px;padding:0 12px" data-tool="'+esc(t.name)+'">Edit</button></td></tr>';
+  }).join("");
+}
+
+async function saveSubscription(tool){
+  var row=el("tools").querySelector('tr[data-tool="'+tool+'"]');
+  if(!row)return;
+  var plan=row.querySelector(".ed-plan").value.trim();
+  var cost=row.querySelector(".ed-cost").value.trim();
+  var renews=row.querySelector(".ed-renews").value.trim();
+  try{
+    await api("/api/tools/subscription",{method:"POST",body:JSON.stringify({
+      tool:tool,plan:plan||null,cost:cost!==""?Number(cost):null,renews:renews||null})});
+    editingTool=null;
+    toast("Subscription updated");
+    refresh();
+  }catch(e){setMsg("add-msg",e.message,"err");}
 }
 
 async function addKey(){
@@ -324,7 +413,7 @@ async function addKey(){
       renews:val("k-renews")||null};
     if(!body.tool||!body.value)throw new Error("Tool and key value are required.");
     var r=await api("/api/keys",{method:"POST",body:JSON.stringify(body)});
-    setMsg("add-msg","Added "+r.placeholder,"ok");
+    setMsgHTML("add-msg","Added "+copyChip(r.placeholder)+" — click it to copy","ok");
     el("k-value").value="";
     ["k-plan","k-cost","k-renews"].forEach(function(i){el(i).value="";});
     refresh();
@@ -387,6 +476,18 @@ el("imp-btn").addEventListener("click",confirmImport);
 el("keys").addEventListener("click",function(e){
   var b=e.target.closest(".rev"); if(!b)return;
   revoke(b.dataset.tool,b.dataset.label);
+});
+el("tools").addEventListener("click",function(e){
+  var ed=e.target.closest(".sub-edit");
+  if(ed){editingTool=ed.dataset.tool;if(lastInv)renderTools(lastInv.tools);return;}
+  var ca=e.target.closest(".sub-cancel");
+  if(ca){editingTool=null;if(lastInv)renderTools(lastInv.tools);return;}
+  var sv=e.target.closest(".sub-save");
+  if(sv){saveSubscription(sv.dataset.tool);}
+});
+document.addEventListener("click",function(e){
+  var c=e.target.closest?e.target.closest(".copy"):null;
+  if(c)copyText(c.dataset.ph);
 });
 el("k-value").addEventListener("keydown",function(e){if(e.key==="Enter")addKey();});
 

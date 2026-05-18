@@ -83,3 +83,34 @@ test("monthlySpend sums tool costs", () => {
   expect(s.monthlySpend()).toBe(before + 99);
   s.close();
 });
+
+test("setSubscription overwrites fields and can clear them", () => {
+  const s = new Store(DB);
+  s.upsertTool({ name: "subby", plan: "Pro", monthlyCost: 20, renewsOn: "2026-06-01" });
+
+  // overwrite with new values
+  expect(
+    s.setSubscription({ name: "subby", plan: "Team", monthlyCost: 40, renewsOn: "2026-07-01" }),
+  ).toBe(true);
+  let t = s.getTool("subby")!;
+  expect(t.plan).toBe("Team");
+  expect(t.monthly_cost).toBe(40);
+  expect(t.renews_on).toBe("2026-07-01");
+
+  // null clears fields (upsertTool's COALESCE cannot do this)
+  s.setSubscription({ name: "subby", plan: null, monthlyCost: null, renewsOn: null });
+  t = s.getTool("subby")!;
+  expect(t.plan).toBeNull();
+  expect(t.monthly_cost).toBeNull();
+  expect(t.renews_on).toBeNull();
+
+  s.close();
+});
+
+test("setSubscription returns false for an unknown tool", () => {
+  const s = new Store(DB);
+  expect(
+    s.setSubscription({ name: "ghost-tool", plan: "Pro", monthlyCost: 9, renewsOn: null }),
+  ).toBe(false);
+  s.close();
+});

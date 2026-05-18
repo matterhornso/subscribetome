@@ -136,6 +136,29 @@ export class Store {
     return r.total;
   }
 
+  /**
+   * Set a tool's subscription metadata directly. Unlike `upsertTool`, this
+   * writes the values as given — passing `null` clears the field — so the
+   * dashboard's edit form can both change and clear plan/cost/renewal.
+   * Returns false if the tool does not exist.
+   */
+  setSubscription(input: {
+    name: string;
+    plan: string | null;
+    monthlyCost: number | null;
+    renewsOn: string | null;
+  }): boolean {
+    const name = normalizeSegment(input.name);
+    const existing = this.getTool(name);
+    if (!existing) return false;
+    this.db
+      .query(
+        `UPDATE tools SET plan = ?, monthly_cost = ?, renews_on = ? WHERE id = ?`,
+      )
+      .run(input.plan, input.monthlyCost, input.renewsOn, existing.id);
+    return true;
+  }
+
   // ---- keys --------------------------------------------------------------
 
   /**
