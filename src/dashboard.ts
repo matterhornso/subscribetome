@@ -1,9 +1,12 @@
 // The dashboard web UI — a single self-contained HTML page.
 //
 // No build step, no framework, no external assets. The page reads its auth
-// token from the URL (?token=) and sends it on every API call. Client JS uses
-// string concatenation (no template literals) to keep this server-side
-// template literal free of escaping hazards.
+// token from the URL (?token=) and sends it on every API call.
+//
+// Styling follows a three-layer token architecture (primitive -> semantic ->
+// component) expressed as CSS custom properties, with systematic spacing and
+// type scales. Client JS uses string concatenation (no template literals) to
+// keep this server-side template literal free of escaping hazards.
 
 export function dashboardHTML(): string {
   return `<!doctype html>
@@ -11,84 +14,256 @@ export function dashboardHTML(): string {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
 <title>subscribetome</title>
 <style>
-  :root{--bg:#0f1115;--panel:#171a21;--line:#262b36;--fg:#e6e8ee;--mut:#8b93a7;--acc:#6ee7b7;}
-  *{box-sizing:border-box;}
-  body{margin:0;background:var(--bg);color:var(--fg);
-    font:14px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace;}
-  header{padding:20px 28px;border-bottom:1px solid var(--line);
-    display:flex;justify-content:space-between;align-items:baseline;}
-  h1{margin:0;font-size:18px;letter-spacing:.5px;}
-  h1 span{color:var(--acc);}
-  .spend{color:var(--mut);} .spend b{color:var(--fg);font-size:16px;}
-  main{max-width:920px;margin:0 auto;padding:24px 28px;}
-  section{background:var(--panel);border:1px solid var(--line);border-radius:10px;
-    padding:18px 20px;margin-bottom:20px;}
-  h2{margin:0 0 14px;font-size:12px;text-transform:uppercase;letter-spacing:1px;color:var(--mut);}
-  label{display:block;font-size:12px;color:var(--mut);margin:10px 0 4px;}
-  input,select{width:100%;background:var(--bg);border:1px solid var(--line);color:var(--fg);
-    padding:8px 10px;border-radius:6px;font:inherit;}
-  .row{display:flex;gap:12px;flex-wrap:wrap;} .row>div{flex:1;min-width:140px;}
-  button{background:var(--acc);color:#06281d;border:0;padding:9px 16px;border-radius:6px;
-    font:inherit;font-weight:700;cursor:pointer;margin-top:14px;}
-  button.ghost{background:transparent;color:var(--mut);border:1px solid var(--line);font-weight:400;}
-  table{width:100%;border-collapse:collapse;}
-  th,td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:top;}
-  th{color:var(--mut);font-weight:600;font-size:12px;}
-  code{color:var(--acc);}
-  .revoked{color:var(--mut);text-decoration:line-through;}
-  .msg{margin-top:10px;font-size:13px;min-height:18px;}
-  .msg.ok{color:var(--acc);} .msg.err{color:#f87171;}
-  .mut{color:var(--mut);} .note{font-size:12px;color:var(--mut);margin-top:8px;}
+  /* ---- tokens: primitive ---- */
+  :root {
+    --ink-950:#0a0c10; --ink-900:#0f1218; --ink-850:#141821; --ink-800:#1a1f2a;
+    --ink-700:#252b38; --ink-600:#333b4a;
+    --slate-50:#eef0f4; --slate-300:#b8bfcc; --slate-400:#8b94a4; --slate-500:#646d7e;
+    --emerald-300:#6ee7b7; --emerald-400:#34d39a; --emerald-500:#10b981;
+    --red-400:#f06d6d; --amber-400:#f5b942;
+    --space:4px;
+    --r-sm:6px; --r-md:10px; --r-lg:16px;
+    --font-sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,system-ui,sans-serif;
+    --font-mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+    --ease:cubic-bezier(.2,.6,.2,1);
+  }
+  /* ---- tokens: semantic ---- */
+  :root {
+    --bg:var(--ink-950); --surface:var(--ink-900); --surface-2:var(--ink-850);
+    --field:var(--ink-950); --border:var(--ink-800); --border-strong:var(--ink-700);
+    --text:var(--slate-50); --text-muted:var(--slate-400); --text-dim:var(--slate-500);
+    --primary:var(--emerald-400); --primary-bright:var(--emerald-300); --on-primary:#06241a;
+    --danger:var(--red-400);
+    --focus:rgba(52,211,154,.45);
+    --shadow-md:0 8px 28px -8px rgba(0,0,0,.6);
+  }
+  /* ---- reset ---- */
+  *,*::before,*::after { box-sizing:border-box; }
+  html,body { height:100%; }
+  body {
+    margin:0; background:var(--bg); color:var(--text);
+    font:400 14px/1.55 var(--font-sans);
+    -webkit-font-smoothing:antialiased; letter-spacing:.1px;
+  }
+  ::selection { background:rgba(52,211,154,.28); }
+  h1,h2,h3,p { margin:0; }
+  code,.mono { font-family:var(--font-mono); }
+
+  /* ---- header ---- */
+  header {
+    position:sticky; top:0; z-index:10;
+    display:flex; align-items:center; justify-content:space-between;
+    padding:0 calc(var(--space)*7); height:60px;
+    background:rgba(15,18,24,.85); backdrop-filter:blur(8px);
+    border-bottom:1px solid var(--border);
+  }
+  .brand { display:flex; align-items:center; gap:calc(var(--space)*2.5); }
+  .brand .mark {
+    width:26px; height:26px; border-radius:7px; flex:none;
+    background:linear-gradient(140deg,var(--emerald-300),var(--emerald-500));
+    display:grid; place-items:center; color:var(--on-primary);
+    font-weight:800; font-size:14px;
+  }
+  .brand .name { font-size:15px; font-weight:600; letter-spacing:.2px; }
+  .brand .name b { color:var(--primary); font-weight:600; }
+  .spend {
+    display:flex; align-items:baseline; gap:calc(var(--space)*2);
+    font-size:12px; color:var(--text-muted);
+    background:var(--surface-2); border:1px solid var(--border);
+    padding:calc(var(--space)*1.5) calc(var(--space)*3); border-radius:999px;
+  }
+  .spend b { font-size:14px; color:var(--text); font-variant-numeric:tabular-nums; }
+
+  /* ---- layout ---- */
+  main {
+    max-width:840px; margin:0 auto;
+    padding:calc(var(--space)*9) calc(var(--space)*7) calc(var(--space)*16);
+    display:flex; flex-direction:column; gap:calc(var(--space)*5);
+  }
+  .card {
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:var(--r-lg); padding:calc(var(--space)*6);
+  }
+  .card-head {
+    display:flex; align-items:center; justify-content:space-between;
+    margin-bottom:calc(var(--space)*5);
+  }
+  .card-head h2 {
+    font-size:11px; font-weight:600; letter-spacing:1.4px; text-transform:uppercase;
+    color:var(--text-muted);
+  }
+  .card-head .meta { font-size:12px; color:var(--text-dim); }
+  .sub-head {
+    font-size:11px; font-weight:600; letter-spacing:1.4px; text-transform:uppercase;
+    color:var(--text-muted); margin:calc(var(--space)*7) 0 calc(var(--space)*4);
+  }
+
+  /* ---- forms ---- */
+  .grid { display:grid; gap:calc(var(--space)*4); }
+  .grid.cols-2 { grid-template-columns:1fr 1fr; }
+  .grid.cols-3 { grid-template-columns:1fr 1fr 1fr; }
+  .field { display:flex; flex-direction:column; gap:calc(var(--space)*1.5); }
+  label { font-size:12px; font-weight:500; color:var(--text-muted); }
+  input {
+    width:100%; height:38px; padding:0 calc(var(--space)*3);
+    background:var(--field); color:var(--text);
+    border:1px solid var(--border-strong); border-radius:var(--r-sm);
+    font:inherit; transition:border-color .15s var(--ease),box-shadow .15s var(--ease);
+  }
+  input::placeholder { color:var(--text-dim); }
+  input:hover { border-color:var(--ink-600); }
+  input:focus { outline:none; border-color:var(--primary); box-shadow:0 0 0 3px var(--focus); }
+  input[type=date] { color-scheme:dark; }
+
+  /* ---- buttons ---- */
+  button {
+    font:inherit; cursor:pointer; border-radius:var(--r-sm);
+    transition:background .15s var(--ease),border-color .15s var(--ease),
+      transform .05s var(--ease),opacity .15s var(--ease);
+  }
+  button:active { transform:translateY(1px); }
+  button:focus-visible { outline:none; box-shadow:0 0 0 3px var(--focus); }
+  .btn-primary {
+    height:38px; padding:0 calc(var(--space)*5);
+    background:var(--primary); color:var(--on-primary); border:0;
+    font-weight:650; letter-spacing:.2px;
+  }
+  .btn-primary:hover { background:var(--primary-bright); }
+  .btn-primary:disabled { opacity:.5; cursor:not-allowed; }
+  .btn-ghost {
+    height:34px; padding:0 calc(var(--space)*4);
+    background:transparent; color:var(--text-muted);
+    border:1px solid var(--border-strong); font-weight:500;
+  }
+  .btn-ghost:hover { color:var(--text); border-color:var(--ink-600); }
+  .btn-row { display:flex; align-items:center; gap:calc(var(--space)*4); margin-top:calc(var(--space)*5); }
+
+  /* ---- tables ---- */
+  .table-wrap { overflow-x:auto; }
+  table { width:100%; border-collapse:collapse; min-width:440px; }
+  th {
+    text-align:left; padding:0 calc(var(--space)*2) calc(var(--space)*2.5);
+    font-size:11px; font-weight:600; letter-spacing:.5px; text-transform:uppercase;
+    color:var(--text-dim); border-bottom:1px solid var(--border);
+  }
+  td {
+    padding:calc(var(--space)*3) calc(var(--space)*2);
+    border-bottom:1px solid var(--border); vertical-align:middle;
+  }
+  tr:last-child td { border-bottom:0; }
+  tbody tr { transition:background .12s var(--ease); }
+  tbody tr:hover { background:var(--surface-2); }
+  td code { font-size:12.5px; color:var(--primary-bright); }
+  .empty { color:var(--text-dim); padding:calc(var(--space)*5) calc(var(--space)*2); }
+  .num { font-variant-numeric:tabular-nums; }
+
+  /* ---- badges ---- */
+  .badge {
+    display:inline-flex; align-items:center; gap:6px;
+    font-size:11px; font-weight:600; padding:3px 9px; border-radius:999px;
+    text-transform:capitalize;
+  }
+  .badge::before { content:""; width:6px; height:6px; border-radius:999px; }
+  .badge.active { background:rgba(52,211,154,.13); color:var(--emerald-300); }
+  .badge.active::before { background:var(--emerald-400); }
+  .badge.revoked { background:rgba(139,148,164,.12); color:var(--text-muted); }
+  .badge.revoked::before { background:var(--text-dim); }
+
+  /* ---- misc ---- */
+  .note {
+    margin-top:calc(var(--space)*4); padding-top:calc(var(--space)*4);
+    border-top:1px solid var(--border);
+    font-size:12px; line-height:1.6; color:var(--text-dim);
+  }
+  .msg { margin-top:calc(var(--space)*3); font-size:13px; min-height:18px; }
+  .msg.ok { color:var(--emerald-300); }
+  .msg.err { color:var(--danger); }
+  .source { font-size:12px; color:var(--text-dim); text-transform:capitalize; }
+  @media (max-width:640px) {
+    .grid.cols-2,.grid.cols-3 { grid-template-columns:1fr; }
+    header,main { padding-left:calc(var(--space)*4); padding-right:calc(var(--space)*4); }
+  }
 </style>
 </head>
 <body>
 <header>
-  <h1>subscribe<span>tome</span></h1>
+  <div class="brand">
+    <div class="mark">s</div>
+    <div class="name">subscribe<b>tome</b></div>
+  </div>
   <div class="spend">monthly spend <b id="spend">$0.00</b></div>
 </header>
+
 <main>
-  <section>
-    <h2>Add a key</h2>
-    <div class="row">
-      <div><label>Tool</label><input id="k-tool" placeholder="openai"></div>
-      <div><label>Label</label><input id="k-label" value="default"></div>
+  <section class="card">
+    <div class="card-head"><h2>Add a key</h2></div>
+    <div class="grid cols-2">
+      <div class="field"><label for="k-tool">Tool</label>
+        <input id="k-tool" placeholder="openai" autocomplete="off" spellcheck="false"></div>
+      <div class="field"><label for="k-label">Label</label>
+        <input id="k-label" value="default" autocomplete="off" spellcheck="false"></div>
     </div>
-    <label>API key value</label>
-    <input id="k-value" type="password" placeholder="paste the key - it goes straight to your OS keychain">
-    <div class="row">
-      <div><label>Plan (optional)</label><input id="k-plan" placeholder="Pro"></div>
-      <div><label>Monthly cost USD (optional)</label><input id="k-cost" type="number" placeholder="20"></div>
-      <div><label>Renews on (optional)</label><input id="k-renews" type="date"></div>
+    <div class="field" style="margin-top:16px">
+      <label for="k-value">API key value</label>
+      <input id="k-value" type="password" autocomplete="off"
+        placeholder="paste the key — it goes straight to your macOS Keychain">
     </div>
-    <button id="add-btn">Add key</button>
-    <div id="add-msg" class="msg"></div>
-    <div class="note">The key value never appears in the Claude Code chat. After saving you
-      only ever see its <code>{{stm:tool:label}}</code> placeholder.</div>
+    <div class="grid cols-3" style="margin-top:16px">
+      <div class="field"><label for="k-plan">Plan</label>
+        <input id="k-plan" placeholder="Pro" autocomplete="off"></div>
+      <div class="field"><label for="k-cost">Monthly cost (USD)</label>
+        <input id="k-cost" type="number" min="0" step="0.01" placeholder="20"></div>
+      <div class="field"><label for="k-renews">Renews on</label>
+        <input id="k-renews" type="date"></div>
+    </div>
+    <div class="btn-row">
+      <button class="btn-primary" id="add-btn">Add key</button>
+      <span id="add-msg" class="msg"></span>
+    </div>
+    <p class="note">The key value never appears in the Claude Code chat. Once saved, you and
+      the model only ever see its <code>{{stm:tool:label}}</code> placeholder.</p>
   </section>
 
-  <section>
-    <h2>API keys</h2>
-    <table><thead><tr><th>Placeholder</th><th>Status</th><th>Source</th><th>Added</th><th></th></tr></thead>
-      <tbody id="keys"></tbody></table>
-    <h2 style="margin-top:20px">Subscriptions</h2>
-    <table><thead><tr><th>Tool</th><th>Plan</th><th>Monthly</th><th>Renews</th></tr></thead>
-      <tbody id="tools"></tbody></table>
+  <section class="card">
+    <div class="card-head"><h2>API keys</h2></div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Placeholder</th><th>Status</th><th>Source</th><th>Added</th><th></th></tr></thead>
+        <tbody id="keys"></tbody>
+      </table>
+    </div>
+    <div class="sub-head">Subscriptions</div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Tool</th><th>Plan</th><th>Monthly</th><th>Renews</th></tr></thead>
+        <tbody id="tools"></tbody>
+      </table>
+    </div>
   </section>
 
-  <section>
-    <h2>Import from .env files</h2>
-    <div class="row"><div><label>Directory to scan</label>
-      <input id="imp-dir" placeholder="/Users/you/projects"></div></div>
-    <button id="scan-btn" class="ghost">Scan</button>
+  <section class="card">
+    <div class="card-head"><h2>Import from .env files</h2></div>
+    <div class="grid" style="grid-template-columns:1fr auto;align-items:end">
+      <div class="field"><label for="imp-dir">Directory to scan</label>
+        <input id="imp-dir" placeholder="/Users/you/projects" autocomplete="off" spellcheck="false"></div>
+      <button class="btn-ghost" id="scan-btn">Scan</button>
+    </div>
     <div id="imp-msg" class="msg"></div>
-    <table id="imp-table" style="display:none;margin-top:10px">
-      <thead><tr><th>Var</th><th>Value</th><th>Tool</th><th>Label</th><th>Import</th></tr></thead>
-      <tbody id="imp-rows"></tbody></table>
-    <button id="imp-btn" style="display:none">Import selected</button>
+    <div class="table-wrap" id="imp-table" style="display:none;margin-top:8px">
+      <table>
+        <thead><tr><th>Variable</th><th>Value</th><th>Tool</th><th>Label</th><th>Import</th></tr></thead>
+        <tbody id="imp-rows"></tbody>
+      </table>
+    </div>
+    <div class="btn-row" id="imp-actions" style="display:none">
+      <button class="btn-primary" id="imp-btn">Import selected</button>
+    </div>
   </section>
 </main>
+
 <script>
 var TOKEN = new URLSearchParams(location.search).get("token") || "";
 var scanned = [];
@@ -96,8 +271,8 @@ var scanned = [];
 function esc(s){return String(s).replace(/[&<>"]/g,function(c){
   return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];});}
 function val(id){return document.getElementById(id).value.trim();}
-function setMsg(id,text,cls){var m=document.getElementById(id);m.textContent=text;
-  m.className="msg"+(cls?" "+cls:"");}
+function el(id){return document.getElementById(id);}
+function setMsg(id,text,cls){var m=el(id);m.textContent=text;m.className="msg"+(cls?" "+cls:"");}
 
 async function api(path,opts){
   opts=opts||{};
@@ -110,87 +285,112 @@ async function api(path,opts){
 
 async function refresh(){
   var inv=await api("/api/inventory");
-  document.getElementById("spend").textContent="$"+inv.monthlySpend.toFixed(2);
-  var kb=document.getElementById("keys");
-  if(!inv.keys.length){kb.innerHTML='<tr><td colspan="5" class="mut">no keys yet</td></tr>';}
-  else{kb.innerHTML=inv.keys.map(function(k){
-    var rev=k.status==="active"
-      ? '<button class="ghost rev" style="margin:0;padding:3px 8px" data-tool="'
-        +esc(k.tool)+'" data-label="'+esc(k.label)+'">revoke</button>' : '';
-    return '<tr><td><code>'+esc(k.placeholder)+'</code></td>'
-      +'<td class="'+(k.status==="revoked"?"revoked":"")+'">'+esc(k.status)+'</td>'
-      +'<td>'+esc(k.source)+'</td><td>'+esc(k.created_at.slice(0,10))+'</td>'
-      +'<td>'+rev+'</td></tr>';}).join("");}
-  var tb=document.getElementById("tools");
-  if(!inv.tools.length){tb.innerHTML='<tr><td colspan="4" class="mut">no tools yet</td></tr>';}
-  else{tb.innerHTML=inv.tools.map(function(t){
-    return '<tr><td>'+esc(t.display_name)+'</td><td>'+esc(t.plan||"-")+'</td>'
-      +'<td>'+(t.monthly_cost!=null?"$"+t.monthly_cost:"-")+'</td>'
-      +'<td>'+esc(t.renews_on||"-")+'</td></tr>';}).join("");}
+  el("spend").textContent="$"+inv.monthlySpend.toFixed(2);
+  var kb=el("keys");
+  if(!inv.keys.length){
+    kb.innerHTML='<tr><td colspan="5" class="empty">No keys yet — add one above.</td></tr>';
+  }else{
+    kb.innerHTML=inv.keys.map(function(k){
+      var rev=k.status==="active"
+        ? '<button class="btn-ghost rev" style="height:28px;padding:0 12px" '
+          +'data-tool="'+esc(k.tool)+'" data-label="'+esc(k.label)+'">Revoke</button>'
+        : '';
+      return '<tr><td><code>'+esc(k.placeholder)+'</code></td>'
+        +'<td><span class="badge '+(k.status==="revoked"?"revoked":"active")+'">'
+        +esc(k.status)+'</span></td>'
+        +'<td class="source">'+esc(k.source)+'</td>'
+        +'<td class="num" style="color:var(--text-muted)">'+esc(k.created_at.slice(0,10))+'</td>'
+        +'<td style="text-align:right">'+rev+'</td></tr>';
+    }).join("");
+  }
+  var tb=el("tools");
+  if(!inv.tools.length){
+    tb.innerHTML='<tr><td colspan="4" class="empty">No subscriptions tracked yet.</td></tr>';
+  }else{
+    tb.innerHTML=inv.tools.map(function(t){
+      return '<tr><td>'+esc(t.display_name)+'</td>'
+        +'<td style="color:var(--text-muted)">'+esc(t.plan||"\\u2014")+'</td>'
+        +'<td class="num">'+(t.monthly_cost!=null?"$"+t.monthly_cost:'<span style="color:var(--text-dim)">\\u2014</span>')+'</td>'
+        +'<td class="num" style="color:var(--text-muted)">'+esc(t.renews_on||"\\u2014")+'</td></tr>';
+    }).join("");
+  }
 }
 
 async function addKey(){
+  var btn=el("add-btn"); btn.disabled=true;
   try{
-    var body={tool:val("k-tool"),label:val("k-label"),value:val("k-value"),
+    var body={tool:val("k-tool"),label:val("k-label"),value:el("k-value").value,
       plan:val("k-plan")||null,cost:val("k-cost")?Number(val("k-cost")):null,
       renews:val("k-renews")||null};
-    if(!body.tool||!body.value)throw new Error("tool and key value are required");
+    if(!body.tool||!body.value)throw new Error("Tool and key value are required.");
     var r=await api("/api/keys",{method:"POST",body:JSON.stringify(body)});
-    setMsg("add-msg","added "+r.placeholder,"ok");
-    document.getElementById("k-value").value="";
-    ["k-plan","k-cost","k-renews"].forEach(function(i){document.getElementById(i).value="";});
+    setMsg("add-msg","Added "+r.placeholder,"ok");
+    el("k-value").value="";
+    ["k-plan","k-cost","k-renews"].forEach(function(i){el(i).value="";});
+    refresh();
+  }catch(e){setMsg("add-msg",e.message,"err");}
+  finally{btn.disabled=false;}
+}
+
+async function revoke(tool,label){
+  try{
+    await api("/api/keys/revoke",{method:"POST",body:JSON.stringify({tool:tool,label:label})});
     refresh();
   }catch(e){setMsg("add-msg",e.message,"err");}
 }
 
-async function revoke(tool,label){
-  try{await api("/api/keys/revoke",{method:"POST",body:JSON.stringify({tool:tool,label:label})});
-    refresh();}catch(e){setMsg("add-msg",e.message,"err");}
-}
-
 async function scan(){
-  setMsg("imp-msg","scanning...");
+  setMsg("imp-msg","Scanning\\u2026");
   try{
     var dir=val("imp-dir");
-    if(!dir)throw new Error("enter a directory to scan");
+    if(!dir)throw new Error("Enter a directory to scan.");
     var r=await api("/api/import/scan",{method:"POST",body:JSON.stringify({dirs:[dir]})});
     scanned=r.candidates;
-    var tbl=document.getElementById("imp-table"),btn=document.getElementById("imp-btn");
-    if(!scanned.length){setMsg("imp-msg","no candidate keys found");
-      tbl.style.display="none";btn.style.display="none";return;}
-    setMsg("imp-msg","found "+scanned.length+" candidate(s)","ok");
-    document.getElementById("imp-rows").innerHTML=scanned.map(function(c,i){
-      return '<tr><td>'+esc(c.varName)+'</td><td class="mut">'+esc(c.valueMasked)+'</td>'
-        +'<td><input id="it-'+i+'" value="'+esc(c.suggestedTool)+'" style="padding:4px"></td>'
-        +'<td><input id="il-'+i+'" value="'+esc(c.suggestedLabel)+'" style="padding:4px"></td>'
-        +'<td><input type="checkbox" id="ic-'+i+'" checked></td></tr>';}).join("");
-    tbl.style.display="";btn.style.display="";
+    if(!scanned.length){
+      setMsg("imp-msg","No candidate keys found in .env files under that directory.");
+      el("imp-table").style.display="none"; el("imp-actions").style.display="none"; return;
+    }
+    setMsg("imp-msg","Found "+scanned.length+" candidate"+(scanned.length>1?"s":"")
+      +" — review, relabel, and import.","ok");
+    el("imp-rows").innerHTML=scanned.map(function(c,i){
+      return '<tr><td class="mono" style="font-size:12.5px">'+esc(c.varName)+'</td>'
+        +'<td class="mono" style="color:var(--text-dim);font-size:12.5px">'+esc(c.valueMasked)+'</td>'
+        +'<td><input id="it-'+i+'" value="'+esc(c.suggestedTool)+'" style="height:30px"></td>'
+        +'<td><input id="il-'+i+'" value="'+esc(c.suggestedLabel)+'" style="height:30px"></td>'
+        +'<td style="text-align:center"><input type="checkbox" id="ic-'+i+'" checked '
+        +'style="width:auto;height:auto"></td></tr>';
+    }).join("");
+    el("imp-table").style.display=""; el("imp-actions").style.display="";
   }catch(e){setMsg("imp-msg",e.message,"err");}
 }
 
 async function confirmImport(){
+  var btn=el("imp-btn"); btn.disabled=true;
   try{
     var sel=scanned.map(function(c,i){
       return {file:c.file,varName:c.varName,tool:val("it-"+i),label:val("il-"+i),
-        take:document.getElementById("ic-"+i).checked};})
-      .filter(function(s){return s.take;});
-    if(!sel.length)throw new Error("nothing selected");
+        take:el("ic-"+i).checked};
+    }).filter(function(s){return s.take;});
+    if(!sel.length)throw new Error("Nothing selected.");
     var r=await api("/api/import/confirm",{method:"POST",body:JSON.stringify({selections:sel})});
-    setMsg("imp-msg","imported "+r.imported
-      +(r.errors.length?" - "+r.errors.length+" error(s): "+r.errors.join("; "):""),
+    setMsg("imp-msg","Imported "+r.imported+" key"+(r.imported===1?"":"s")
+      +(r.errors.length?" \\u00b7 "+r.errors.length+" error(s): "+r.errors.join("; "):""),
       r.errors.length?"err":"ok");
     refresh();
   }catch(e){setMsg("imp-msg",e.message,"err");}
+  finally{btn.disabled=false;}
 }
 
-document.getElementById("add-btn").addEventListener("click",addKey);
-document.getElementById("scan-btn").addEventListener("click",scan);
-document.getElementById("imp-btn").addEventListener("click",confirmImport);
-document.getElementById("keys").addEventListener("click",function(e){
-  var b=e.target.closest(".rev");if(!b)return;
-  revoke(b.dataset.tool,b.dataset.label);});
+el("add-btn").addEventListener("click",addKey);
+el("scan-btn").addEventListener("click",scan);
+el("imp-btn").addEventListener("click",confirmImport);
+el("keys").addEventListener("click",function(e){
+  var b=e.target.closest(".rev"); if(!b)return;
+  revoke(b.dataset.tool,b.dataset.label);
+});
+el("k-value").addEventListener("keydown",function(e){if(e.key==="Enter")addKey();});
 
-refresh().catch(function(e){setMsg("add-msg","failed to load: "+e.message,"err");});
+refresh().catch(function(e){setMsg("add-msg","Failed to load: "+e.message,"err");});
 </script>
 </body>
 </html>`;
