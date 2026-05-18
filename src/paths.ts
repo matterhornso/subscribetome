@@ -8,12 +8,14 @@ import { join } from "node:path";
 import { mkdirSync } from "node:fs";
 
 export const DATA_DIR = join(homedir(), ".subscribetome");
-export const DB_PATH = join(DATA_DIR, "db.sqlite");
+/** SQLite inventory path. Override with $STM_DB (used by the test suite). */
+export const DB_PATH = process.env.STM_DB || join(DATA_DIR, "db.sqlite");
 /** Daemon descriptor: { port, token, pid } — written 0600 while the daemon runs. */
 export const DAEMON_FILE = join(DATA_DIR, "daemon.json");
 
-/** Keychain service name under which every subscribetome secret is stored. */
-export const KEYCHAIN_SERVICE = "subscribetome";
+/** Keychain service name. Override with $STM_KEYCHAIN_SERVICE (used by tests). */
+export const KEYCHAIN_SERVICE =
+  process.env.STM_KEYCHAIN_SERVICE || "subscribetome";
 
 /** Create the data directory (0700) if absent; returns its path. */
 export function ensureDataDir(): string {
