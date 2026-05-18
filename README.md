@@ -8,6 +8,8 @@ without ever seeing them. The model only sees a placeholder like
 `{{stm:openai:default}}`; the real key is swapped in at the moment a command
 runs.
 
+![The subscribetome dashboard — add a key out-of-band, see your key inventory, track subscription spend](docs/screenshots/dashboard.png)
+
 ---
 
 ## Set it up for me
