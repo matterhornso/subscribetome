@@ -1,0 +1,16 @@
+{
+  "name": "subscribetome",
+  "version": "0.1.0",
+  "description": "AI API key & subscription manager — a Claude Code plugin. Keys never touch the chat.",
+  "type": "module",
+  "license": "MIT",
+  "author": "Abhinav Ramesh <abhinav@chainflux.com>",
+  "repository": "https://github.com/abhinavramesh/subscribetome",
+  "engines": {
+    "bun": ">=1.0.0"
+  },
+  "scripts": {
+    "stm": "bun src/cli.ts",
+    "test": "bun test"
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "name": "subscribetome",
+  "version": "0.1.0",
+  "description": "AI API key & subscription manager. Out-of-band key entry, OS-keychain storage, and a PreToolUse hook that injects real keys into commands so the model only ever sees placeholders.",
+  "author": {
+    "name": "Abhinav Ramesh",
+    "email": "abhinav@chainflux.com"
+  },
+  "repository": "https://github.com/abhinavramesh/subscribetome",
+  "license": "MIT",
+  "keywords": ["api-keys", "secrets", "subscriptions", "security", "keychain", "ai-tools"],
+  "hooks": "./hooks/hooks.json"
+}
