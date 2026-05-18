@@ -1,66 +1,91 @@
 # subscribetome
 
-**An AI API key & subscription manager for [Claude Code](https://claude.com/claude-code). Your keys never touch the chat.**
+**Use your AI API keys in [Claude Code](https://claude.com/claude-code) without the keys ever touching the chat.**
 
-You use a dozen AI tools, each with its own API keys — scattered across `.env`
-files, dotfiles, and provider dashboards, with a monthly bill that creeps up on
-tools you forgot you pay for. subscribetome is one inventory of every tool, key,
-and subscription, and it lets Claude Code *use* your keys without ever seeing
-them.
+You have keys for a dozen AI tools, scattered across `.env` files and provider
+dashboards. subscribetome puts them in one place and lets Claude Code *use* them
+without ever seeing them. The model only sees a placeholder like
+`{{stm:openai:default}}`; the real key is swapped in at the moment a command
+runs.
 
-## What it is
+---
 
-A Claude Code plugin. Keys go into your **macOS Keychain** out-of-band — through
-a local dashboard, never through the chat. You and the model only ever see a
-*placeholder* of the form `{{stm:<tool>:<label>}}`.
+## Set it up for me
 
-When the model writes a command that uses a placeholder, a `PreToolUse` hook
-swaps in the real key at the moment the command runs. The model sees the
-placeholder; the shell gets the key.
+**New to this? You don't have to run anything yourself.** Paste this to Claude
+Code:
 
-```
-you --add key--> macOS Keychain        (out-of-band: dashboard form or import)
+> Set up subscribetome for me using https://github.com/matterhornso/subscribetome
 
-model writes:   curl -H "Authorization: Bearer <PLACEHOLDER>" ...
-                       |
-        PreToolUse hook |  substitutes the real key
-                       v
-shell runs:     curl -H "Authorization: Bearer sk-...real..." ...
-```
+Claude Code will read the instructions below and do the whole install. You do
+exactly one thing by hand afterward: add your keys (Step 3 of "Use it"). That
+part is deliberate — keys must never go through the chat.
 
-where `<PLACEHOLDER>` is the `{{ stm : tool : label }}` token (written without
-spaces).
+<details>
+<summary><b>Instructions for the AI agent</b> (Claude Code reads this — humans can skip)</summary>
 
-## Quick start
+Do these steps in order. **Never ask the user for an API key. Never run a
+command that contains a real key. Never add a key yourself** — key entry is
+out-of-band by design.
 
-**Prerequisites:** macOS, [Bun](https://bun.sh), and
-[Claude Code](https://claude.com/claude-code).
+1. **Check the OS.** Run `uname`. If it does not print `Darwin`, stop and tell
+   the user: "subscribetome v1 is macOS-only." Do not continue.
+2. **Check Bun.** Run `bun --version`. If that fails, install Bun with
+   `curl -fsSL https://bun.sh/install | bash` (or `brew install bun` if
+   Homebrew is present), then re-check.
+3. **Add the marketplace:** `claude plugin marketplace add matterhornso/subscribetome`
+4. **Install the plugin:** `claude plugin install subscribetome@subscribetome`
+5. **Tell the user, in plain words:** "subscribetome is installed. Quit and
+   reopen Claude Code to activate it. Then run `/subscribetome:dashboard`,
+   and add your API keys in the web page that opens — they go straight to your
+   macOS Keychain, and I will never see them."
+6. **Stop here.** Do not add keys. Do not ask the user to paste a key. Setup
+   is complete once the user has been told to restart.
 
-**1. Install the plugin**
+</details>
+
+## Or install it yourself
+
+**Needs:** macOS, [Claude Code](https://claude.com/claude-code), and
+[Bun](https://bun.sh).
 
 ```
 claude plugin marketplace add matterhornso/subscribetome
 claude plugin install subscribetome@subscribetome
 ```
 
-Restart Claude Code to activate the plugin.
+Then quit and reopen Claude Code to activate it.
 
-**2. Add a key** — open the dashboard with the `/subscribetome:dashboard`
-slash command. A localhost web page opens; use the **Add a key** form (tool
-name, label, and the key value — it goes straight to your Keychain, never the
-chat). You get back a placeholder token. Optionally record the plan and monthly
-cost to track subscription spend.
+## Use it
 
-**3. Use it** — write the placeholder token in any command, e.g. an
-`Authorization: Bearer` header for a `curl` to the OpenAI API. The real key is
-injected when the command runs; the conversation only ever holds the
-placeholder. That is the whole loop.
+1. Run the slash command `/subscribetome:dashboard`. A web page opens on
+   localhost.
+2. In the **Add a key** form, enter a tool name, a label, and the key value.
+   The key goes straight to your macOS Keychain — never the chat. You get back
+   a placeholder, e.g. `{{stm:openai:default}}`.
+3. Write that placeholder in any command (an `Authorization: Bearer` header, an
+   env var, anything). When the command runs, the real key is swapped in. The
+   conversation only ever holds the placeholder.
+
+That is the whole loop.
+
+---
 
 ## How it works
 
 The model only ever sees placeholders. The real key lives in the macOS Keychain
-and is materialized only inside the `PreToolUse` substitution. Two guardrail
-hooks back it up:
+and is materialized only inside a `PreToolUse` hook that rewrites a command the
+instant before it runs:
+
+```
+model writes:   curl -H "Authorization: Bearer {{stm:openai:default}}" ...
+                       |
+        PreToolUse hook |  substitutes the real key
+                       v
+shell runs:     curl -H "Authorization: Bearer sk-...real..." ...
+```
+
+Two guardrail hooks back it up:
 
 - **UserPromptSubmit** blocks a prompt that contains a raw key — keys must never
   go through the chat.
