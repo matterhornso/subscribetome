@@ -39,8 +39,11 @@ spaces).
 **1. Install the plugin**
 
 ```
-claude plugin install subscribetome --source github matterhornso/subscribetome
+claude plugin marketplace add matterhornso/subscribetome
+claude plugin install subscribetome@subscribetome
 ```
+
+Restart Claude Code to activate the plugin.
 
 **2. Add a key** — open the dashboard with the `/subscribetome:dashboard`
 slash command. A localhost web page opens; use the **Add a key** form (tool
