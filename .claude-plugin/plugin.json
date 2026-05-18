@@ -8,6 +8,5 @@
   },
   "repository": "https://github.com/matterhornso/subscribetome",
   "license": "MIT",
-  "keywords": ["api-keys", "secrets", "subscriptions", "security", "keychain", "ai-tools"],
-  "hooks": "./hooks/hooks.json"
+  "keywords": ["api-keys", "secrets", "subscriptions", "security", "keychain", "ai-tools"]
 }
