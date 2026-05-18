@@ -26,8 +26,10 @@ const KEYISH_NAME = /(KEY|TOKEN|SECRET|API|PASSWORD|PASSWD|AUTH|CREDENTIAL)/i;
 const KEYISH_GLOBAL = /(KEY|TOKEN|SECRET|API|PASSWORD|PASSWD|AUTH|CREDENTIAL)/gi;
 
 function mask(v: string): string {
-  if (v.length <= 8) return "*".repeat(v.length);
-  return v.slice(0, 3) + "*".repeat(Math.min(20, v.length - 7)) + v.slice(-4);
+  // Reveal at most two edge characters, and only when the value is long
+  // enough that those characters are a small fraction of the secret.
+  if (v.length < 16) return "*".repeat(Math.min(v.length, 12));
+  return v.slice(0, 2) + "*".repeat(Math.min(20, v.length - 4)) + v.slice(-2);
 }
 
 function candidateId(file: string, varName: string): string {

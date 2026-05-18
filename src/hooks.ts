@@ -123,6 +123,11 @@ export async function preToolUse(): Promise<void> {
       if (val == null) unresolved.push(p.raw);
       else resolved.set(p.raw, val);
     }
+  } catch {
+    // Unexpected failure mid-resolution (e.g. a SQLite error). Fail safe:
+    // exit 0 with no rewrite — the command then runs with the literal
+    // placeholder and simply fails. Never bubble out as a non-zero exit.
+    process.exit(0);
   } finally {
     store.close();
   }
@@ -136,6 +141,15 @@ export async function preToolUse(): Promise<void> {
   }
 
   // Rebuild the command with every placeholder replaced by its real value.
+  //
+  // KNOWN LIMITATION: the real key is now an inline argv element of the
+  // command the Bash tool executes — briefly visible to a local `ps` while
+  // that command runs. This is inherent to injecting a secret into a shell
+  // command and is documented in the README. The conversation transcript
+  // still only ever holds the placeholder form.
+  //
+  // resolved.get(p.raw) is non-null for every p here: the unresolved branch
+  // above called block(), which exits the process.
   let out = "";
   let last = 0;
   for (const p of exact) {
@@ -243,7 +257,10 @@ export async function postToolUse(): Promise<void> {
     msg += `Key-shaped string(s) detected: ${[...new Set(shaped.map((h) => h.kind))].join(", ")}.\n`;
   }
   msg +=
-    `Flagged so the secret is not trusted into the conversation. Re-run without\n` +
-    `echoing the key (avoid \`set -x\` and verbose/error output that prints it).`;
+    `PostToolUse runs AFTER the command — this is an alert, not a save: the\n` +
+    `value is already in this turn's output. Treat the key as COMPROMISED:\n` +
+    `revoke it (\`stm revoke\`), issue a fresh one at the provider, and re-add it\n` +
+    `via \`stm dashboard\`. Then re-run the command without echoing the key\n` +
+    `(avoid \`set -x\` and verbose/error output that prints it).`;
   block(msg);
 }

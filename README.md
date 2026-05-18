@@ -106,7 +106,12 @@ suggestion.
   for keys subscribetome manages and best-effort for others.
 - A command that prints its own arguments (`set -x`, verbose or error output)
   can still surface a substituted key in that command's output. PostToolUse
-  catches this after the fact; it cannot prevent it.
+  *detects* this after the fact and tells you to rotate the key — it cannot
+  prevent the leak.
+- While a command with an injected key runs, the real key is an argument of
+  that process — briefly visible to `ps` for other local processes. Injecting
+  a secret into a shell command inherently requires this; subscribetome keeps
+  the key out of the *conversation*, not out of the local process table.
 
 ## Limitations (v1)
 

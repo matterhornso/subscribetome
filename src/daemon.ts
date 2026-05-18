@@ -32,6 +32,13 @@ function readInfo(): DaemonInfo | null {
 
 function writeInfo(info: DaemonInfo): void {
   ensureDataDir();
+  // Unlink any existing descriptor first: avoids a umask-widened permission
+  // window before the chmod, and refuses to follow a symlink planted there.
+  try {
+    unlinkSync(DAEMON_FILE);
+  } catch {
+    /* not present */
+  }
   writeFileSync(DAEMON_FILE, JSON.stringify(info), { mode: 0o600 });
   try {
     chmodSync(DAEMON_FILE, 0o600);
@@ -207,6 +214,17 @@ export async function runDaemon(): Promise<void> {
     },
   });
 
+  // Narrow the singleton race: if another daemon went live between the
+  // initial check and now, defer to it and shut this one down.
+  const raced = await liveInfo();
+  if (raced) {
+    server.stop(true);
+    store.close();
+    process.stderr.write(
+      `another subscribetome daemon is already live (port ${raced.port}); exiting\n`,
+    );
+    process.exit(0);
+  }
   writeInfo({ port: server.port, token, pid: process.pid });
   process.stderr.write(
     `subscribetome daemon on http://127.0.0.1:${server.port}/?token=${token}\n`,
@@ -244,9 +262,14 @@ export async function openDashboard(): Promise<void> {
       process.exit(1);
     }
   }
-  const url = `http://127.0.0.1:${info.port}/?token=${info.token}`;
-  process.stdout.write(`dashboard: ${url}\n`);
-  spawnSync("open", [url]);
+  // The token-bearing URL goes ONLY to the browser via `open`. stdout may be
+  // captured into a terminal transcript or an agent's conversation, so the
+  // token must never be printed there.
+  const tokenUrl = `http://127.0.0.1:${info.port}/?token=${info.token}`;
+  process.stdout.write(
+    `dashboard: http://127.0.0.1:${info.port}/  (opening in your browser)\n`,
+  );
+  spawnSync("open", [tokenUrl]);
 }
 
 export async function stopDaemon(): Promise<void> {

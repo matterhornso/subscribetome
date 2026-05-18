@@ -148,6 +148,17 @@ function listCmd(): void {
 }
 
 function resolveCmd(args: string[]): void {
+  // `stm resolve` prints a real key value. Refuse when stdout is not a
+  // terminal — piped, redirected, or invoked by an agent — so the value
+  // cannot be swept into a file or a conversation transcript.
+  if (!process.stdout.isTTY) {
+    process.stderr.write(
+      "stm resolve prints a real key and only runs in an interactive terminal.\n" +
+        "Its output was redirected or captured — refusing, so the key is not\n" +
+        "placed somewhere it must not go.\n",
+    );
+    process.exit(1);
+  }
   let tool: string | undefined;
   let label: string | undefined;
   if (args.length === 1) {

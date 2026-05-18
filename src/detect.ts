@@ -31,7 +31,9 @@ const PREFIXED: { re: RegExp; kind: string }[] = [
   },
 ];
 
-const GENERIC = /[A-Za-z0-9_-]{32,200}/g;
+// Charset includes base64 chars (+ =) so standard-base64 secrets are not
+// missed; hex/UUID/all-digit runs are rejected by looksLikeGenericKey below.
+const GENERIC = /[A-Za-z0-9_\-+=]{32,200}/g;
 
 /** Shannon entropy (bits/char) of a string. */
 function shannon(s: string): number {
