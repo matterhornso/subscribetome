@@ -11,6 +11,6 @@
   },
   "scripts": {
     "stm": "bun src/cli.ts",
-    "test": "bun test"
+    "test": "STM_KEYCHAIN_SERVICE=subscribetome-test bun test"
   }
 }

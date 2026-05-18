@@ -23,6 +23,7 @@ export interface Candidate {
 
 const ENV_NAME = /(^|\/)\.env(\.[A-Za-z0-9_.-]+)?$/;
 const KEYISH_NAME = /(KEY|TOKEN|SECRET|API|PASSWORD|PASSWD|AUTH|CREDENTIAL)/i;
+const KEYISH_GLOBAL = /(KEY|TOKEN|SECRET|API|PASSWORD|PASSWD|AUTH|CREDENTIAL)/gi;
 
 function mask(v: string): string {
   if (v.length <= 8) return "*".repeat(v.length);
@@ -35,7 +36,7 @@ function candidateId(file: string, varName: string): string {
 
 /** Suggest a tool name from an env var name: OPENAI_API_KEY -> openai. */
 function suggestTool(varName: string): string {
-  const stripped = varName.replace(KEYISH_NAME, "").replace(/[_-]+/g, "-");
+  const stripped = varName.replace(KEYISH_GLOBAL, "").replace(/[_-]+/g, "-");
   return normalizeSegment(stripped) || "imported";
 }
 
