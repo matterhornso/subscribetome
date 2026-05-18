@@ -2,8 +2,9 @@
 //
 //   PreToolUse       — the ONE load-bearing hook. Substitutes {{stm:...}}
 //                      placeholders in Bash commands with real keys via
-//                      `updatedInput`. Blocks placeholders in file-writing
-//                      tools and blocks malformed near-misses.
+//                      `updatedInput`. Blocks a raw key being written to a
+//                      file by a file-writing tool, and blocks malformed
+//                      near-misses.
 //   UserPromptSubmit — guardrail. Blocks a prompt that contains a raw key.
 //   PostToolUse      — guardrail. Flags command output that leaked a key.
 //
@@ -30,16 +31,16 @@ function block(reason: string): never {
 
 const FILE_TOOLS = new Set(["Write", "Edit", "MultiEdit", "NotebookEdit"]);
 
-/** Collect every file-content string from a file-writing tool's input. */
-function fileTextFields(input: any): string[] {
+/** Text a file-writing tool would PUT INTO a file — added/written content
+ *  only, never text being removed (an Edit's old_string). */
+function fileWrittenText(input: any): string[] {
   const out: string[] = [];
-  for (const k of ["content", "new_string", "old_string", "new_str", "old_str", "new_source"]) {
+  for (const k of ["content", "new_string", "new_str", "new_source"]) {
     if (typeof input?.[k] === "string") out.push(input[k]);
   }
   if (Array.isArray(input?.edits)) {
     for (const e of input.edits) {
       if (typeof e?.new_string === "string") out.push(e.new_string);
-      if (typeof e?.old_string === "string") out.push(e.old_string);
     }
   }
   return out;
@@ -58,18 +59,19 @@ export async function preToolUse(): Promise<void> {
   const toolName: string = payload?.tool_name ?? payload?.tool ?? "";
   const input = payload?.tool_input ?? {};
 
-  // A placeholder inside a file-writing tool would persist a real key to disk.
-  // Never substitute it — block.
+  // A file-writing tool must not persist a raw secret to disk. Block a real,
+  // key-shaped string in the written content. A placeholder, by contrast, is
+  // harmless in a file (it is only the token — the hook never substitutes into
+  // a file) and is the intended form for a .env entry, so it passes through.
   if (FILE_TOOLS.has(toolName)) {
-    const hasPlaceholder = fileTextFields(input).some(
-      (t) => findExact(t).length > 0 || findNearMisses(t).length > 0,
-    );
-    if (hasPlaceholder) {
+    const hits = fileWrittenText(input).flatMap((t) => detectKeys(t));
+    if (hits.length > 0) {
+      const kinds = [...new Set(hits.map((h) => h.kind))].join(", ");
       block(
-        `subscribetome: a {{stm:...}} placeholder appears in a ${toolName} call.\n` +
-          `Substituting it would write a real API key into a file. Blocked.\n` +
-          `Use the placeholder in a Bash command instead — there it is injected\n` +
-          `transiently for one command and never persisted.`,
+        `subscribetome: this ${toolName} call would write what looks like a real\n` +
+          `API key (${kinds}) into a file. Blocked.\n` +
+          `Keep keys in the OS keychain — add this one via the dashboard ` +
+          `(\`stm dashboard\`),\nthen write its stm placeholder token in the file instead.`,
       );
     }
     process.exit(0);

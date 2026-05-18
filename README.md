@@ -98,9 +98,10 @@ with a did-you-mean suggestion.
 
 - Key values live in the **macOS Keychain**, never in subscribetome's database
   and never in the Claude Code conversation.
-- The `PreToolUse` hook substitutes a key only into **Bash** commands. A
-  placeholder in a `Write`/`Edit` call is **blocked** — substituting it would
-  persist a real key into a file.
+- The `PreToolUse` hook substitutes a key only into **Bash** commands — never
+  into a file. A placeholder written to a file is just the harmless token; what
+  the hook blocks in a `Write`/`Edit` is a **raw key** about to be persisted to
+  a file.
 - The dashboard daemon binds to `127.0.0.1`, requires a per-run auth token, and
   enforces a Host/Origin allowlist (DNS-rebinding defense).
 - Hooks **fail safe**: on any internal error a hook exits without substituting,

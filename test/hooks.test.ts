@@ -99,10 +99,24 @@ test("PreToolUse blocks an unresolved placeholder", () => {
   expect(r.stderr).toContain("cannot resolve");
 });
 
-test("PreToolUse blocks a placeholder inside a Write", () => {
+test("PreToolUse allows a placeholder written into a file", () => {
   const r = runHook("pretooluse", {
     tool_name: "Write",
-    tool_input: { file_path: "/tmp/x", content: "key={{stm:seedtool:default}}" },
+    tool_input: {
+      file_path: "/tmp/x",
+      content: "OPENAI_API_KEY={{stm:seedtool:default}}",
+    },
+  });
+  expect(r.code).toBe(0);
+});
+
+test("PreToolUse blocks a raw key written into a file", () => {
+  const r = runHook("pretooluse", {
+    tool_name: "Write",
+    tool_input: {
+      file_path: "/tmp/x",
+      content: "OPENAI_API_KEY=sk-FAKErawkey1234567890abcdefghijklmno",
+    },
   });
   expect(r.code).toBe(2);
   expect(r.stderr).toContain("Write");
