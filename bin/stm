@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# subscribetome CLI launcher. Locates bun and runs src/cli.ts.
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+BUN="$(command -v bun || echo "$HOME/.bun/bin/bun")"
+exec "$BUN" "$ROOT/src/cli.ts" "$@"
