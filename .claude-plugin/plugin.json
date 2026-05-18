@@ -6,7 +6,7 @@
     "name": "Abhinav Ramesh",
     "email": "abhinav@chainflux.com"
   },
-  "repository": "https://github.com/abhinavramesh/subscribetome",
+  "repository": "https://github.com/matterhornso/subscribetome",
   "license": "MIT",
   "keywords": ["api-keys", "secrets", "subscriptions", "security", "keychain", "ai-tools"],
   "hooks": "./hooks/hooks.json"

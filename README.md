@@ -1,54 +1,84 @@
 # subscribetome
 
-**AI API key & subscription manager — a Claude Code plugin.**
+**An AI API key & subscription manager for [Claude Code](https://claude.com/claude-code). Your keys never touch the chat.**
 
-You use a dozen AI tools. Each issues API keys. They scatter across `.env`
-files, dotfiles, password managers, and provider dashboards — and the monthly
-bill creeps up on tools you forgot you were paying for. subscribetome is one
-inventory of every AI tool, key, and subscription, and it lets a coding agent
-*use* your keys without ever seeing them.
+You use a dozen AI tools, each with its own API keys — scattered across `.env`
+files, dotfiles, and provider dashboards, with a monthly bill that creeps up on
+tools you forgot you pay for. subscribetome is one inventory of every tool, key,
+and subscription, and it lets Claude Code *use* your keys without ever seeing
+them.
 
-## How it works
+## What it is
 
-Keys are entered **out-of-band** — never through the Claude Code chat — and
-stored in your OS keychain. subscribetome only ever shows you a *placeholder*:
-
-    {{stm:<tool>:<label>}}        e.g.  {{stm:openai:default}}
+A Claude Code plugin. Keys go into your **macOS Keychain** out-of-band — through
+a local dashboard, never through the chat. You and the model only ever see a
+*placeholder* of the form `{{stm:<tool>:<label>}}`.
 
 When the model writes a command that uses a placeholder, a `PreToolUse` hook
-substitutes the real key at the last moment, via Claude Code's `updatedInput`.
-The model sees the placeholder; the shell gets the real key.
+swaps in the real key at the moment the command runs. The model sees the
+placeholder; the shell gets the key.
 
 ```
-you ──add key──▶ OS keychain          (out-of-band: dashboard form or import)
+you --add key--> macOS Keychain        (out-of-band: dashboard form or import)
 
-model writes:   curl -H "Authorization: Bearer {{stm:openai:default}}" ...
-                       │
-        PreToolUse hook │  substitutes the real key
-                       ▼
+model writes:   curl -H "Authorization: Bearer <PLACEHOLDER>" ...
+                       |
+        PreToolUse hook |  substitutes the real key
+                       v
 shell runs:     curl -H "Authorization: Bearer sk-...real..." ...
 ```
 
-Two guardrail hooks back it up:
+where `<PLACEHOLDER>` is the `{{ stm : tool : label }}` token (written without
+spaces).
 
-- **UserPromptSubmit** blocks a prompt that contains a raw key — keys must
-  never go through the chat.
-- **PostToolUse** flags command output that leaked a key (a command that
-  echoed or errored with its own input).
+## Quick start
 
-## Install
+**Prerequisites:** macOS, [Bun](https://bun.sh), and
+[Claude Code](https://claude.com/claude-code).
 
-```
-claude plugin install subscribetome --source github abhinavramesh/subscribetome
-```
-
-Requires [Bun](https://bun.sh). v1 stores keys in the **macOS Keychain**
-(macOS only — see Limitations).
-
-## Use
+**1. Install the plugin**
 
 ```
-stm dashboard          open the localhost web UI (add keys, see inventory)
+claude plugin install subscribetome --source github matterhornso/subscribetome
+```
+
+**2. Add a key** — open the dashboard with the `/subscribetome:dashboard`
+slash command. A localhost web page opens; use the **Add a key** form (tool
+name, label, and the key value — it goes straight to your Keychain, never the
+chat). You get back a placeholder token. Optionally record the plan and monthly
+cost to track subscription spend.
+
+**3. Use it** — write the placeholder token in any command, e.g. an
+`Authorization: Bearer` header for a `curl` to the OpenAI API. The real key is
+injected when the command runs; the conversation only ever holds the
+placeholder. That is the whole loop.
+
+## How it works
+
+The model only ever sees placeholders. The real key lives in the macOS Keychain
+and is materialized only inside the `PreToolUse` substitution. Two guardrail
+hooks back it up:
+
+- **UserPromptSubmit** blocks a prompt that contains a raw key — keys must never
+  go through the chat.
+- **PostToolUse** flags command output that leaked a key (a command that echoed
+  or errored with its own input) and tells you to rotate it.
+
+## Commands
+
+Slash commands (after installing the plugin):
+
+| Command | Does |
+|---|---|
+| `/subscribetome:dashboard` | open the localhost dashboard |
+| `/subscribetome:inventory` | list keys, subscriptions, monthly spend |
+| `/subscribetome:import` | scan `.env` files for keys to import |
+| `/subscribetome:revoke` | mark a key revoked |
+
+The `stm` CLI (on `PATH` once installed):
+
+```
+stm dashboard          open the localhost web UI
 stm list               keys, subscriptions, monthly spend
 stm import [dir]       scan .env files for keys to import
 stm revoke <tool> <l>  mark a key revoked
@@ -56,40 +86,18 @@ stm status             daemon + inventory summary
 stm stop               stop the dashboard daemon
 ```
 
-Slash commands: `/subscribetome:dashboard`, `/subscribetome:inventory`,
-`/subscribetome:import`, `/subscribetome:revoke`.
-
-### Adding a key
-
-Open the dashboard (`stm dashboard`) and use the **Add a key** form, or import
-existing keys from `.env` files via the **Import** section. Either way the
-value goes straight to your OS keychain. From then on you refer to the key only
-by its placeholder.
-
-### Using a key
-
-Write the placeholder in any command:
-
-```
-curl https://api.openai.com/v1/models \
-  -H "Authorization: Bearer {{stm:openai:default}}"
-```
-
-The `PreToolUse` hook substitutes the real key when the command runs. The
-conversation only ever contains `{{stm:openai:default}}`.
-
 ## Placeholder grammar
 
-`{{stm:<tool>:<label>}}` — `<tool>` and `<label>` are lowercase `[a-z0-9-]`,
-1–64 characters each. The `(tool, label)` pair is the global address of a key;
-labels need only be unique within a tool. Substitution is an **exact** match —
-a malformed placeholder is never substituted; it is blocked with a did-you-mean
-suggestion.
+A placeholder is `{{` `stm` `:` `<tool>` `:` `<label>` `}}` written with no
+spaces. `<tool>` and `<label>` are lowercase `[a-z0-9-]`, 1-64 characters each.
+The `(tool, label)` pair is the global address of a key. Substitution is an
+**exact** match — a malformed placeholder is never substituted; it is blocked
+with a did-you-mean suggestion.
 
 ## Security model
 
-- Key values live in the **OS keychain**, never in subscribetome's database and
-  never in the Claude Code conversation.
+- Key values live in the **macOS Keychain**, never in subscribetome's database
+  and never in the Claude Code conversation.
 - The `PreToolUse` hook substitutes a key only into **Bash** commands. A
   placeholder in a `Write`/`Edit` call is **blocked** — substituting it would
   persist a real key into a file.
@@ -101,9 +109,9 @@ suggestion.
 
 ### What it cannot do
 
-- **Output redaction is impossible.** A hook can only *block* a tool result
-  that contains a key, not silently scrub it. PostToolUse flagging is reliable
-  for keys subscribetome manages and best-effort for others.
+- **Output redaction is impossible.** A hook can only *block* a tool result that
+  contains a key, not silently scrub it. PostToolUse flagging is reliable for
+  keys subscribetome manages and best-effort for others.
 - A command that prints its own arguments (`set -x`, verbose or error output)
   can still surface a substituted key in that command's output. PostToolUse
   *detects* this after the fact and tells you to rotate the key — it cannot
@@ -112,6 +120,14 @@ suggestion.
   that process — briefly visible to `ps` for other local processes. Injecting
   a secret into a shell command inherently requires this; subscribetome keeps
   the key out of the *conversation*, not out of the local process table.
+
+## Compatibility
+
+subscribetome v1 is a **Claude Code plugin** — the key-injection mechanism is a
+Claude Code `PreToolUse` hook. The `stm` CLI and dashboard run standalone on any
+macOS machine as a key inventory, but *automatic injection* requires Claude
+Code. Support for other agentic coding tools (Codex, opencode, ...) depends on
+each exposing an equivalent pre-execution input-rewrite hook — see `TODOS.md`.
 
 ## Limitations (v1)
 
@@ -127,12 +143,14 @@ See [`TODOS.md`](./TODOS.md) for the deferred v1.5 scope.
 ## Development
 
 ```
+git clone https://github.com/matterhornso/subscribetome
+cd subscribetome
 bun test               run the test suite
 bun src/cli.ts <args>  run the CLI from source
 ```
 
 Runtime state lives in `~/.subscribetome/` (the SQLite inventory and the daemon
-descriptor). Key values are in the OS keychain under the service name
+descriptor). Key values are in the macOS Keychain under the service name
 `subscribetome`.
 
 ## License
