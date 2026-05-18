@@ -1,0 +1,285 @@
+// The localhost dashboard daemon.
+//
+// A singleton HTTP service bound to 127.0.0.1 that owns the dashboard web UI
+// and the JSON API behind it. Security posture:
+//   - loopback bind (127.0.0.1) only
+//   - a per-run random auth token, required on every /api call and on GET /
+//   - Host / Origin allowlist — defense against DNS-rebinding
+// The daemon deliberately outlives a single Claude Code session so concurrent
+// sessions share one instance; `stm stop` ends it.
+import { spawnSync } from "node:child_process";
+import { chmodSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { randomBytes } from "node:crypto";
+import { Store } from "./store.ts";
+import { DAEMON_FILE, ensureDataDir } from "./paths.ts";
+import { dashboardHTML } from "./dashboard.ts";
+import { importSelected, scanEnv } from "./import.ts";
+
+interface DaemonInfo {
+  port: number;
+  token: string;
+  pid: number;
+}
+
+function readInfo(): DaemonInfo | null {
+  try {
+    return JSON.parse(readFileSync(DAEMON_FILE, "utf8")) as DaemonInfo;
+  } catch {
+    return null;
+  }
+}
+
+function writeInfo(info: DaemonInfo): void {
+  ensureDataDir();
+  writeFileSync(DAEMON_FILE, JSON.stringify(info), { mode: 0o600 });
+  try {
+    chmodSync(DAEMON_FILE, 0o600);
+  } catch {
+    /* best-effort */
+  }
+}
+
+function clearInfo(): void {
+  try {
+    unlinkSync(DAEMON_FILE);
+  } catch {
+    /* already gone */
+  }
+}
+
+function pidAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function reachable(port: number): Promise<boolean> {
+  try {
+    const r = await fetch(`http://127.0.0.1:${port}/api/health`, {
+      signal: AbortSignal.timeout(800),
+    });
+    return r.ok;
+  } catch {
+    return false;
+  }
+}
+
+/** The descriptor of a daemon that is actually alive, or null. */
+async function liveInfo(): Promise<DaemonInfo | null> {
+  const info = readInfo();
+  if (!info) return null;
+  if (!pidAlive(info.pid)) {
+    clearInfo();
+    return null;
+  }
+  if (!(await reachable(info.port))) return null;
+  return info;
+}
+
+const SEC_HEADERS: Record<string, string> = {
+  "X-Content-Type-Options": "nosniff",
+  "Referrer-Policy": "no-referrer",
+  "Cache-Control": "no-store",
+};
+
+function json(data: unknown, status = 200): Response {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { "content-type": "application/json", ...SEC_HEADERS },
+  });
+}
+
+/** Host/Origin allowlist — rejects DNS-rebinding and cross-origin callers. */
+function hostOk(req: Request): boolean {
+  const host = req.headers.get("host") ?? "";
+  if (!/^(127\.0\.0\.1|localhost)(:\d+)?$/.test(host)) return false;
+  const origin = req.headers.get("origin");
+  if (origin && !/^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/.test(origin)) {
+    return false;
+  }
+  return true;
+}
+
+async function apiRoute(path: string, req: Request, store: Store): Promise<Response> {
+  if (path === "/api/inventory" && req.method === "GET") {
+    return json({
+      tools: store.listTools(),
+      keys: store.listKeys(),
+      monthlySpend: store.monthlySpend(),
+    });
+  }
+  if (path === "/api/keys" && req.method === "POST") {
+    const b: any = await req.json().catch(() => ({}));
+    if (!b.tool || !b.value) {
+      return json({ error: "tool and value are required" }, 400);
+    }
+    if (b.plan != null || b.cost != null || b.renews != null || b.display) {
+      store.upsertTool({
+        name: b.tool,
+        displayName: b.display ?? undefined,
+        plan: b.plan ?? null,
+        monthlyCost: b.cost != null ? Number(b.cost) : null,
+        renewsOn: b.renews ?? null,
+      });
+    }
+    try {
+      const k = store.addKey({
+        tool: b.tool,
+        label: b.label || "default",
+        value: String(b.value),
+        source: "manual",
+        displayName: b.display ?? undefined,
+      });
+      return json({ ok: true, placeholder: k.placeholder });
+    } catch (e: any) {
+      return json({ error: e?.message ?? String(e) }, 400);
+    }
+  }
+  if (path === "/api/keys/revoke" && req.method === "POST") {
+    const b: any = await req.json().catch(() => ({}));
+    return store.revokeKey(b.tool, b.label)
+      ? json({ ok: true })
+      : json({ error: "no such key" }, 404);
+  }
+  if (path === "/api/import/scan" && req.method === "POST") {
+    const b: any = await req.json().catch(() => ({}));
+    const dirs = Array.isArray(b.dirs) && b.dirs.length ? b.dirs : [process.cwd()];
+    return json({ candidates: scanEnv(dirs) });
+  }
+  if (path === "/api/import/confirm" && req.method === "POST") {
+    const b: any = await req.json().catch(() => ({}));
+    return json(importSelected(Array.isArray(b.selections) ? b.selections : []));
+  }
+  return json({ error: "not found" }, 404);
+}
+
+/** Run the daemon in the foreground (the process is `stm daemon`). */
+export async function runDaemon(): Promise<void> {
+  const live = await liveInfo();
+  if (live) {
+    process.stderr.write(
+      `subscribetome daemon already running on port ${live.port}\n`,
+    );
+    process.exit(0);
+  }
+
+  const token = randomBytes(24).toString("hex");
+  const store = new Store();
+
+  const server = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    async fetch(req): Promise<Response> {
+      const url = new URL(req.url);
+      const path = url.pathname;
+
+      // Liveness probe — no auth, no host check, leaks nothing.
+      if (path === "/api/health") return json({ ok: true });
+
+      if (!hostOk(req)) {
+        return new Response("forbidden", { status: 403, headers: SEC_HEADERS });
+      }
+
+      const tok =
+        req.headers.get("x-stm-token") ?? url.searchParams.get("token") ?? "";
+      const authed = tok === token;
+
+      if (path === "/") {
+        if (!authed) {
+          return new Response(
+            "unauthorized - open the URL printed by `stm dashboard`",
+            { status: 403, headers: SEC_HEADERS },
+          );
+        }
+        return new Response(dashboardHTML(), {
+          headers: { "content-type": "text/html; charset=utf-8", ...SEC_HEADERS },
+        });
+      }
+      if (path.startsWith("/api/")) {
+        if (!authed) return json({ error: "unauthorized" }, 401);
+        return apiRoute(path, req, store);
+      }
+      return new Response("not found", { status: 404, headers: SEC_HEADERS });
+    },
+  });
+
+  writeInfo({ port: server.port, token, pid: process.pid });
+  process.stderr.write(
+    `subscribetome daemon on http://127.0.0.1:${server.port}/?token=${token}\n`,
+  );
+
+  const shutdown = () => {
+    clearInfo();
+    store.close();
+    process.exit(0);
+  };
+  process.on("SIGINT", shutdown);
+  process.on("SIGTERM", shutdown);
+}
+
+function cliPath(): string {
+  return join(import.meta.dir, "cli.ts");
+}
+
+/** Ensure the daemon is up, print the dashboard URL, open a browser. */
+export async function openDashboard(): Promise<void> {
+  let info = await liveInfo();
+  if (!info) {
+    const child = Bun.spawn([process.execPath, cliPath(), "daemon"], {
+      stdout: "ignore",
+      stderr: "ignore",
+      stdin: "ignore",
+    });
+    child.unref();
+    for (let i = 0; i < 50 && !info; i++) {
+      await Bun.sleep(100);
+      info = await liveInfo();
+    }
+    if (!info) {
+      process.stderr.write("failed to start the dashboard daemon\n");
+      process.exit(1);
+    }
+  }
+  const url = `http://127.0.0.1:${info.port}/?token=${info.token}`;
+  process.stdout.write(`dashboard: ${url}\n`);
+  spawnSync("open", [url]);
+}
+
+export async function stopDaemon(): Promise<void> {
+  const info = readInfo();
+  if (!info) {
+    process.stdout.write("daemon not running\n");
+    return;
+  }
+  if (pidAlive(info.pid)) {
+    try {
+      process.kill(info.pid, "SIGTERM");
+    } catch {
+      /* ignore */
+    }
+    process.stdout.write(`stopped daemon (pid ${info.pid})\n`);
+  } else {
+    process.stdout.write("daemon not running (cleared stale descriptor)\n");
+  }
+  clearInfo();
+}
+
+export async function printStatus(): Promise<void> {
+  const info = await liveInfo();
+  const store = new Store();
+  try {
+    const keys = store.listKeys();
+    process.stdout.write(
+      `daemon : ${info ? `running - http://127.0.0.1:${info.port}` : "not running"}\n` +
+        `keys   : ${keys.length} (${keys.filter((k) => k.status === "active").length} active)\n` +
+        `tools  : ${store.listTools().length}\n` +
+        `spend  : $${store.monthlySpend().toFixed(2)} / month\n`,
+    );
+  } finally {
+    store.close();
+  }
+}
