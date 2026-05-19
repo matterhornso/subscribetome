@@ -196,6 +196,15 @@ Runtime state lives in `~/.subscribetome/` (the SQLite inventory and the daemon
 descriptor). Key values are in the macOS Keychain under the service name
 `subscribetome`.
 
+## Project
+
+- [`CONTRIBUTING.md`](./CONTRIBUTING.md) — how to send a change, and how to add
+  a service to the catalog (a one-line, data-only contribution).
+- [`SECURITY.md`](./SECURITY.md) — the threat model and how to report a
+  vulnerability privately.
+- [`CHANGELOG.md`](./CHANGELOG.md) — release history.
+- [`TODOS.md`](./TODOS.md) — the deferred v1.5 scope.
+
 ## License
 
 MIT — see [`LICENSE`](./LICENSE).
