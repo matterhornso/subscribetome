@@ -3,6 +3,17 @@
 All notable changes to subscribetome. This project is pre-1.0; minor versions
 may still change behaviour. Format follows [Keep a Changelog](https://keepachangelog.com).
 
+## [0.1.8] — 2026-05-19
+
+### Added
+- **Custom fields** in the dashboard's "Add keys" form: after a service's
+  standard fields, an "+ Add another field" button lets you store extra
+  credentials a provider needs under your own label (e.g. a `jwt-secret` for
+  Supabase). Each row is a label + value you can remove.
+
+### Changed
+- Maintainer contact updated to `abhinav@matterhorn.so`.
+
 ## [0.1.7] — 2026-05-19
 
 ### Changed
@@ -73,6 +84,7 @@ may still change behaviour. Format follows [Keep a Changelog](https://keepachang
   `PostToolUse` (flags a key leaked into output).
 - The `stm` CLI, the localhost dashboard daemon, and `.env` import.
 
+[0.1.8]: https://github.com/matterhornso/subscribetome/releases/tag/v0.1.8
 [0.1.7]: https://github.com/matterhornso/subscribetome/releases/tag/v0.1.7
 [0.1.6]: https://github.com/matterhornso/subscribetome/releases/tag/v0.1.6
 [0.1.5]: https://github.com/matterhornso/subscribetome/releases/tag/v0.1.5

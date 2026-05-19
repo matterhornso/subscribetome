@@ -8,7 +8,7 @@ document states what it protects, what it does not, and how to report a flaw.
 **Do not open a public issue for a security flaw.**
 
 - Preferred: open a private [GitHub Security Advisory](https://github.com/matterhornso/subscribetome/security/advisories/new).
-- Or email **abhinav@chainflux.com** with `subscribetome security` in the subject.
+- Or email **abhinav@matterhorn.so** with `subscribetome security` in the subject.
 
 Please include the version (`stm --version` or the `plugin.json` version),
 your OS, and steps to reproduce. Expect an acknowledgement within a few days.

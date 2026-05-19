@@ -65,8 +65,9 @@ Then quit and reopen Claude Code to activate it.
 2. Pick your service (Supabase, Twitter, Stripe, …) and the form shows its
    standard credential fields — or choose **Other** for anything custom. Fill
    the fields you have; each value goes straight to your macOS Keychain, never
-   the chat. You get back a placeholder for each, e.g. `{{stm:openai:default}}`
-   or `{{stm:supabase:service-role-key}}`.
+   the chat. Need a credential the catalog doesn't list? **+ Add another field**
+   stores it under your own label. You get back a placeholder for each, e.g.
+   `{{stm:openai:default}}` or `{{stm:supabase:service-role-key}}`.
 3. Write that placeholder in any command (an `Authorization: Bearer` header, an
    env var, anything). When the command runs, the real key is swapped in. The
    conversation only ever holds the placeholder.

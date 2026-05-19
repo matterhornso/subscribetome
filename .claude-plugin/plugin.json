@@ -1,10 +1,10 @@
 {
   "name": "stm",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "description": "AI API key & subscription manager. Out-of-band key entry, OS-keychain storage, and a PreToolUse hook that injects real keys into commands so the model only ever sees placeholders.",
   "author": {
     "name": "Abhinav Ramesh",
-    "email": "abhinav@chainflux.com"
+    "email": "abhinav@matterhorn.so"
   },
   "repository": "https://github.com/matterhornso/subscribetome",
   "license": "MIT",

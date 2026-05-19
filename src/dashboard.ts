@@ -144,6 +144,22 @@ export function dashboardHTML(): string {
   .btn-ghost:hover { color:var(--text); border-color:var(--ink-600); }
   .btn-row { display:flex; align-items:center; gap:calc(var(--space)*4); margin-top:calc(var(--space)*5); }
 
+  /* ---- custom fields ---- */
+  .cf-row { display:flex; gap:calc(var(--space)*2); margin-top:calc(var(--space)*2.5); }
+  .cf-row .cf-label { flex:0 0 38%; }
+  .cf-row .cf-value { flex:1; }
+  .cf-del {
+    flex:none; width:38px; height:38px; background:transparent; color:var(--text-muted);
+    border:1px solid var(--border-strong); border-radius:var(--r-sm); font-size:13px;
+  }
+  .cf-del:hover { color:var(--danger); border-color:var(--danger); }
+  .add-field {
+    margin-top:calc(var(--space)*3.5); background:transparent;
+    border:1px dashed var(--border-strong); color:var(--text-muted);
+    border-radius:var(--r-sm); padding:8px 14px; font-size:12.5px;
+  }
+  .add-field:hover { color:var(--primary); border-color:var(--primary); }
+
   /* ---- tables ---- */
   .table-wrap { overflow-x:auto; }
   table { width:100%; border-collapse:collapse; min-width:440px; }
@@ -435,7 +451,23 @@ function renderSvcFields(){
       +'<label for="cv-'+i+'">'+esc(svc.name)+' \\u00b7 <code>'+esc(lbl)+'</code></label>'
       +'<input id="cv-'+i+'" type="password" autocomplete="off" '
       +'placeholder="paste '+esc(lbl)+' \\u2014 leave blank to skip"></div>';
-  }).join("");
+  }).join("")
+  +'<div id="custom-fields"></div>'
+  +'<button type="button" class="add-field" id="add-field-btn">+ Add another field</button>';
+}
+
+/** Append an empty custom (label + value) row for the selected service. */
+function addCustomField(){
+  var box=el("custom-fields"); if(!box)return;
+  var row=document.createElement("div");
+  row.className="cf-row";
+  row.innerHTML=
+    '<input class="cf-label" autocomplete="off" spellcheck="false" '
+    +'placeholder="label \\u2014 e.g. jwt-secret">'
+    +'<input class="cf-value" type="password" autocomplete="off" placeholder="value">'
+    +'<button type="button" class="cf-del" title="Remove field">\\u2715</button>';
+  box.appendChild(row);
+  row.querySelector(".cf-label").focus();
 }
 
 async function addKeys(){
@@ -452,6 +484,12 @@ async function addKeys(){
         var cv=el("cv-"+i).value;
         if(cv)items.push({tool:svc.id,label:lbl,value:cv});
       });
+      var rows=document.querySelectorAll("#custom-fields .cf-row");
+      for(var c=0;c<rows.length;c++){
+        var cl=rows[c].querySelector(".cf-label").value.trim();
+        var cvv=rows[c].querySelector(".cf-value").value;
+        if(cl&&cvv)items.push({tool:svc.id,label:cl,value:cvv});
+      }
       if(!items.length)throw new Error("Fill at least one field.");
     }
     var plan=val("k-plan")||null,
@@ -527,6 +565,12 @@ async function confirmImport(){
 
 el("add-btn").addEventListener("click",addKeys);
 el("svc").addEventListener("change",renderSvcFields);
+el("svc-fields").addEventListener("click",function(e){
+  if(e.target.id==="add-field-btn"){ addCustomField(); return; }
+  if(e.target.classList&&e.target.classList.contains("cf-del")){
+    var row=e.target.closest(".cf-row"); if(row)row.remove();
+  }
+});
 el("scan-btn").addEventListener("click",scan);
 el("imp-btn").addEventListener("click",confirmImport);
 el("keys").addEventListener("click",function(e){
