@@ -71,6 +71,12 @@ Then quit and reopen Claude Code to activate it.
 
 That is the whole loop.
 
+**You don't even need to know the placeholder syntax.** Once installed, every
+Claude Code session automatically knows your keys live in stm. Just say what
+you want in plain language — *"use my fal.ai key to make a short video"* — and
+Claude looks up the placeholder itself and wires it into the command. Nothing
+to configure: the plugin teaches each new session on its own.
+
 ---
 
 ## How it works
@@ -93,6 +99,9 @@ Two guardrail hooks back it up:
   go through the chat.
 - **PostToolUse** flags command output that leaked a key (a command that echoed
   or errored with its own input) and tells you to rotate it.
+
+A fourth hook, **SessionStart**, teaches every new session how to use stm — so
+Claude knows to look keys up and use placeholders with no per-project setup.
 
 ## Commands
 

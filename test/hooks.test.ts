@@ -157,3 +157,17 @@ test("PostToolUse passes clean output through", () => {
   });
   expect(r.code).toBe(0);
 });
+
+test("SessionStart injects stm usage guidance", () => {
+  const r = runHook("sessionstart", {
+    hook_event_name: "SessionStart",
+    source: "startup",
+  });
+  expect(r.code).toBe(0);
+  const out = JSON.parse(r.stdout);
+  expect(out.hookSpecificOutput.hookEventName).toBe("SessionStart");
+  const ctx: string = out.hookSpecificOutput.additionalContext;
+  expect(ctx).toContain("stm list");
+  expect(ctx).toContain("{{stm:<tool>:<label>}}");
+  expect(ctx).toContain("/stm:dashboard");
+});

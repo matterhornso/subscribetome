@@ -11,9 +11,9 @@
 //   stm daemon                                  run the daemon in foreground
 //   stm stop                                    stop the daemon
 //   stm status                                  daemon + inventory summary
-//   stm hook <pretooluse|posttooluse|userpromptsubmit>     (called by hooks)
+//   stm hook <pretooluse|posttooluse|userpromptsubmit|sessionstart>  (called by hooks)
 import { Store } from "./store.ts";
-import { preToolUse, postToolUse, userPromptSubmit } from "./hooks.ts";
+import { preToolUse, postToolUse, userPromptSubmit, sessionStart } from "./hooks.ts";
 
 function parseFlags(args: string[]): {
   flags: Record<string, string>;
@@ -236,6 +236,8 @@ async function main(): Promise<void> {
           return postToolUse();
         case "userpromptsubmit":
           return userPromptSubmit();
+        case "sessionstart":
+          return sessionStart();
         default:
           process.exit(0); // unknown hook — no-op, fail safe
       }

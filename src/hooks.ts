@@ -266,3 +266,47 @@ export async function postToolUse(): Promise<void> {
     `(avoid \`set -x\` and verbose/error output that prints it).`;
   block(msg);
 }
+
+// ---- SessionStart ---------------------------------------------------------
+
+/** Usage guidance injected into every session so the model knows how to use
+ *  stm-managed keys with zero user configuration. */
+const SESSION_GUIDANCE =
+  "API KEYS — this user manages API keys and tokens with `stm` (subscribetome). " +
+  "When a task needs an API key:\n" +
+  "- Run `stm list` to see the available keys. Each is addressed by a placeholder " +
+  "of the form `{{stm:<tool>:<label>}}`.\n" +
+  "- Put the matching placeholder LITERALLY where the key goes in a shell command " +
+  "(e.g. `FAL_KEY={{stm:fal:default}} python make_video.py`, or a curl auth header). " +
+  "A PreToolUse hook substitutes the real key when the command runs.\n" +
+  "- NEVER ask the user to paste a raw key, and never print a key value.\n" +
+  "- Keep the placeholder INLINE in the command — do not write it into a file " +
+  "(.env, config): the hook substitutes into commands only, not files.\n" +
+  "- If a needed key is not listed by `stm list`, tell the user to add it via the " +
+  "`/stm:dashboard` slash command — keys are entered out-of-band, never in chat.";
+
+/**
+ * SessionStart hook. Emits stm usage guidance as additive session context.
+ * Purely additive — it never blocks. On any error it exits 0 with no output
+ * (a missing instruction is harmless; the other hooks still enforce the rules).
+ */
+export async function sessionStart(): Promise<void> {
+  try {
+    await readStdin(); // drain the payload (unused) so the pipe closes cleanly
+  } catch {
+    /* ignore */
+  }
+  try {
+    process.stdout.write(
+      JSON.stringify({
+        hookSpecificOutput: {
+          hookEventName: "SessionStart",
+          additionalContext: SESSION_GUIDANCE,
+        },
+      }),
+    );
+  } catch {
+    /* ignore — additive context is best-effort */
+  }
+  process.exit(0);
+}
