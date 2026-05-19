@@ -10,8 +10,13 @@ const KC = process.env.STM_KEYCHAIN_SERVICE || "subscribetome-test";
 const CLI = join(import.meta.dir, "..", "src", "cli.ts");
 const ENV = { ...process.env, STM_DB: DB, STM_KEYCHAIN_SERVICE: KC };
 
-// Seed one resolvable key (the test process inherits STM_KEYCHAIN_SERVICE,
-// so this Store and the spawned hooks share the same keychain service).
+// Point THIS process at the same keychain service the spawned hooks use (they
+// get STM_KEYCHAIN_SERVICE via ENV). keychainService() reads the env on each
+// call, so the key seeded below in-process and the keys the hooks resolve in a
+// subprocess land in — and are read from — one shared service.
+process.env.STM_KEYCHAIN_SERVICE = KC;
+
+// Seed one resolvable key.
 {
   const s = new Store(DB);
   s.addKey({ tool: "seedtool", label: "default", value: "SEED-SECRET-12345" });

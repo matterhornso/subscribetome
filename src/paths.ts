@@ -13,9 +13,16 @@ export const DB_PATH = process.env.STM_DB || join(DATA_DIR, "db.sqlite");
 /** Daemon descriptor: { port, token, pid } — written 0600 while the daemon runs. */
 export const DAEMON_FILE = join(DATA_DIR, "daemon.json");
 
-/** Keychain service name. Override with $STM_KEYCHAIN_SERVICE (used by tests). */
-export const KEYCHAIN_SERVICE =
-  process.env.STM_KEYCHAIN_SERVICE || "subscribetome";
+/**
+ * Keychain service name. Override with $STM_KEYCHAIN_SERVICE (used by tests).
+ * Resolved on each call rather than frozen at module load, so a process can
+ * set the env var after importing this module — the test suite relies on this
+ * to point an in-process Store and its spawned hook subprocesses at one shared
+ * keychain service.
+ */
+export function keychainService(): string {
+  return process.env.STM_KEYCHAIN_SERVICE || "subscribetome";
+}
 
 /** Create the data directory (0700) if absent; returns its path. */
 export function ensureDataDir(): string {

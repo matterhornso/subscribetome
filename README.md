@@ -36,9 +36,9 @@ out-of-band by design.
    `curl -fsSL https://bun.sh/install | bash` (or `brew install bun` if
    Homebrew is present), then re-check.
 3. **Add the marketplace:** `claude plugin marketplace add matterhornso/subscribetome`
-4. **Install the plugin:** `claude plugin install subscribetome@subscribetome`
+4. **Install the plugin:** `claude plugin install stm@subscribetome`
 5. **Tell the user, in plain words:** "subscribetome is installed. Quit and
-   reopen Claude Code to activate it. Then run `/subscribetome:dashboard`,
+   reopen Claude Code to activate it. Then run `/stm:dashboard`,
    and add your API keys in the web page that opens — they go straight to your
    macOS Keychain, and I will never see them."
 6. **Stop here.** Do not add keys. Do not ask the user to paste a key. Setup
@@ -53,14 +53,14 @@ out-of-band by design.
 
 ```
 claude plugin marketplace add matterhornso/subscribetome
-claude plugin install subscribetome@subscribetome
+claude plugin install stm@subscribetome
 ```
 
 Then quit and reopen Claude Code to activate it.
 
 ## Use it
 
-1. Run the slash command `/subscribetome:dashboard`. A web page opens on
+1. Run the slash command `/stm:dashboard`. A web page opens on
    localhost.
 2. In the **Add a key** form, enter a tool name, a label, and the key value.
    The key goes straight to your macOS Keychain — never the chat. You get back
@@ -100,10 +100,10 @@ Slash commands (after installing the plugin):
 
 | Command | Does |
 |---|---|
-| `/subscribetome:dashboard` | open the localhost dashboard |
-| `/subscribetome:inventory` | list keys, subscriptions, monthly spend |
-| `/subscribetome:import` | scan `.env` files for keys to import |
-| `/subscribetome:revoke` | mark a key revoked |
+| `/stm:dashboard` | open the localhost dashboard |
+| `/stm:inventory` | list keys, subscriptions, monthly spend |
+| `/stm:import` | scan `.env` files for keys to import |
+| `/stm:revoke` | mark a key revoked |
 
 The `stm` CLI (on `PATH` once installed):
 

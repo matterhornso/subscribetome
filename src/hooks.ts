@@ -138,7 +138,7 @@ export async function preToolUse(): Promise<void> {
     block(
       `subscribetome: cannot resolve placeholder(s): ${[...new Set(unresolved)].join(", ")}\n` +
         `The key is unknown or has been revoked. Run \`stm list\`, or add it in\n` +
-        `the dashboard: \`stm dashboard\` (slash command: /subscribetome:dashboard).`,
+        `the dashboard: \`stm dashboard\` (slash command: /stm:dashboard).`,
     );
   }
 

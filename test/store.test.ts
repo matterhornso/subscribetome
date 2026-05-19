@@ -8,6 +8,10 @@ import { Store } from "../src/store.ts";
 const DB = join(tmpdir(), `stm-test-store-${process.pid}.sqlite`);
 const KC = process.env.STM_KEYCHAIN_SERVICE || "subscribetome-test";
 
+// Keep test keys out of the real "subscribetome" keychain service: every
+// Store created below resolves keychainService() to KC, which afterAll cleans.
+process.env.STM_KEYCHAIN_SERVICE = KC;
+
 afterAll(() => {
   // Remove every keychain entry created under the test service.
   for (let i = 0; i < 100; i++) {
