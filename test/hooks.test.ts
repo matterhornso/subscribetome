@@ -139,6 +139,16 @@ test("UserPromptSubmit allows a clean prompt", () => {
   expect(r.code).toBe(0);
 });
 
+test("UserPromptSubmit blocks a managed secret pasted verbatim (not key-shaped)", () => {
+  // SEED-SECRET-12345 is the seeded value; 17 chars, no API-key shape, so the
+  // shape channel misses it — the exact-value channel must catch it.
+  const r = runHook("userpromptsubmit", {
+    prompt: "connect to the db with password SEED-SECRET-12345 please",
+  });
+  expect(r.code).toBe(2);
+  expect(r.stderr).toContain("secret you manage");
+});
+
 test("PostToolUse flags output that leaked a managed key", () => {
   const r = runHook("posttooluse", {
     tool_name: "Bash",

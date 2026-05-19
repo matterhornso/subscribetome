@@ -62,9 +62,11 @@ Then quit and reopen Claude Code to activate it.
 
 1. Run the slash command `/stm:dashboard`. A web page opens on
    localhost.
-2. In the **Add a key** form, enter a tool name, a label, and the key value.
-   The key goes straight to your macOS Keychain — never the chat. You get back
-   a placeholder, e.g. `{{stm:openai:default}}`.
+2. Pick your service (Supabase, Twitter, Stripe, …) and the form shows its
+   standard credential fields — or choose **Other** for anything custom. Fill
+   the fields you have; each value goes straight to your macOS Keychain, never
+   the chat. You get back a placeholder for each, e.g. `{{stm:openai:default}}`
+   or `{{stm:supabase:service-role-key}}`.
 3. Write that placeholder in any command (an `Authorization: Bearer` header, an
    env var, anything). When the command runs, the real key is swapped in. The
    conversation only ever holds the placeholder.
@@ -95,8 +97,9 @@ shell runs:     curl -H "Authorization: Bearer sk-...real..." ...
 
 Two guardrail hooks back it up:
 
-- **UserPromptSubmit** blocks a prompt that contains a raw key — keys must never
-  go through the chat.
+- **UserPromptSubmit** blocks a prompt that contains a raw key — or any secret
+  stm already manages, including a plain password with no key shape. Secrets
+  must never go through the chat.
 - **PostToolUse** flags command output that leaked a key (a command that echoed
   or errored with its own input) and tells you to rotate it.
 

@@ -189,16 +189,46 @@ export async function userPromptSubmit(): Promise<void> {
     "";
   if (!prompt) process.exit(0);
 
+  // (a) Shape channel: anything that looks like an API key.
   const hits = detectKeys(prompt);
-  if (hits.length === 0) process.exit(0);
+  if (hits.length > 0) {
+    const kinds = [...new Set(hits.map((h) => h.kind))].join(", ");
+    block(
+      `subscribetome: this prompt looks like it contains an API key (${kinds}).\n` +
+        `Blocked — keys must never go through the chat; the model would see them.\n` +
+        `Add the key out-of-band in the dashboard (\`stm dashboard\`), then refer to\n` +
+        `it as {{stm:<tool>:<label>}} — the PreToolUse hook injects it into commands.`,
+    );
+  }
 
-  const kinds = [...new Set(hits.map((h) => h.kind))].join(", ");
-  block(
-    `subscribetome: this prompt looks like it contains an API key (${kinds}).\n` +
-      `Blocked — keys must never go through the chat; the model would see them.\n` +
-      `Add the key out-of-band in the dashboard (\`stm dashboard\`), then refer to\n` +
-      `it as {{stm:<tool>:<label>}} — the PreToolUse hook injects it into commands.`,
-  );
+  // (b) Exact-value channel: a secret stm already manages, pasted verbatim.
+  // Catches plain passwords that have no API-key shape (the shape channel
+  // above would miss them). Threshold 8 chars so a short value cannot be
+  // confused with ordinary prose. Best-effort: if the store is unavailable
+  // the shape channel still applied, so fail safe and let the prompt through.
+  try {
+    const store = new Store();
+    let managed = false;
+    try {
+      managed = store
+        .activeKeyValues()
+        .some((v) => v.length >= 8 && prompt.includes(v));
+    } finally {
+      store.close();
+    }
+    if (managed) {
+      block(
+        `subscribetome: this prompt contains a secret you manage with stm.\n` +
+          `Blocked — keys and passwords must never go through the chat; the model\n` +
+          `would see them. Refer to the secret by its {{stm:<tool>:<label>}}\n` +
+          `placeholder instead — the PreToolUse hook injects it into commands.`,
+      );
+    }
+  } catch {
+    /* store unavailable — shape channel already applied; fail safe */
+  }
+
+  process.exit(0);
 }
 
 // ---- PostToolUse ----------------------------------------------------------

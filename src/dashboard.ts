@@ -8,6 +8,8 @@
 // type scales. Client JS uses string concatenation (no template literals) to
 // keep this server-side template literal free of escaping hazards.
 
+import { CATALOG } from "./catalog.ts";
+
 export function dashboardHTML(): string {
   return `<!doctype html>
 <html lang="en">
@@ -107,16 +109,17 @@ export function dashboardHTML(): string {
   .grid.cols-3 { grid-template-columns:1fr 1fr 1fr; }
   .field { display:flex; flex-direction:column; gap:calc(var(--space)*1.5); }
   label { font-size:12px; font-weight:500; color:var(--text-muted); }
-  input {
+  input,select {
     width:100%; height:38px; padding:0 calc(var(--space)*3);
     background:var(--field); color:var(--text);
     border:1px solid var(--border-strong); border-radius:var(--r-sm);
     font:inherit; transition:border-color .15s var(--ease),box-shadow .15s var(--ease);
   }
   input::placeholder { color:var(--text-dim); }
-  input:hover { border-color:var(--ink-600); }
-  input:focus { outline:none; border-color:var(--primary); box-shadow:0 0 0 3px var(--focus); }
+  input:hover,select:hover { border-color:var(--ink-600); }
+  input:focus,select:focus { outline:none; border-color:var(--primary); box-shadow:0 0 0 3px var(--focus); }
   input[type=date] { color-scheme:dark; }
+  select { -webkit-appearance:none; appearance:none; cursor:pointer; color-scheme:dark; }
 
   /* ---- buttons ---- */
   button {
@@ -219,32 +222,28 @@ export function dashboardHTML(): string {
 
 <main>
   <section class="card">
-    <div class="card-head"><h2>Add a key</h2></div>
-    <div class="grid cols-2">
-      <div class="field"><label for="k-tool">Tool</label>
-        <input id="k-tool" placeholder="openai" autocomplete="off" spellcheck="false"></div>
-      <div class="field"><label for="k-label">Label</label>
-        <input id="k-label" value="default" autocomplete="off" spellcheck="false"></div>
+    <div class="card-head"><h2>Add keys</h2></div>
+    <div class="field">
+      <label for="svc">Service</label>
+      <select id="svc"></select>
     </div>
-    <div class="field" style="margin-top:16px">
-      <label for="k-value">API key value</label>
-      <input id="k-value" type="password" autocomplete="off"
-        placeholder="paste the key — it goes straight to your macOS Keychain">
-    </div>
+    <div id="svc-fields"></div>
     <div class="grid cols-3" style="margin-top:16px">
-      <div class="field"><label for="k-plan">Plan</label>
+      <div class="field"><label for="k-plan">Plan (optional)</label>
         <input id="k-plan" placeholder="Pro" autocomplete="off"></div>
-      <div class="field"><label for="k-cost">Monthly cost (USD)</label>
+      <div class="field"><label for="k-cost">Monthly cost USD (optional)</label>
         <input id="k-cost" type="number" min="0" step="0.01" placeholder="20"></div>
-      <div class="field"><label for="k-renews">Renews on</label>
+      <div class="field"><label for="k-renews">Renews on (optional)</label>
         <input id="k-renews" type="date"></div>
     </div>
     <div class="btn-row">
-      <button class="btn-primary" id="add-btn">Add key</button>
+      <button class="btn-primary" id="add-btn">Add</button>
       <span id="add-msg" class="msg"></span>
     </div>
-    <p class="note">The key value never appears in the Claude Code chat. Once saved, you and
-      the model only ever see its <code>{{stm:tool:label}}</code> placeholder.</p>
+    <p class="note">Secrets go straight to your macOS Keychain — never the Claude Code
+      chat. Pick a service for its standard fields, or "Other" for a custom one; fill
+      only the fields you have. You and the model only ever see each
+      <code>{{stm:tool:label}}</code> placeholder.</p>
   </section>
 
   <section class="card">
@@ -288,6 +287,7 @@ export function dashboardHTML(): string {
 
 <script>
 var TOKEN = new URLSearchParams(location.search).get("token") || "";
+var CATALOG = ${JSON.stringify(CATALOG)};
 var scanned = [];
 var lastInv = null;
 var editingTool = null;
@@ -405,17 +405,72 @@ async function saveSubscription(tool){
   }catch(e){setMsg("add-msg",e.message,"err");}
 }
 
-async function addKey(){
+function initSvc(){
+  var opts="";
+  for(var i=0;i<CATALOG.length;i++){
+    opts+='<option value="'+i+'">'+esc(CATALOG[i].name)+'</option>';
+  }
+  opts+='<option value="other">Other (custom)</option>';
+  el("svc").innerHTML=opts;
+  renderSvcFields();
+}
+
+function renderSvcFields(){
+  var v=el("svc").value, box=el("svc-fields");
+  if(v==="other"){
+    box.innerHTML=
+      '<div class="grid cols-2" style="margin-top:16px">'
+      +'<div class="field"><label for="o-tool">Tool</label>'
+      +'<input id="o-tool" placeholder="my-service" autocomplete="off" spellcheck="false"></div>'
+      +'<div class="field"><label for="o-label">Label</label>'
+      +'<input id="o-label" value="default" autocomplete="off" spellcheck="false"></div></div>'
+      +'<div class="field" style="margin-top:16px"><label for="o-value">Secret value</label>'
+      +'<input id="o-value" type="password" autocomplete="off" '
+      +'placeholder="paste it \\u2014 goes straight to your macOS Keychain"></div>';
+    return;
+  }
+  var svc=CATALOG[Number(v)];
+  box.innerHTML=svc.credentials.map(function(lbl,i){
+    return '<div class="field" style="margin-top:16px">'
+      +'<label for="cv-'+i+'">'+esc(svc.name)+' \\u00b7 <code>'+esc(lbl)+'</code></label>'
+      +'<input id="cv-'+i+'" type="password" autocomplete="off" '
+      +'placeholder="paste '+esc(lbl)+' \\u2014 leave blank to skip"></div>';
+  }).join("");
+}
+
+async function addKeys(){
   var btn=el("add-btn"); btn.disabled=true;
   try{
-    var body={tool:val("k-tool"),label:val("k-label"),value:el("k-value").value,
-      plan:val("k-plan")||null,cost:val("k-cost")?Number(val("k-cost")):null,
-      renews:val("k-renews")||null};
-    if(!body.tool||!body.value)throw new Error("Tool and key value are required.");
-    var r=await api("/api/keys",{method:"POST",body:JSON.stringify(body)});
-    setMsgHTML("add-msg","Added "+copyChip(r.placeholder)+" — click it to copy","ok");
-    el("k-value").value="";
+    var v=el("svc").value, items=[];
+    if(v==="other"){
+      var t=val("o-tool"), lbl=val("o-label")||"default", value=el("o-value").value;
+      if(!t||!value)throw new Error("Tool and secret value are required.");
+      items.push({tool:t,label:lbl,value:value});
+    }else{
+      var svc=CATALOG[Number(v)];
+      svc.credentials.forEach(function(lbl,i){
+        var cv=el("cv-"+i).value;
+        if(cv)items.push({tool:svc.id,label:lbl,value:cv});
+      });
+      if(!items.length)throw new Error("Fill at least one field.");
+    }
+    var plan=val("k-plan")||null,
+        cost=val("k-cost")?Number(val("k-cost")):null,
+        renews=val("k-renews")||null;
+    var added=[],errors=[];
+    for(var i=0;i<items.length;i++){
+      var it=items[i],body={tool:it.tool,label:it.label,value:it.value};
+      if(i===0){body.plan=plan;body.cost=cost;body.renews=renews;}
+      try{
+        var r=await api("/api/keys",{method:"POST",body:JSON.stringify(body)});
+        added.push(r.placeholder);
+      }catch(e){errors.push(it.label+": "+e.message);}
+    }
+    renderSvcFields(); // re-render clears the value inputs
     ["k-plan","k-cost","k-renews"].forEach(function(i){el(i).value="";});
+    var msg=added.length?("Added "+added.map(copyChip).join("  ")):"";
+    if(errors.length)msg+=(msg?" \\u00b7 ":"")+esc(errors.length+" failed \\u2014 "+errors.join("; "));
+    setMsgHTML("add-msg",msg,errors.length?"err":"ok");
     refresh();
   }catch(e){setMsg("add-msg",e.message,"err");}
   finally{btn.disabled=false;}
@@ -470,7 +525,8 @@ async function confirmImport(){
   finally{btn.disabled=false;}
 }
 
-el("add-btn").addEventListener("click",addKey);
+el("add-btn").addEventListener("click",addKeys);
+el("svc").addEventListener("change",renderSvcFields);
 el("scan-btn").addEventListener("click",scan);
 el("imp-btn").addEventListener("click",confirmImport);
 el("keys").addEventListener("click",function(e){
@@ -489,8 +545,7 @@ document.addEventListener("click",function(e){
   var c=e.target.closest?e.target.closest(".copy"):null;
   if(c)copyText(c.dataset.ph);
 });
-el("k-value").addEventListener("keydown",function(e){if(e.key==="Enter")addKey();});
-
+initSvc();
 refresh().catch(function(e){setMsg("add-msg","Failed to load: "+e.message,"err");});
 </script>
 </body>

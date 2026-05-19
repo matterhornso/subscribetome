@@ -257,4 +257,23 @@ export class Store {
       .filter((k) => k.status === "active")
       .map((k) => k.placeholder);
   }
+
+  /**
+   * Resolved secret values of every active key — used by the UserPromptSubmit
+   * hook to block a managed secret pasted into the chat even when it is not
+   * key-shaped (a plain password). Reads the keychain once per active key, so
+   * callers should treat this as a per-invocation cost. Null/empty values are
+   * dropped. The caller decides any length threshold.
+   */
+  activeKeyValues(): string[] {
+    const refs = this.db
+      .query(`SELECT keychain_ref FROM keys WHERE status = 'active'`)
+      .all() as { keychain_ref: string }[];
+    const out: string[] = [];
+    for (const { keychain_ref } of refs) {
+      const v = keychainGet(keychain_ref);
+      if (v) out.push(v);
+    }
+    return out;
+  }
 }
