@@ -115,8 +115,9 @@ export function scanEnv(dirs: string[]): Candidate[] {
   return candidates;
 }
 
-/** Re-read a candidate's real value from its source file (server-side only). */
-export function readCandidateValue(file: string, varName: string): string | null {
+/** Re-read a candidate's real value from its source file (server-side only).
+ *  Internal: only importSelected needs it. */
+function readCandidateValue(file: string, varName: string): string | null {
   let text: string;
   try {
     text = readFileSync(file, "utf8");

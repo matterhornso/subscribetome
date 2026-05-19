@@ -12,10 +12,6 @@ import { keychainService } from "./paths.ts";
 
 const SECURITY = "/usr/bin/security";
 
-export function keychainAvailable(): boolean {
-  return process.platform === "darwin";
-}
-
 /** Store (or update) a secret under an opaque ref. Throws on failure. */
 export function keychainSet(ref: string, value: string): void {
   const r = spawnSync(

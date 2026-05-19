@@ -8,7 +8,7 @@
 // mentions "stm" but is malformed) is never substituted; it is reported so the
 // caller can block with a did-you-mean suggestion.
 
-export const SEGMENT_MAX = 64;
+const SEGMENT_MAX = 64;
 const SEGMENT = "[a-z0-9-]{1,64}";
 const EXACT = new RegExp(`\\{\\{stm:(${SEGMENT}):(${SEGMENT})\\}\\}`, "g");
 // Loose form: any {{...}} blob mentioning "stm". A superset of EXACT, used
@@ -40,8 +40,9 @@ export function findExact(text: string): Placeholder[] {
   return out;
 }
 
-/** Every loose {{...stm...}} blob — a superset of the exact matches. */
-export function findLoose(text: string): Match[] {
+/** Every loose {{...stm...}} blob — a superset of the exact matches.
+ *  Internal: only findNearMisses needs it. */
+function findLoose(text: string): Match[] {
   const out: Match[] = [];
   for (const m of text.matchAll(LOOSE)) {
     out.push({ raw: m[0], start: m.index!, end: m.index! + m[0].length });
