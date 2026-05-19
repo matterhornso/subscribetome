@@ -7,13 +7,12 @@
 <title>subscribetome — API keys for Claude Code, off the record</title>
 <meta name="description" content="An open-source Claude Code plugin. Store every API key in the macOS Keychain and inject it into commands at runtime — the model only ever sees a placeholder.">
 <meta property="og:title" content="subscribetome — API keys for Claude Code, off the record">
-<meta property="og:description" content="Hand Claude Code every API key it needs, and never show it one. Keys live in the macOS Keychain; the chat only ever holds a placeholder.">
+<meta property="og:description" content="Hand Claude Code every API key it needs, and never show it one. Two ways to switch it on — one for humans, one to paste straight into Claude Code.">
 <meta property="og:type" content="website">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
 <style>
-  /* ---------- tokens ---------- */
   :root {
     --bg:#0a0b0d; --bg-2:#101114; --bg-3:#15171b;
     --ink:#ece9e2; --ink-dim:#8e8d85; --ink-faint:#5b5b55;
@@ -35,7 +34,7 @@
   a { color:inherit; }
   h1,h2,h3,p { margin:0; }
 
-  /* ---------- atmosphere: grain + grid ---------- */
+  /* atmosphere */
   .grain {
     position:fixed; inset:0; z-index:1; pointer-events:none; opacity:.035;
     mix-blend-mode:overlay;
@@ -47,23 +46,21 @@
       linear-gradient(var(--line) 1px,transparent 1px),
       linear-gradient(90deg,var(--line) 1px,transparent 1px);
     background-size:64px 64px;
-    -webkit-mask-image:radial-gradient(ellipse 70% 55% at 50% 0%,#000,transparent 75%);
-            mask-image:radial-gradient(ellipse 70% 55% at 50% 0%,#000,transparent 75%);
-    opacity:.5;
+    -webkit-mask-image:radial-gradient(ellipse 75% 50% at 50% 0%,#000,transparent 78%);
+            mask-image:radial-gradient(ellipse 75% 50% at 50% 0%,#000,transparent 78%);
+    opacity:.55;
   }
   .wrap { position:relative; z-index:2; }
+  .bound { max-width:1000px; margin:0 auto; padding:0 32px; }
 
-  /* ---------- shell ---------- */
-  .bound { max-width:1100px; margin:0 auto; padding:0 32px; }
-
-  /* ---------- header ---------- */
+  /* header */
   header {
     position:sticky; top:0; z-index:50;
     border-bottom:1px solid var(--line);
     background:rgba(10,11,13,.72); backdrop-filter:blur(10px);
   }
   .nav { display:flex; align-items:center; justify-content:space-between; height:62px; }
-  .brand { display:flex; align-items:center; gap:11px; font-size:14px; letter-spacing:.2px; }
+  .brand { display:flex; align-items:center; gap:11px; font-size:14px; }
   .mark {
     width:25px; height:25px; border-radius:7px; flex:none; display:grid; place-items:center;
     background:linear-gradient(150deg,var(--acc-bright),var(--acc) 55%,#1f8a63);
@@ -71,89 +68,64 @@
   }
   .brand b { font-weight:600; }
   .brand b i { color:var(--acc); font-style:normal; }
-  .nav-r { display:flex; align-items:center; gap:24px; font-size:13px; }
-  .nav-r a { color:var(--ink-dim); text-decoration:none; transition:color .2s var(--ease); }
-  .nav-r a:hover { color:var(--ink); }
   .nav-cta {
-    border:1px solid var(--line-2); border-radius:7px; padding:7px 14px;
-    color:var(--ink)!important; transition:border-color .2s var(--ease),background .2s var(--ease);
+    border:1px solid var(--line-2); border-radius:7px; padding:7px 14px; font-size:13px;
+    text-decoration:none; transition:border-color .2s var(--ease),background .2s var(--ease);
   }
   .nav-cta:hover { border-color:var(--acc); background:var(--acc-deep); }
-  @media (max-width:640px){ .nav-hide{display:none;} }
 
-  /* ---------- reveal-on-load ---------- */
+  /* reveal */
   .rise { opacity:0; transform:translateY(20px); animation:rise .9s var(--ease) forwards; }
   @keyframes rise { to { opacity:1; transform:none; } }
   .d1{animation-delay:.05s} .d2{animation-delay:.15s} .d3{animation-delay:.25s}
-  .d4{animation-delay:.35s} .d5{animation-delay:.45s} .d6{animation-delay:.55s}
+  .d4{animation-delay:.35s} .d5{animation-delay:.45s} .d6{animation-delay:.6s}
 
-  /* ---------- eyebrow ---------- */
+  /* hero */
+  .hero { padding:90px 0 36px; }
   .eyebrow {
     display:inline-flex; align-items:center; gap:9px;
     font-size:11.5px; letter-spacing:2.4px; text-transform:uppercase; color:var(--ink-dim);
   }
   .eyebrow::before { content:""; width:22px; height:1px; background:var(--acc); }
-
-  /* ---------- hero ---------- */
-  .hero { padding:96px 0 70px; }
   .hero h1 {
     font-family:var(--serif); font-weight:400;
-    font-size:clamp(50px,8.4vw,104px); line-height:.99; letter-spacing:-.5px;
-    margin:30px 0 0; max-width:14ch;
+    font-size:clamp(48px,8vw,98px); line-height:1; letter-spacing:-.5px;
+    margin:28px 0 0; max-width:15ch;
   }
   .hero h1 em { font-style:italic; color:var(--acc); }
   .hero-sub {
-    margin:30px 0 0; max-width:60ch; color:var(--ink-dim); font-size:15.5px; line-height:1.75;
+    margin:26px 0 0; max-width:58ch; color:var(--ink-dim); font-size:15.5px; line-height:1.75;
   }
   .hero-sub b { color:var(--ink); font-weight:500; }
   .hero-sub .ph { color:var(--acc); }
-
-  /* ---------- install block ---------- */
-  .cta-row { display:flex; flex-wrap:wrap; gap:14px; align-items:stretch; margin-top:38px; }
-  .terminal {
-    border:1px solid var(--line-2); border-radius:11px; background:var(--bg-2);
-    overflow:hidden; min-width:340px; flex:1;
-  }
-  .terminal-bar {
-    display:flex; align-items:center; gap:7px; padding:10px 14px;
-    border-bottom:1px solid var(--line); background:var(--bg-3);
-  }
-  .terminal-bar i { width:9px; height:9px; border-radius:50%; background:var(--line-2); display:block; }
-  .terminal-bar span { margin-left:8px; font-size:11px; color:var(--ink-faint); letter-spacing:.5px; }
-  .terminal pre {
-    margin:0; padding:16px 18px; font-family:var(--mono); font-size:13px; line-height:1.95;
-    white-space:pre-wrap; word-break:break-word;
-  }
-  .terminal pre .p { color:var(--acc); }
-  .terminal pre .c { color:var(--ink-faint); }
+  .hero-actions { display:flex; flex-wrap:wrap; gap:14px; margin-top:34px; }
   .btn {
     display:inline-flex; align-items:center; justify-content:center; gap:9px;
-    padding:0 26px; border-radius:11px; font-size:13.5px; font-weight:500;
-    text-decoration:none; white-space:nowrap; transition:transform .12s var(--ease),
-      background .2s var(--ease),border-color .2s var(--ease);
+    height:46px; padding:0 26px; border-radius:11px; font-size:13.5px; font-weight:500;
+    text-decoration:none; white-space:nowrap; cursor:pointer; border:0;
+    font-family:var(--mono);
+    transition:transform .12s var(--ease),background .2s var(--ease),border-color .2s var(--ease);
   }
   .btn:active { transform:translateY(1px); }
   .btn-primary { background:var(--acc); color:#04130c; }
   .btn-primary:hover { background:var(--acc-bright); }
-  .btn-ghost { border:1px solid var(--line-2); color:var(--ink); }
+  .btn-ghost { border:1px solid var(--line-2); color:var(--ink); background:transparent; }
   .btn-ghost:hover { border-color:var(--acc); background:var(--acc-deep); }
 
-  /* ---------- the transform diagram ---------- */
+  /* transform diagram */
   .flow {
-    margin-top:64px; border:1px solid var(--line-2); border-radius:16px;
-    background:linear-gradient(180deg,var(--bg-2),var(--bg));
-    overflow:hidden;
+    margin-top:54px; border:1px solid var(--line-2); border-radius:16px;
+    background:linear-gradient(180deg,var(--bg-2),var(--bg)); overflow:hidden;
   }
-  .flow-row { display:grid; grid-template-columns:160px 1fr; align-items:center; }
-  .flow-row + .flow-row { border-top:1px solid var(--line); }
+  .flow-row { display:grid; grid-template-columns:158px 1fr; align-items:center; }
   .flow-tag {
-    padding:26px 22px; font-size:11px; letter-spacing:1.6px; text-transform:uppercase;
+    padding:24px 22px; font-size:11px; letter-spacing:1.6px; text-transform:uppercase;
     color:var(--ink-dim); border-right:1px solid var(--line); align-self:stretch;
     display:flex; flex-direction:column; justify-content:center; gap:5px;
   }
   .flow-tag b { color:var(--ink); font-weight:500; font-size:12px; letter-spacing:.3px;
     text-transform:none; }
-  .flow-code { padding:26px 24px; font-size:14px; overflow-x:auto; }
+  .flow-code { padding:24px; font-size:13.5px; overflow-x:auto; }
   .flow-code .dim { color:var(--ink-faint); }
   .tok-ph { color:var(--acc); background:var(--acc-deep); padding:3px 6px; border-radius:5px;
     border:1px solid rgba(61,220,151,.3); }
@@ -161,8 +133,8 @@
     border:1px solid rgba(232,137,94,.28); }
   .flow-mid {
     grid-column:1/-1; display:flex; align-items:center; gap:14px;
-    padding:13px 24px; border-top:1px solid var(--line); border-bottom:1px solid var(--line);
-    background:var(--acc-deep); font-size:12px; color:var(--acc-bright); letter-spacing:.4px;
+    padding:12px 24px; border-top:1px solid var(--line); border-bottom:1px solid var(--line);
+    background:var(--acc-deep); font-size:12px; color:var(--acc-bright); letter-spacing:.3px;
   }
   .flow-mid .pulse {
     width:8px; height:8px; border-radius:50%; background:var(--acc); flex:none;
@@ -172,110 +144,86 @@
     0%,100% { box-shadow:0 0 0 0 rgba(61,220,151,.5); }
     50% { box-shadow:0 0 0 9px rgba(61,220,151,0); }
   }
-  @media (max-width:640px){
+  @media (max-width:620px){
     .flow-row { grid-template-columns:1fr; }
-    .flow-tag { border-right:0; border-bottom:1px solid var(--line); padding:16px 20px; }
+    .flow-tag { border-right:0; border-bottom:1px solid var(--line); padding:15px 20px; }
   }
 
-  /* ---------- section scaffold ---------- */
-  section { padding:92px 0; border-top:1px solid var(--line); }
-  .sec-head { display:flex; align-items:baseline; gap:18px; margin-bottom:46px; }
-  .sec-num { font-size:12px; color:var(--acc); letter-spacing:1px; padding-top:6px; }
-  .sec-title {
-    font-family:var(--serif); font-weight:400; font-size:clamp(32px,4.6vw,52px);
-    line-height:1.05; letter-spacing:-.3px;
+  /* ===== start: the dual CTA ===== */
+  .start { padding:80px 0 30px; border-top:1px solid var(--line); margin-top:84px; }
+  .start-head { text-align:center; margin-bottom:46px; }
+  .start-head h2 {
+    font-family:var(--serif); font-weight:400; font-size:clamp(34px,5vw,56px);
+    line-height:1.04; letter-spacing:-.3px;
   }
-  .sec-title em { font-style:italic; color:var(--acc); }
-  .lead { max-width:62ch; color:var(--ink-dim); font-size:15px; line-height:1.8; }
-  .lead code, .step code, .install-box code {
-    color:var(--acc); background:var(--acc-deep); padding:1px 5px; border-radius:4px; font-size:12.5px;
+  .start-head h2 em { font-style:italic; color:var(--acc); }
+  .start-head p { margin:14px auto 0; max-width:54ch; color:var(--ink-dim); font-size:14.5px; }
+
+  .cards { display:grid; grid-template-columns:1fr 1fr; gap:22px; }
+  @media (max-width:720px){ .cards { grid-template-columns:1fr; } }
+  .card {
+    border:1px solid var(--line-2); border-radius:16px; background:var(--bg-2);
+    padding:28px; display:flex; flex-direction:column;
   }
-
-  /* ---------- problem ---------- */
-  .problem-grid { display:grid; grid-template-columns:1fr 1fr; gap:26px; margin-top:30px; }
-  .prob { border:1px solid var(--line); border-radius:13px; padding:28px; background:var(--bg-2); }
-  .prob .x { font-family:var(--serif); font-size:34px; color:var(--warn); line-height:1; }
-  .prob h3 { font-size:14px; font-weight:600; margin:14px 0 8px; letter-spacing:.2px; }
-  .prob p { color:var(--ink-dim); font-size:13.5px; line-height:1.7; }
-  @media (max-width:640px){ .problem-grid{ grid-template-columns:1fr; } }
-
-  /* ---------- steps ---------- */
-  .steps { display:grid; grid-template-columns:repeat(3,1fr); gap:1px;
-    background:var(--line); border:1px solid var(--line); border-radius:14px; overflow:hidden; }
-  .step { background:var(--bg-2); padding:32px 26px; transition:background .25s var(--ease); }
-  .step:hover { background:var(--bg-3); }
-  .step .n { font-family:var(--serif); font-size:46px; line-height:1; color:var(--acc); }
-  .step h3 { font-size:14.5px; font-weight:600; margin:18px 0 9px; }
-  .step p { color:var(--ink-dim); font-size:13.5px; line-height:1.72; }
-  .step em { font-style:italic; color:var(--ink); }
-  @media (max-width:760px){ .steps{ grid-template-columns:1fr; } }
-
-  /* ---------- catalog marquee ---------- */
-  .catalog-meta { display:flex; align-items:center; gap:26px; margin-top:8px; }
-  .big-num { font-family:var(--serif); font-size:88px; line-height:.9; color:var(--acc); flex:none; }
-  .marquee {
-    margin-top:40px; border-top:1px solid var(--line); border-bottom:1px solid var(--line);
-    padding:22px 0; -webkit-mask-image:linear-gradient(90deg,transparent,#000 8%,#000 92%,transparent);
-            mask-image:linear-gradient(90deg,transparent,#000 8%,#000 92%,transparent);
+  .card.claude { border-color:rgba(61,220,151,.34); background:linear-gradient(180deg,#0e1a15,var(--bg-2) 60%); }
+  .tag {
+    align-self:flex-start; display:inline-flex; align-items:center; gap:7px;
+    font-size:11px; letter-spacing:1.8px; text-transform:uppercase;
+    border:1px solid var(--line-2); border-radius:999px; padding:5px 12px; color:var(--ink-dim);
   }
-  .marquee + .marquee { border-top:0; }
-  .track { display:flex; gap:14px; width:max-content; animation:scroll 56s linear infinite; }
-  .marquee:hover .track { animation-play-state:paused; }
-  .track.rev { animation-direction:reverse; animation-duration:64s; }
-  @keyframes scroll { to { transform:translateX(-50%); } }
-  .chip {
-    border:1px solid var(--line-2); border-radius:999px; padding:8px 17px;
-    font-size:13px; color:var(--ink-dim); white-space:nowrap; flex:none;
-    transition:color .2s var(--ease),border-color .2s var(--ease);
+  .card.claude .tag { border-color:rgba(61,220,151,.4); color:var(--acc); }
+  .tag .d { width:6px; height:6px; border-radius:50%; background:currentColor; }
+  .card h3 {
+    font-family:var(--serif); font-weight:400; font-size:30px; margin:18px 0 6px;
   }
-  .chip:hover { color:var(--acc); border-color:var(--acc); }
-  .chip b { color:var(--acc); font-weight:400; }
+  .card .desc { color:var(--ink-dim); font-size:13.5px; line-height:1.7; min-height:58px; }
+  .card .desc b { color:var(--ink); font-weight:500; }
 
-  /* ---------- showcase ---------- */
-  .shot {
-    margin-top:8px; border:1px solid var(--line-2); border-radius:14px; overflow:hidden;
-    background:var(--bg-2); box-shadow:0 40px 90px -50px rgba(0,0,0,.9);
+  .copybox { margin-top:18px; border:1px solid var(--line); border-radius:11px;
+    background:var(--bg); overflow:hidden; }
+  .copybar {
+    display:flex; align-items:center; justify-content:space-between;
+    padding:8px 8px 8px 14px; border-bottom:1px solid var(--line); background:var(--bg-3);
   }
-  .shot-bar { display:flex; align-items:center; gap:7px; padding:11px 15px;
-    border-bottom:1px solid var(--line); background:var(--bg-3); }
-  .shot-bar i { width:9px; height:9px; border-radius:50%; background:var(--line-2); }
-  .shot-bar span { margin-left:8px; font-size:11px; color:var(--ink-faint); }
-  .shot img { display:block; width:100%; }
-
-  /* ---------- security ---------- */
-  .sec-cols { display:grid; grid-template-columns:1fr 1fr; gap:26px; }
-  .panel { border:1px solid var(--line); border-radius:13px; padding:28px; background:var(--bg-2); }
-  .panel h3 { font-family:var(--serif); font-size:25px; font-weight:400; margin-bottom:6px; }
-  .panel.good h3 { color:var(--acc); }
-  .panel.real h3 { color:var(--warn); }
-  .panel ul { margin:12px 0 0; padding:0; }
-  .panel li {
-    list-style:none; padding:11px 0 11px 28px; position:relative;
-    font-size:13.5px; color:var(--ink-dim); line-height:1.65;
-    border-top:1px solid var(--line);
+  .copybar span { font-size:10.5px; letter-spacing:1.2px; text-transform:uppercase; color:var(--ink-faint); }
+  .copy-btn {
+    font-family:var(--mono); font-size:12px; cursor:pointer;
+    border:1px solid var(--line-2); border-radius:7px; padding:6px 13px;
+    background:transparent; color:var(--ink);
+    transition:border-color .15s var(--ease),background .15s var(--ease),color .15s var(--ease);
   }
-  .panel li:first-child { border-top:0; }
-  .panel li::before { position:absolute; left:0; top:11px; font-size:13px; }
-  .panel.good li::before { content:"✓"; color:var(--acc); }
-  .panel.real li::before { content:"!"; color:var(--warn); font-weight:600; }
-  .panel li b { color:var(--ink); font-weight:500; }
-  .panel li code { color:var(--acc); font-size:12px; }
-  @media (max-width:640px){ .sec-cols{ grid-template-columns:1fr; } }
-
-  /* ---------- install section ---------- */
-  .install-box { display:grid; grid-template-columns:1fr 1fr; gap:26px; align-items:start; }
-  .speak {
-    border-left:2px solid var(--acc); padding:14px 18px; background:var(--bg-2);
-    border-radius:0 9px 9px 0; font-size:14px; color:var(--ink); line-height:1.6;
+  .copy-btn:hover { border-color:var(--acc); background:var(--acc-deep); }
+  .copy-btn.ok { border-color:var(--acc); background:var(--acc); color:#04130c; }
+  .copybox pre {
+    margin:0; padding:16px 16px; font-family:var(--mono); font-size:12.5px; line-height:1.9;
+    white-space:pre-wrap; word-break:break-word; color:var(--ink);
   }
-  .speak .q { color:var(--ink-dim); display:block; font-size:11px; letter-spacing:1.4px;
-    text-transform:uppercase; margin-bottom:7px; }
-  @media (max-width:760px){ .install-box{ grid-template-columns:1fr; } }
+  .copybox pre .p { color:var(--acc); }
+  .card .after { margin-top:14px; font-size:12px; color:var(--ink-faint); line-height:1.6; }
+  .card .after b { color:var(--ink-dim); font-weight:500; }
 
-  /* ---------- footer ---------- */
-  footer { border-top:1px solid var(--line); padding:54px 0 60px; }
-  .foot { display:flex; flex-wrap:wrap; gap:24px; justify-content:space-between; align-items:center; }
-  .foot-l { font-size:13px; color:var(--ink-faint); max-width:46ch; line-height:1.7; }
+  /* trust strip */
+  .strip {
+    margin-top:64px; border-top:1px solid var(--line); border-bottom:1px solid var(--line);
+    display:flex; flex-wrap:wrap; justify-content:center; gap:10px 26px;
+    padding:22px 0; font-size:12px; color:var(--ink-dim);
+  }
+  .strip i { color:var(--acc); font-style:normal; }
+  .strip .sep { color:var(--ink-faint); }
+
+  /* honest line */
+  .honest {
+    text-align:center; padding:54px 0; color:var(--ink-dim); font-size:13.5px;
+    max-width:62ch; margin:0 auto; line-height:1.8;
+  }
+  .honest b { color:var(--ink); font-weight:500; }
+  .honest a { color:var(--acc); text-decoration:none; }
+  .honest a:hover { text-decoration:underline; }
+
+  /* footer */
+  footer { border-top:1px solid var(--line); padding:46px 0 56px; }
+  .foot { display:flex; flex-wrap:wrap; gap:22px; justify-content:space-between; align-items:center; }
+  .foot-l { font-size:12.5px; color:var(--ink-faint); max-width:44ch; line-height:1.7; }
   .foot-l b { color:var(--ink-dim); font-weight:500; }
   .foot-links { display:flex; gap:22px; font-size:13px; }
   .foot-links a { color:var(--ink-dim); text-decoration:none; transition:color .2s var(--ease); }
@@ -283,7 +231,6 @@
 
   @media (prefers-reduced-motion:reduce){
     .rise{animation:none;opacity:1;transform:none}
-    .track{animation:none}
     .flow-mid .pulse{animation:none}
   }
 </style>
@@ -295,226 +242,101 @@
 
 <header>
   <div class="bound nav">
-    <div class="brand">
-      <div class="mark">s</div>
-      <b>subscribe<i>tome</i></b>
-    </div>
-    <nav class="nav-r">
-      <a href="#how" class="nav-hide">How it works</a>
-      <a href="#catalog" class="nav-hide">Catalog</a>
-      <a href="#security" class="nav-hide">Security</a>
-      <a class="nav-cta" href="https://github.com/matterhornso/subscribetome">GitHub →</a>
-    </nav>
+    <div class="brand"><div class="mark">s</div><b>subscribe<i>tome</i></b></div>
+    <a class="nav-cta" href="https://github.com/matterhornso/subscribetome">GitHub →</a>
   </div>
 </header>
 
-<!-- ============ HERO ============ -->
+<!-- HERO -->
 <div class="bound hero">
   <span class="eyebrow rise d1">subscribetome · claude code plugin · macOS</span>
   <h1 class="rise d2">Hand Claude Code every API key it needs — and <em>never show it one.</em></h1>
   <p class="hero-sub rise d3">
-    Your keys live in the <b>macOS Keychain</b>. subscribetome injects the real value into a
-    command at the instant it runs, so you and the model only ever see a placeholder like
+    Your keys go to the <b>macOS Keychain</b>. subscribetome injects the real value into a
+    command the instant it runs — you and the model only ever see a placeholder like
     <span class="ph">{{stm:openai:default}}</span>. The secret reaches the shell. It never
     reaches the chat.
   </p>
-  <div class="cta-row rise d4">
-    <div class="terminal">
-      <div class="terminal-bar"><i></i><i></i><i></i><span>install · two commands</span></div>
-<pre><span class="c"># add the marketplace, then the plugin</span>
-claude plugin marketplace add <span class="p">matterhornso/subscribetome</span>
-claude plugin install <span class="p">stm@subscribetome</span></pre>
-    </div>
+  <div class="hero-actions rise d4">
+    <a class="btn btn-primary" href="#start">Switch it on ↓</a>
     <a class="btn btn-ghost" href="https://github.com/matterhornso/subscribetome">View source ↗</a>
   </div>
 
-  <!-- transform diagram -->
   <div class="flow rise d5">
     <div class="flow-row">
-      <div class="flow-tag">step one<b>the model writes</b></div>
-      <div class="flow-code"><span class="dim">curl api.openai.com/v1/… -H "Authorization: Bearer </span><span class="tok-ph">{{stm:openai:default}}</span><span class="dim">"</span></div>
+      <div class="flow-tag">the model writes<b>placeholder</b></div>
+      <div class="flow-code"><span class="dim">curl api.openai.com -H "Authorization: Bearer </span><span class="tok-ph">{{stm:openai:default}}</span><span class="dim">"</span></div>
     </div>
     <div class="flow-mid"><span class="pulse"></span>PreToolUse hook · substitutes the key the moment the command runs</div>
     <div class="flow-row">
-      <div class="flow-tag">step two<b>the shell runs</b></div>
-      <div class="flow-code"><span class="dim">curl api.openai.com/v1/… -H "Authorization: Bearer </span><span class="tok-real">sk-live-a3f9c1·········</span><span class="dim">"</span></div>
+      <div class="flow-tag">the shell runs<b>real key</b></div>
+      <div class="flow-code"><span class="dim">curl api.openai.com -H "Authorization: Bearer </span><span class="tok-real">sk-live-a3f9c1·········</span><span class="dim">"</span></div>
     </div>
   </div>
 </div>
 
-<!-- ============ PROBLEM ============ -->
-<section id="problem">
-  <div class="bound">
-    <div class="sec-head">
-      <span class="sec-num">01</span>
-      <h2 class="sec-title">A pasted key is a <em>burned</em> key.</h2>
-    </div>
-    <p class="lead">You use a dozen AI tools, each with its own keys — scattered across <code>.env</code>
-      files, dotfiles, and provider dashboards. The moment one lands in a chat transcript, it is
-      logged, cached, and out of your control.</p>
-    <div class="problem-grid">
-      <div class="prob">
-        <div class="x">✕</div>
-        <h3>Keys in the transcript</h3>
-        <p>Paste a key to an AI agent and it is permanently in the conversation history —
-          recoverable long after you "deleted" it. Rotation is the only fix, and it is a chore.</p>
-      </div>
-      <div class="prob">
-        <div class="x">✕</div>
-        <h3>No single source of truth</h3>
-        <p>Which tools do you pay for? Which key is live, which is revoked? It lives in your head
-          and a dozen dashboards — until a renewal you forgot about hits the card.</p>
-      </div>
-    </div>
+<!-- START — the dual CTA -->
+<div class="bound start" id="start">
+  <div class="start-head">
+    <h2>Two ways to <em>switch it on.</em></h2>
+    <p>Pick the one that fits. Either way it takes under a minute, and you never paste a key.</p>
   </div>
-</section>
+  <div class="cards">
 
-<!-- ============ HOW IT WORKS ============ -->
-<section id="how">
-  <div class="bound">
-    <div class="sec-head">
-      <span class="sec-num">02</span>
-      <h2 class="sec-title">Three moves. <em>That's the whole loop.</em></h2>
-    </div>
-    <div class="steps">
-      <div class="step">
-        <div class="n">1</div>
-        <h3>Add a key, out of band</h3>
-        <p>Run <code>/stm:dashboard</code>. A localhost page opens. Pick your service, paste the
-          value — straight into the macOS Keychain, never the chat.</p>
-      </div>
-      <div class="step">
-        <div class="n">2</div>
-        <h3>Get a placeholder</h3>
-        <p>Each key becomes a token like <code>{{stm:stripe:secret-key}}</code>. That is the only
-          form you, or the model, ever type.</p>
-      </div>
-      <div class="step">
-        <div class="n">3</div>
-        <h3>Just ask</h3>
-        <p>Say <em>"use my fal.ai key to make a video."</em> A SessionStart hook already taught
-          Claude about stm — it wires the placeholder in, the hook injects the real key.</p>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- ============ CATALOG ============ -->
-<section id="catalog">
-  <div class="bound">
-    <div class="sec-head">
-      <span class="sec-num">03</span>
-      <h2 class="sec-title">The services you <em>actually</em> use.</h2>
-    </div>
-    <div class="catalog-meta">
-      <span class="big-num">35</span>
-      <p class="lead">Pick a service in the dashboard and it lays out the exact credential fields
-        that service needs — Supabase's three keys, Twitter's five tokens, Stripe's webhook
-        secret. No guessing what to label anything.</p>
-    </div>
-  </div>
-  <div class="marquee">
-    <div class="track">
-      <span class="chip">OpenAI</span><span class="chip">Anthropic</span><span class="chip">Google Gemini</span><span class="chip">Supabase <b>·3</b></span><span class="chip">Stripe <b>·3</b></span><span class="chip">Vercel</span><span class="chip">Cloudflare <b>·2</b></span><span class="chip">Clerk <b>·2</b></span><span class="chip">Twilio <b>·2</b></span><span class="chip">Resend</span><span class="chip">Firebase <b>·6</b></span><span class="chip">AWS <b>·3</b></span><span class="chip">Neon</span><span class="chip">Railway</span><span class="chip">Groq</span><span class="chip">OpenRouter</span><span class="chip">Replicate</span><span class="chip">ElevenLabs</span>
-      <span class="chip">OpenAI</span><span class="chip">Anthropic</span><span class="chip">Google Gemini</span><span class="chip">Supabase <b>·3</b></span><span class="chip">Stripe <b>·3</b></span><span class="chip">Vercel</span><span class="chip">Cloudflare <b>·2</b></span><span class="chip">Clerk <b>·2</b></span><span class="chip">Twilio <b>·2</b></span><span class="chip">Resend</span><span class="chip">Firebase <b>·6</b></span><span class="chip">AWS <b>·3</b></span><span class="chip">Neon</span><span class="chip">Railway</span><span class="chip">Groq</span><span class="chip">OpenRouter</span><span class="chip">Replicate</span><span class="chip">ElevenLabs</span>
-    </div>
-  </div>
-  <div class="marquee">
-    <div class="track rev">
-      <span class="chip">Twitter / X <b>·5</b></span><span class="chip">Telegram</span><span class="chip">Discord</span><span class="chip">Slack <b>·2</b></span><span class="chip">SendGrid</span><span class="chip">Auth0 <b>·3</b></span><span class="chip">MongoDB Atlas</span><span class="chip">Upstash Redis <b>·2</b></span><span class="chip">Netlify</span><span class="chip">fal.ai</span><span class="chip">Mistral AI</span><span class="chip">Tavily</span><span class="chip">Firecrawl</span><span class="chip">Exa</span><span class="chip">Sentry <b>·2</b></span><span class="chip">PostHog</span><span class="chip">GitHub</span>
-      <span class="chip">Twitter / X <b>·5</b></span><span class="chip">Telegram</span><span class="chip">Discord</span><span class="chip">Slack <b>·2</b></span><span class="chip">SendGrid</span><span class="chip">Auth0 <b>·3</b></span><span class="chip">MongoDB Atlas</span><span class="chip">Upstash Redis <b>·2</b></span><span class="chip">Netlify</span><span class="chip">fal.ai</span><span class="chip">Mistral AI</span><span class="chip">Tavily</span><span class="chip">Firecrawl</span><span class="chip">Exa</span><span class="chip">Sentry <b>·2</b></span><span class="chip">PostHog</span><span class="chip">GitHub</span>
-    </div>
-  </div>
-</section>
-
-<!-- ============ SHOWCASE ============ -->
-<section id="dashboard">
-  <div class="bound">
-    <div class="sec-head">
-      <span class="sec-num">04</span>
-      <h2 class="sec-title">One dashboard. <em>One source of truth.</em></h2>
-    </div>
-    <p class="lead" style="margin-bottom:38px">Every key, its status, where it came from, and what
-      you spend each month — on a page that binds to <code>127.0.0.1</code> and never leaves your
-      machine.</p>
-    <div class="shot">
-      <div class="shot-bar"><i></i><i></i><i></i><span>localhost · subscribetome</span></div>
-      <img src="screenshots/dashboard.png" alt="The subscribetome dashboard — add a key, the key inventory, and subscription spend">
-    </div>
-  </div>
-</section>
-
-<!-- ============ SECURITY ============ -->
-<section id="security">
-  <div class="bound">
-    <div class="sec-head">
-      <span class="sec-num">05</span>
-      <h2 class="sec-title">Honest about <em>both sides.</em></h2>
-    </div>
-    <p class="lead" style="margin-bottom:36px">A security tool that overpromises is worse than
-      none. Here is exactly what subscribetome guarantees — and exactly what it cannot.</p>
-    <div class="sec-cols">
-      <div class="panel good">
-        <h3>What it guarantees</h3>
-        <ul>
-          <li><b>Keys never enter the chat.</b> The transcript only ever holds the placeholder; the real value is substituted after the model's turn.</li>
-          <li><b>Stored in the macOS Keychain</b> — OS-encrypted at rest, never in subscribetome's own database.</li>
-          <li><b>Pasted a raw secret?</b> The UserPromptSubmit hook blocks it — keys by shape, and any managed secret by exact value, passwords included.</li>
-          <li><b>Hooks fail safe.</b> On any internal error a hook substitutes nothing — a failure can never leak a key.</li>
-        </ul>
-      </div>
-      <div class="panel real">
-        <h3>What it can't do</h3>
-        <ul>
-          <li><b>It can't un-leak.</b> A command that echoes its own arguments can still print a key; PostToolUse flags it after the fact — it cannot prevent it.</li>
-          <li><b>The key is briefly a process argument</b> while the command runs — visible to a local <code>ps</code>. That is inherent to running a shell command.</li>
-          <li><b>macOS &amp; Claude Code only</b> in v1. The injection mechanism is a Claude Code hook; Linux and Windows backends are deferred.</li>
-        </ul>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- ============ INSTALL ============ -->
-<section id="install">
-  <div class="bound">
-    <div class="sec-head">
-      <span class="sec-num">06</span>
-      <h2 class="sec-title">Set it up in <em>under a minute.</em></h2>
-    </div>
-    <div class="install-box">
-      <div>
-        <p class="lead" style="margin-bottom:22px">Run the two commands, restart Claude Code, and
-          you're done. Brand new to this? You don't have to run anything — paste the line on the
-          right to Claude Code and it does the whole install for you.</p>
-        <div class="terminal">
-          <div class="terminal-bar"><i></i><i></i><i></i><span>terminal</span></div>
-<pre>claude plugin marketplace add <span class="p">matterhornso/subscribetome</span>
-claude plugin install <span class="p">stm@subscribetome</span>
-<span class="c"># then restart Claude Code</span></pre>
+    <!-- humans -->
+    <div class="card">
+      <span class="tag"><span class="d"></span>For humans</span>
+      <h3>Run two commands</h3>
+      <p class="desc">Comfortable in a terminal? Run these, then restart Claude Code. Done.</p>
+      <div class="copybox">
+        <div class="copybar">
+          <span>terminal</span>
+          <button class="copy-btn" data-copy="cmd-human">Copy</button>
         </div>
+<pre id="cmd-human">claude plugin marketplace add <span class="p">matterhornso/subscribetome</span>
+claude plugin install <span class="p">stm@subscribetome</span></pre>
       </div>
-      <div>
-        <div class="speak">
-          <span class="q">or — just say this to Claude Code</span>
-          Set up subscribetome for me using github.com/matterhornso/subscribetome
-        </div>
-        <p class="lead" style="margin-top:22px; font-size:13.5px">
-          It reads the repo's install runbook and handles everything — checks macOS, installs the
-          plugin, tells you to restart. The one thing it will never do is touch a key. That stays
-          yours, entered through the dashboard.</p>
-        <a class="btn btn-primary" style="margin-top:24px; height:46px"
-           href="https://github.com/matterhornso/subscribetome">Get subscribetome →</a>
-      </div>
+      <p class="after"><b>Then:</b> restart Claude Code, run <span style="color:var(--acc)">/stm:dashboard</span>, and add your keys.</p>
     </div>
+
+    <!-- claude code -->
+    <div class="card claude">
+      <span class="tag"><span class="d"></span>For Claude Code</span>
+      <h3>Paste one line</h3>
+      <p class="desc">New to this? <b>Paste this into Claude Code</b> — it reads the repo, installs the plugin, and activates STM for you.</p>
+      <div class="copybox">
+        <div class="copybar">
+          <span>paste into claude code</span>
+          <button class="copy-btn" data-copy="cmd-claude">Copy</button>
+        </div>
+<pre id="cmd-claude">Set up subscribetome for me using https://github.com/matterhornso/subscribetome</pre>
+      </div>
+      <p class="after"><b>Then:</b> restart Claude Code when it tells you to. It never asks you for a key.</p>
+    </div>
+
   </div>
-</section>
+
+  <div class="strip">
+    <span><i>35</i> services pre-configured</span><span class="sep">/</span>
+    <span>keys never touch the chat</span><span class="sep">/</span>
+    <span>macOS Keychain</span><span class="sep">/</span>
+    <span><i>MIT</i> · open source</span>
+  </div>
+</div>
+
+<!-- HONEST -->
+<p class="honest">
+  subscribetome keeps your keys out of the conversation — not out of the universe.
+  It can't un-leak a key a command echoes itself, and v1 is macOS &amp; Claude Code only.
+  The full, honest security model is in the
+  <a href="https://github.com/matterhornso/subscribetome#security-model">README</a>.
+</p>
 
 <footer>
   <div class="bound foot">
     <div class="foot-l">
       <b>subscribetome</b> — an open-source AI API key &amp; subscription manager for Claude Code.
-      MIT licensed. Built for developers who'd rather not rotate a key at 2am.
+      MIT licensed.
     </div>
     <div class="foot-links">
       <a href="https://github.com/matterhornso/subscribetome">GitHub</a>
@@ -525,5 +347,28 @@ claude plugin install <span class="p">stm@subscribetome</span>
 </footer>
 
 </div>
+
+<script>
+  document.querySelectorAll(".copy-btn").forEach(function(btn){
+    btn.addEventListener("click",function(){
+      var src=document.getElementById(btn.getAttribute("data-copy"));
+      var text=(src.innerText||src.textContent).trim();
+      function done(){
+        btn.classList.add("ok"); btn.textContent="Copied ✓";
+        setTimeout(function(){ btn.classList.remove("ok"); btn.textContent="Copy"; },1700);
+      }
+      if(navigator.clipboard&&navigator.clipboard.writeText){
+        navigator.clipboard.writeText(text).then(done,fallback);
+      }else{ fallback(); }
+      function fallback(){
+        var t=document.createElement("textarea"); t.value=text;
+        t.style.position="fixed"; t.style.opacity="0";
+        document.body.appendChild(t); t.select();
+        try{ document.execCommand("copy"); done(); }catch(e){}
+        document.body.removeChild(t);
+      }
+    });
+  });
+</script>
 </body>
 </html>
