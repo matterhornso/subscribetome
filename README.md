@@ -205,6 +205,8 @@ descriptor). Key values are in the macOS Keychain under the service name
   vulnerability privately.
 - [`CHANGELOG.md`](./CHANGELOG.md) — release history.
 - [`TODOS.md`](./TODOS.md) — the deferred v1.5 scope.
+- [`specs/cross-platform-and-codex.md`](./specs/cross-platform-and-codex.md) —
+  v2 plan: Linux, Windows, and OpenAI Codex support.
 
 ## License
 
