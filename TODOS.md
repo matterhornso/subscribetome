@@ -16,6 +16,14 @@ v1 `revoke` is a metadata flag. Real rotation — calling a provider's API to
 issue a new key and revoke the old one — is provider-specific surface area.
 Deferred until there is a concrete provider to support first.
 
+## Audit log
+
+A local, append-only record of which key (tool + label) each `PreToolUse`
+substitution served, with timestamp and the calling tool — so after a leak
+alert the user can answer "which command actually used this key?" without
+guessing. SQLite table; visible in the dashboard, filterable by tool. Not on
+the public roadmap card; lives here.
+
 ## Retroactive subscription discovery
 
 v1 does not find already-forgotten subscriptions. Receipt / transaction

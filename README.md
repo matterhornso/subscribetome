@@ -209,6 +209,9 @@ descriptor). Key values are in the macOS Keychain under the service name
   v2 plan: Linux, Windows, and OpenAI Codex support.
 - [`specs/spend-visibility.md`](./specs/spend-visibility.md) — the second
   product: real spend pulled from provider APIs, on demand only.
+- [`specs/session-and-project-scope.md`](./specs/session-and-project-scope.md) —
+  per-project key scope so multi-session, multi-project users see only the
+  keys each session needs.
 
 ## License
 

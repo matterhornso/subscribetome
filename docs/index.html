@@ -87,11 +87,6 @@
     gap:54px; align-items:center; }
   @media (max-width:860px){ .hero { grid-template-columns:1fr; gap:40px; padding-top:54px; } }
 
-  .eyebrow {
-    display:inline-flex; align-items:center; gap:9px;
-    font-size:11px; letter-spacing:2.2px; text-transform:uppercase; color:var(--ink-dim);
-  }
-  .eyebrow::before { content:""; width:22px; height:1px; background:var(--acc); }
   .hero h1 {
     font-family:var(--serif); font-weight:400;
     font-size:clamp(40px,4.7vw,60px); line-height:1.03; letter-spacing:-.2px;
@@ -173,15 +168,6 @@
     50% { box-shadow:0 0 0 9px rgba(61,220,151,0); }
   }
 
-  /* ===== scope pill (under hero actions) ===== */
-  .scope {
-    margin-top:22px; display:inline-flex; align-items:center; gap:9px;
-    font-size:12px; color:var(--ink-dim); line-height:1.5;
-    border:1px dashed var(--line-2); border-radius:9px; padding:9px 14px;
-  }
-  .scope .dot { width:6px; height:6px; border-radius:50%; background:var(--acc); flex:none; }
-  .scope b { color:var(--ink); font-weight:500; }
-
   /* ===== local-only trust ===== */
   .local { padding:82px 0 10px; border-top:1px solid var(--line); margin-top:62px; }
   .local-head { text-align:center; margin-bottom:42px; }
@@ -229,12 +215,8 @@
     padding:24px 26px;
   }
   .layer-col.now { border-color:rgba(61,220,151,.32); }
-  .layer-col .lt {
-    font-size:11px; letter-spacing:1.6px; text-transform:uppercase; color:var(--ink-dim);
-  }
-  .layer-col.now .lt { color:var(--acc); }
   .layer-col h3 {
-    font-family:var(--serif); font-size:22px; font-weight:400; margin:8px 0 12px;
+    font-family:var(--serif); font-size:22px; font-weight:400; margin:0 0 12px;
   }
   .layer-col ul { margin:0; padding:0; }
   .layer-col li {
@@ -312,14 +294,6 @@
   .strip i { color:var(--acc); font-style:normal; }
   .strip .sep { color:var(--ink-faint); }
 
-  .honest {
-    text-align:center; padding:52px 0; color:var(--ink-dim); font-size:13px;
-    max-width:60ch; margin:0 auto; line-height:1.8;
-  }
-  .honest b { color:var(--ink); font-weight:500; }
-  .honest a { color:var(--acc); text-decoration:none; }
-  .honest a:hover { text-decoration:underline; }
-
   footer { border-top:1px solid var(--line); padding:44px 0 54px; }
   .foot { display:flex; flex-wrap:wrap; gap:22px; justify-content:space-between; align-items:center; }
   .foot-l { font-size:12.5px; color:var(--ink-faint); max-width:44ch; line-height:1.7; }
@@ -349,7 +323,6 @@
 <!-- HERO -->
 <div class="bound hero">
   <div>
-    <span class="eyebrow rise d1">stm · security for AI-assisted coding · macOS</span>
     <h1 class="rise d2">Hand Claude Code every <span class="ac">API</span> key it needs — and <em>never show it one.</em></h1>
     <p class="hero-sub rise d3">
       Paste an API key into a chat and it's logged there forever. subscribetome keeps
@@ -357,12 +330,11 @@
       Claude Code can <b>use</b> your keys without ever <b>seeing</b> them. One vault for
       every service. Nothing to leak, nothing to rotate at 2am.
     </p>
-    <p class="scope rise d5"><span class="dot"></span><span><b>macOS &amp; Claude Code</b> today — Linux, Windows &amp; more coding agents coming</span></p>
   </div>
 
   <div class="hero-right rise d4">
     <div class="hcard claude">
-      <span class="hcard-tag"><span class="d"></span>Paste into Claude Code</span>
+      <span class="hcard-tag">Paste into Claude Code</span>
       <div class="copybox">
         <div class="copybar">
           <span>one line · activates STM</span>
@@ -419,26 +391,25 @@ claude plugin install <span class="p">stm@subscribetome</span></pre>
       <span class="t">Localhost only</span>
       <h3>The dashboard never goes online</h3>
       <p>It's a page your own Mac serves on <code>127.0.0.1</code>, bound to loopback.
-        No remote machine can reach it — there is no public address to reach.</p>
+        No remote machine can reach it.</p>
     </div>
     <div class="lc">
       <span class="t">No backend</span>
       <h3>Nowhere to send your data</h3>
-      <p>subscribetome has no servers, no cloud database, no sign-up, no telemetry.
-        Nothing phones home, because there is no home to phone.</p>
+      <p>subscribetome has no servers, no cloud database, no sign-up, no telemetry.</p>
     </div>
     <div class="lc">
       <span class="t">Your keychain</span>
       <h3>Keys stay on your disk</h3>
       <p>Every secret lives in the macOS Keychain on your machine. subscribetome reads
-        it locally, the instant a command runs — and nowhere else, ever.</p>
+        it locally.</p>
     </div>
   </div>
   <div class="roadmap">
     <div class="roadmap-in">
       <span class="now">Available now</span> for <b>macOS</b> and <b>Claude Code</b>.
       Linux, Windows, and other coding agents — Codex, opencode, Cursor — are on the
-      roadmap. subscribetome is open source and the core idea is portable.
+      roadmap.
     </div>
   </div>
 </div>
@@ -450,7 +421,6 @@ claude plugin install <span class="p">stm@subscribetome</span></pre>
   </div>
   <div class="layer-grid">
     <div class="layer-col now">
-      <span class="lt">Today · ships</span>
       <h3>Security for the keys</h3>
       <ul>
         <li><b>Keys out of the chat.</b> Every API key your agent uses, kept out of the transcript.</li>
@@ -459,12 +429,9 @@ claude plugin install <span class="p">stm@subscribetome</span></pre>
       </ul>
     </div>
     <div class="layer-col next">
-      <span class="lt">Coming · on the roadmap</span>
       <h3>Security for the rest</h3>
       <ul>
         <li><b>Spend visibility.</b> Real usage pulled from provider APIs, on demand.</li>
-        <li><b>Provider-side rotation.</b> <code>stm revoke</code> calls the provider, not just flags.</li>
-        <li><b>Audit log.</b> A local record of which key each command used.</li>
         <li><b>Command policy.</b> Allow / deny rules at the PreToolUse layer.</li>
         <li><b>Linux, Windows, and other agents</b> (Codex, opencode, Cursor).</li>
       </ul>
@@ -481,12 +448,6 @@ claude plugin install <span class="p">stm@subscribetome</span></pre>
     <span><i>MIT</i> · open source</span>
   </div>
 </div>
-
-<p class="honest">
-  subscribetome keeps your keys out of the conversation — not out of the universe.
-  It can't un-leak a key a command prints itself. The full, honest security model is
-  in the <a href="https://github.com/matterhornso/subscribetome#security-model">README</a>.
-</p>
 
 <footer>
   <div class="bound foot">
