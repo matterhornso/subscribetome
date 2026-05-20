@@ -3,6 +3,13 @@
 All notable changes to subscribetome. This project is pre-1.0; minor versions
 may still change behaviour. Format follows [Keep a Changelog](https://keepachangelog.com).
 
+## [0.1.9] — 2026-05-20
+
+### Added
+- **Parallel Web Systems** (parallel.ai) added to the dashboard catalog.
+  Single `api-key` field. Landing-page trust strip now reads "36 services
+  pre-configured".
+
 ## [0.1.8] — 2026-05-19
 
 ### Added
@@ -84,6 +91,7 @@ may still change behaviour. Format follows [Keep a Changelog](https://keepachang
   `PostToolUse` (flags a key leaked into output).
 - The `stm` CLI, the localhost dashboard daemon, and `.env` import.
 
+[0.1.9]: https://github.com/matterhornso/subscribetome/releases/tag/v0.1.9
 [0.1.8]: https://github.com/matterhornso/subscribetome/releases/tag/v0.1.8
 [0.1.7]: https://github.com/matterhornso/subscribetome/releases/tag/v0.1.7
 [0.1.6]: https://github.com/matterhornso/subscribetome/releases/tag/v0.1.6

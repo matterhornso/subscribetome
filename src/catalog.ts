@@ -125,6 +125,7 @@ export const CATALOG: ServiceDef[] = [
   { id: "tavily", name: "Tavily", credentials: ["api-key"] },
   { id: "firecrawl", name: "Firecrawl", credentials: ["api-key"] },
   { id: "exa", name: "Exa", credentials: ["api-key"] },
+  { id: "parallel-web-systems", name: "Parallel Web Systems", credentials: ["api-key"] },
 
   // ---- Monitoring / analytics ----
   { id: "sentry", name: "Sentry", credentials: ["dsn", "auth-token"] },
