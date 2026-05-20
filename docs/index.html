@@ -117,20 +117,24 @@
   .btn-ghost:hover { border-color:var(--acc); background:var(--acc-deep); }
   .btn.full { width:100%; }
 
-  /* hero right: screenshot + github CTA */
-  .hero-right { display:flex; flex-direction:column; gap:16px; }
-  .shot {
-    border:1px solid var(--line-2); border-radius:13px; overflow:hidden; background:var(--bg-2);
-    box-shadow:0 36px 80px -46px rgba(0,0,0,.95); display:block; text-decoration:none;
-    transition:border-color .2s var(--ease),transform .2s var(--ease);
+  /* hero right: compact instant-action dual CTA */
+  .hero-right { display:flex; flex-direction:column; gap:14px; }
+  .hcard {
+    border:1px solid var(--line-2); border-radius:13px; background:var(--bg-2);
+    padding:16px 18px; display:flex; flex-direction:column; gap:12px;
   }
-  .shot:hover { border-color:var(--line-2); transform:translateY(-2px); }
-  .shot-bar { display:flex; align-items:center; gap:6px; padding:9px 12px;
-    border-bottom:1px solid var(--line); background:var(--bg-3); }
-  .shot-bar i { width:8px; height:8px; border-radius:50%; background:var(--line-2); }
-  .shot-bar span { margin-left:7px; font-size:10.5px; color:var(--ink-faint); letter-spacing:.4px; }
-  .shot img { display:block; width:100%; }
-  .shot-cap { padding:11px 13px; font-size:11.5px; color:var(--ink-dim); border-top:1px solid var(--line); }
+  .hcard.claude {
+    border-color:rgba(61,220,151,.34);
+    background:linear-gradient(180deg,#0e1a15,var(--bg-2) 60%);
+  }
+  .hcard-tag {
+    display:inline-flex; align-items:center; gap:7px;
+    font-size:11px; letter-spacing:1.6px; text-transform:uppercase; color:var(--ink-dim);
+  }
+  .hcard-tag .d { width:6px; height:6px; border-radius:50%; background:currentColor; }
+  .hcard.claude .hcard-tag { color:var(--acc); }
+  .hcard .after { font-size:11.5px; color:var(--ink-faint); line-height:1.55; margin:0; }
+  .hcard .after b { color:var(--ink-dim); font-weight:500; }
 
   /* ===== transform diagram — full width, clear ===== */
   .flow-wrap { padding:8px 0 6px; }
@@ -353,20 +357,34 @@
       Claude Code can <b>use</b> your keys without ever <b>seeing</b> them. One vault for
       every service. Nothing to leak, nothing to rotate at 2am.
     </p>
-    <div class="hero-actions rise d4">
-      <a class="btn btn-primary" href="#start">Switch it on ↓</a>
-      <a class="btn btn-ghost" href="https://github.com/matterhornso/subscribetome">How it works ↗</a>
-    </div>
     <p class="scope rise d5"><span class="dot"></span><span><b>macOS &amp; Claude Code</b> today — Linux, Windows &amp; more coding agents coming</span></p>
   </div>
 
   <div class="hero-right rise d4">
-    <a class="shot" href="https://github.com/matterhornso/subscribetome">
-      <div class="shot-bar"><i></i><i></i><i></i><span>localhost · subscribetome dashboard</span></div>
-      <img src="screenshots/dashboard.png" alt="The subscribetome dashboard — add keys, see your inventory, track spend">
-      <div class="shot-cap">Your keys, their status, and monthly spend — on one local page.</div>
-    </a>
-    <a class="btn btn-primary full" href="https://github.com/matterhornso/subscribetome">★ Use subscribetome — open it on GitHub →</a>
+    <div class="hcard claude">
+      <span class="hcard-tag"><span class="d"></span>Paste into Claude Code</span>
+      <div class="copybox">
+        <div class="copybar">
+          <span>one line · activates STM</span>
+          <button class="copy-btn" data-copy="cmd-claude">Copy</button>
+        </div>
+<pre id="cmd-claude">Set up subscribetome for me using https://github.com/matterhornso/subscribetome</pre>
+      </div>
+      <p class="after"><b>Then:</b> restart Claude Code when it asks. STM never asks you for a key.</p>
+    </div>
+
+    <div class="hcard">
+      <span class="hcard-tag"><span class="d"></span>Or run two terminal commands</span>
+      <div class="copybox">
+        <div class="copybar">
+          <span>terminal</span>
+          <button class="copy-btn" data-copy="cmd-human">Copy</button>
+        </div>
+<pre id="cmd-human">claude plugin marketplace add <span class="p">matterhornso/subscribetome</span>
+claude plugin install <span class="p">stm@subscribetome</span></pre>
+      </div>
+      <p class="after"><b>Then:</b> restart Claude Code, run <span style="color:var(--acc)">/stm:dashboard</span>, add your keys.</p>
+    </div>
   </div>
 </div>
 
@@ -454,45 +472,8 @@
   </div>
 </div>
 
-<!-- START — dual CTA -->
-<div class="bound start" id="start">
-  <div class="start-head">
-    <h2>Two ways to <em>switch it on.</em></h2>
-    <p>Pick the one that fits. Either way it takes under a minute — and you never paste a key.</p>
-  </div>
-  <div class="cards">
-
-    <div class="card">
-      <span class="tag"><span class="d"></span>For humans</span>
-      <h3>Run two commands</h3>
-      <p class="desc">Comfortable in a terminal? Run these two lines, then restart Claude Code.</p>
-      <div class="copybox">
-        <div class="copybar">
-          <span>terminal</span>
-          <button class="copy-btn" data-copy="cmd-human">Copy</button>
-        </div>
-<pre id="cmd-human">claude plugin marketplace add <span class="p">matterhornso/subscribetome</span>
-claude plugin install <span class="p">stm@subscribetome</span></pre>
-      </div>
-      <p class="after"><b>Then:</b> restart Claude Code, run <span style="color:var(--acc)">/stm:dashboard</span>, add your keys.</p>
-    </div>
-
-    <div class="card claude">
-      <span class="tag"><span class="d"></span>For Claude Code</span>
-      <h3>Paste one line</h3>
-      <p class="desc">New to this? <b>Paste this into Claude Code.</b> It reads the repo, installs the plugin, and activates STM for you.</p>
-      <div class="copybox">
-        <div class="copybar">
-          <span>paste into claude code</span>
-          <button class="copy-btn" data-copy="cmd-claude">Copy</button>
-        </div>
-<pre id="cmd-claude">Set up subscribetome for me using https://github.com/matterhornso/subscribetome</pre>
-      </div>
-      <p class="after"><b>Then:</b> restart Claude Code when it asks. It never asks you for a key.</p>
-    </div>
-
-  </div>
-
+<!-- TRUST STRIP -->
+<div class="bound">
   <div class="strip">
     <span><i>36</i> services pre-configured</span><span class="sep">/</span>
     <span>keys never touch the chat</span><span class="sep">/</span>
