@@ -1,10 +1,10 @@
-# Twitter / X — launch thread (Matterhorn team voice)
+# Twitter / X — launch thread (Matterhorn Labs team voice)
 
 Site: https://subscribetome.pro
 GitHub: https://github.com/matterhornso/subscribetome
 Account: @matterhornso · Typefully social_set_id: 294242
 
-Tone: builder-to-builder from the Matterhorn team. No buzzwords. Each tweet
+Tone: builder-to-builder from the Matterhorn Labs team. No buzzwords. Each tweet
 self-contained enough that a screenshot of any one of them stands alone.
 
 ---
@@ -15,7 +15,7 @@ Your API keys have no business living in your chat history.
 
 But paste one into Claude Code and that's exactly where it stays — forever.
 
-We at Matterhorn built subscribetome to fix that. Open source. macOS Keychain. Claude Code plugin.
+We at Matterhorn Labs built subscribetome to fix that. Open source. macOS Keychain. Claude Code plugin.
 
 → https://subscribetome.pro
 
@@ -65,7 +65,7 @@ That's the whole onboarding.
 
 ## 6 / 7 — what's next
 
-subscribetome is the first product in a bigger Matterhorn thesis: **a security layer for AI-assisted coding**.
+subscribetome is the first product in a bigger Matterhorn Labs thesis: **a security layer for AI-assisted coding**.
 
 What's next on our roadmap:
 → Spend visibility — real usage from provider APIs
@@ -81,7 +81,7 @@ Built on Bun. Zero runtime dependencies. MIT licensed.
 
 If you try it and the install isn't dead simple, DM us. That's the bar we set ourselves.
 
-— the Matterhorn team
+— the Matterhorn Labs team
 
 ---
 
