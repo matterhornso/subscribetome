@@ -6,6 +6,7 @@
   "license": "MIT",
   "author": "Abhinav Ramesh <abhinav@matterhorn.so>",
   "repository": "https://github.com/matterhornso/subscribetome",
+  "homepage": "https://subscribetome.pro",
   "engines": {
     "bun": ">=1.0.0"
   },

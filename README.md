@@ -2,6 +2,9 @@
 
 **Use your AI API keys in [Claude Code](https://claude.com/claude-code) without the keys ever touching the chat.**
 
+🌐 **[subscribetome.pro](https://subscribetome.pro)** — the marketing site
+and the human-readable overview.
+
 You have keys for a dozen AI tools, scattered across `.env` files and provider
 dashboards. subscribetome puts them in one place and lets Claude Code *use* them
 without ever seeing them. The model only sees a placeholder like
