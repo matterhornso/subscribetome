@@ -1,0 +1,77 @@
+# subscribetome
+
+> An open-source Claude Code plugin that keeps your API keys in the macOS Keychain
+> and feeds them to commands the agent runs — so Claude Code uses your keys
+> without the conversation ever holding one.
+
+subscribetome (CLI: `stm`) is a Claude Code plugin built by Matterhorn Labs.
+It solves a specific problem in AI-assisted coding: an API key pasted into a
+chat is logged in that chat's transcript forever. Even if you redact your
+copy, you cannot un-leak it from any backup, screen-share, or shared session.
+
+The plugin keeps every key out of the conversation by design. Keys are entered
+out-of-band in a localhost dashboard, stored in the macOS Keychain, and
+referenced from chat by a placeholder like `{{stm:openai:default}}`. A Claude
+Code `PreToolUse` hook substitutes the real key into the shell command the
+instant before it runs — and never into the conversation.
+
+Three other hooks back this up:
+- `UserPromptSubmit` blocks any prompt that contains a raw key shape or any
+  managed secret matched by exact value.
+- `PostToolUse` flags command output that surfaces a managed key (e.g. a
+  command that echoed its own input) so the user can rotate.
+- `SessionStart` teaches every new Claude Code session how to use stm-managed
+  keys, with no per-project setup.
+
+The dashboard ships with 36 services pre-configured (OpenAI, Anthropic,
+Google Gemini, Groq, Mistral, OpenRouter, fal.ai, Replicate, ElevenLabs,
+Supabase, Neon, MongoDB Atlas, Upstash Redis, Firebase, Vercel, Netlify,
+Railway, Cloudflare, AWS, Clerk, Auth0, Stripe, Resend, SendGrid, Twilio,
+Slack, Telegram, Discord, Twitter/X, Tavily, Firecrawl, Exa, Parallel Web
+Systems, Sentry, PostHog, GitHub) plus custom fields for anything else.
+
+The project is MIT-licensed, built on Bun, has zero runtime dependencies, and
+runs entirely on the user's own machine. No backend. No telemetry. No
+phone-home. The dashboard is bound to `127.0.0.1` with a per-run auth token
+and a Host/Origin allowlist (DNS-rebinding defense).
+
+v1 is macOS + Claude Code. Linux, Windows, Codex, opencode, and Cursor are
+on the roadmap.
+
+## Project
+
+- [Website](https://subscribetome.pro): The landing page with the install
+  prompt and product overview.
+- [GitHub repository](https://github.com/matterhornso/subscribetome): Source
+  code, README, security model, and changelog. MIT licensed.
+- [README](https://github.com/matterhornso/subscribetome/blob/main/README.md):
+  Install instructions, command reference, security model, and limitations.
+- [Security model](https://github.com/matterhornso/subscribetome/blob/main/SECURITY.md):
+  Threat model and reporting policy.
+- [Changelog](https://github.com/matterhornso/subscribetome/blob/main/CHANGELOG.md):
+  Release history.
+
+## Install
+
+- [Claude Code marketplace install](https://github.com/matterhornso/subscribetome#or-install-it-yourself):
+  Two commands — `claude plugin marketplace add matterhornso/subscribetome`
+  then `claude plugin install stm@subscribetome`.
+- [Agent-driven install](https://github.com/matterhornso/subscribetome#set-it-up-for-me):
+  Paste a single sentence into Claude Code and the agent installs it for you.
+
+## Specs
+
+- [Cross-platform & Codex roadmap](https://github.com/matterhornso/subscribetome/blob/main/specs/cross-platform-and-codex.md):
+  How v2 expands beyond macOS and Claude Code.
+- [Spend visibility](https://github.com/matterhornso/subscribetome/blob/main/specs/spend-visibility.md):
+  The second product — real spend pulled from provider APIs, on demand.
+- [Per-project key scope](https://github.com/matterhornso/subscribetome/blob/main/specs/session-and-project-scope.md):
+  Multi-session, multi-project key scoping.
+
+## Optional
+
+- [Contributing guide](https://github.com/matterhornso/subscribetome/blob/main/CONTRIBUTING.md):
+  How to add a service to the catalog (a one-line, data-only contribution)
+  or submit a code change.
+- [TODOs / deferred scope](https://github.com/matterhornso/subscribetome/blob/main/TODOS.md):
+  v1.5+ work that's scoped but not yet built.

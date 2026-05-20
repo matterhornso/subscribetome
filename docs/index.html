@@ -4,13 +4,155 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark">
-<title>subscribetome — API keys for Claude Code, off the record</title>
-<meta name="description" content="An open-source Claude Code plugin. Keep every API key in the macOS Keychain — Claude Code uses your keys without the keys ever touching the chat.">
-<meta property="og:title" content="subscribetome — API keys for Claude Code, off the record">
-<meta property="og:description" content="Claude Code uses your API keys without ever seeing them. Two ways to switch it on — one for humans, one to paste straight into Claude Code.">
+<meta name="theme-color" content="#0a0b0d">
+
+<title>subscribetome — Secure API key manager for Claude Code (macOS, open source)</title>
+<meta name="description" content="Open-source Claude Code plugin by Matterhorn Labs. Every API key lives in the macOS Keychain; Claude Code uses your keys without the chat transcript ever holding one. 36 services pre-configured. MIT licensed.">
+<meta name="keywords" content="claude code, claude code plugin, api key manager, api key security, macos keychain, secret manager, anthropic claude, ai assisted coding, prompt injection, secret leak prevention, openai key, anthropic key, supabase, stripe, vercel">
+<meta name="author" content="Matterhorn Labs">
+<meta name="application-name" content="subscribetome">
+<meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1">
+<meta name="googlebot" content="index, follow">
+
+<link rel="canonical" href="https://subscribetome.pro/">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="alternate" type="application/rss+xml" title="subscribetome on GitHub releases" href="https://github.com/matterhornso/subscribetome/releases.atom">
+<link rel="sitemap" type="application/xml" href="/sitemap.xml">
+
+<!-- Open Graph (Facebook, LinkedIn, Slack, Discord, iMessage…) -->
+<meta property="og:site_name" content="subscribetome">
+<meta property="og:title" content="subscribetome — Secure API key manager for Claude Code">
+<meta property="og:description" content="Open-source Claude Code plugin by Matterhorn Labs. Every API key lives in the macOS Keychain; Claude Code uses your keys without the chat transcript ever holding one.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://subscribetome.pro/">
-<link rel="canonical" href="https://subscribetome.pro/">
+<meta property="og:image" content="https://subscribetome.pro/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="subscribetome — Hand Claude Code every API key it needs and never show it one.">
+<meta property="og:locale" content="en_US">
+
+<!-- Twitter / X card -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:site" content="@matterhornso">
+<meta name="twitter:creator" content="@matterhornso">
+<meta name="twitter:title" content="subscribetome — Secure API key manager for Claude Code">
+<meta name="twitter:description" content="Open-source Claude Code plugin. Every API key lives in the macOS Keychain; Claude Code uses your keys without ever seeing them. 36 services pre-configured. MIT.">
+<meta name="twitter:image" content="https://subscribetome.pro/og.png">
+<meta name="twitter:image:alt" content="subscribetome — Hand Claude Code every API key it needs and never show it one.">
+
+<!-- JSON-LD: SoftwareApplication + WebSite + Organization -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "SoftwareApplication",
+      "@id": "https://subscribetome.pro/#software",
+      "name": "subscribetome",
+      "alternateName": ["stm", "subscribetome (stm)"],
+      "applicationCategory": "DeveloperApplication",
+      "applicationSubCategory": "Secret Manager / Claude Code Plugin",
+      "operatingSystem": "macOS",
+      "url": "https://subscribetome.pro/",
+      "downloadUrl": "https://github.com/matterhornso/subscribetome",
+      "softwareVersion": "0.1.9",
+      "datePublished": "2026-05-18",
+      "dateModified": "2026-05-20",
+      "license": "https://opensource.org/licenses/MIT",
+      "description": "Open-source Claude Code plugin that keeps every API key in the macOS Keychain. The agent uses your keys without the chat transcript ever holding one. PreToolUse hook substitutes keys into commands the instant before they run. 36 services pre-configured.",
+      "image": "https://subscribetome.pro/og.png",
+      "featureList": [
+        "macOS Keychain storage for every API key",
+        "PreToolUse hook: keys substituted into commands at runtime",
+        "Pasted-secret guardrail: raw keys in chat are blocked",
+        "Leaked-key alert via PostToolUse",
+        "36 services pre-configured (OpenAI, Anthropic, Supabase, Stripe, …)",
+        "Custom fields for non-catalog credentials",
+        "Localhost-only dashboard (no backend, no telemetry)",
+        ".env import for existing keys",
+        "Open source under MIT"
+      ],
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "USD"
+      },
+      "publisher": {
+        "@id": "https://subscribetome.pro/#org"
+      },
+      "author": {
+        "@id": "https://subscribetome.pro/#org"
+      }
+    },
+    {
+      "@type": "Organization",
+      "@id": "https://subscribetome.pro/#org",
+      "name": "Matterhorn Labs",
+      "url": "https://subscribetome.pro/",
+      "sameAs": [
+        "https://github.com/matterhornso",
+        "https://twitter.com/matterhornso",
+        "https://x.com/matterhornso"
+      ],
+      "logo": "https://subscribetome.pro/favicon.svg"
+    },
+    {
+      "@type": "WebSite",
+      "@id": "https://subscribetome.pro/#website",
+      "url": "https://subscribetome.pro/",
+      "name": "subscribetome",
+      "publisher": { "@id": "https://subscribetome.pro/#org" },
+      "inLanguage": "en"
+    },
+    {
+      "@type": "FAQPage",
+      "@id": "https://subscribetome.pro/#faq",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "How does subscribetome keep API keys out of Claude Code conversations?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Keys live in the macOS Keychain. In the chat, you only ever refer to them by a placeholder like {{stm:openai:default}}. A Claude Code PreToolUse hook substitutes the real key into the shell command the instant before it runs — the model never sees the key, and the conversation transcript never holds one."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Is subscribetome free and open source?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Yes. subscribetome is MIT licensed and free. Source code, security model, and changelog are all on GitHub at github.com/matterhornso/subscribetome."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Does subscribetome have a backend or send my data anywhere?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "No. There is no backend, no cloud, no telemetry, no sign-up. The dashboard is a page your own Mac serves on 127.0.0.1, bound to loopback. Keys live only in the macOS Keychain on your machine."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "How do I install subscribetome?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Paste 'Set up subscribetome for me using https://github.com/matterhornso/subscribetome' into Claude Code and the agent installs it. Or run two commands yourself: claude plugin marketplace add matterhornso/subscribetome, then claude plugin install stm@subscribetome. Then restart Claude Code and run /stm:dashboard to add your keys."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Which platforms and AI agents does subscribetome support?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "v1 is macOS and Claude Code. Linux, Windows, and other coding agents (OpenAI Codex, opencode, Cursor) are on the roadmap."
+          }
+        }
+      ]
+    }
+  ]
+}
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
