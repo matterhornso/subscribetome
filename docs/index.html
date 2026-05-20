@@ -210,6 +210,43 @@
   }
   .roadmap-in b { color:var(--ink); font-weight:500; }
 
+  /* ===== layer (rebrand framing) ===== */
+  .layer { padding:78px 0 6px; border-top:1px solid var(--line); margin-top:32px; }
+  .layer-head { text-align:center; margin-bottom:34px; }
+  .layer-head h2 {
+    font-family:var(--serif); font-weight:400; font-size:clamp(34px,5vw,54px);
+    line-height:1.05; letter-spacing:-.3px;
+  }
+  .layer-head h2 em { font-style:italic; color:var(--acc); }
+  .layer-grid { display:grid; grid-template-columns:1fr 1fr; gap:18px; }
+  @media (max-width:760px){ .layer-grid { grid-template-columns:1fr; } }
+  .layer-col {
+    border:1px solid var(--line); border-radius:13px; background:var(--bg-2);
+    padding:24px 26px;
+  }
+  .layer-col.now { border-color:rgba(61,220,151,.32); }
+  .layer-col .lt {
+    font-size:11px; letter-spacing:1.6px; text-transform:uppercase; color:var(--ink-dim);
+  }
+  .layer-col.now .lt { color:var(--acc); }
+  .layer-col h3 {
+    font-family:var(--serif); font-size:22px; font-weight:400; margin:8px 0 12px;
+  }
+  .layer-col ul { margin:0; padding:0; }
+  .layer-col li {
+    list-style:none; padding:10px 0 10px 22px; position:relative;
+    font-size:13px; color:var(--ink-dim); line-height:1.6;
+    border-top:1px solid var(--line);
+  }
+  .layer-col li:first-of-type { border-top:0; }
+  .layer-col.now li::before {
+    content:"✓"; position:absolute; left:0; top:10px; color:var(--acc); font-size:13px;
+  }
+  .layer-col.next li::before {
+    content:"→"; position:absolute; left:0; top:10px; color:var(--ink-faint); font-size:13px;
+  }
+  .layer-col li b { color:var(--ink); font-weight:500; }
+
   /* ===== start: the dual CTA ===== */
   .start { padding:78px 0 28px; border-top:1px solid var(--line); margin-top:64px; }
   .start-head { text-align:center; margin-bottom:44px; }
@@ -308,7 +345,7 @@
 <!-- HERO -->
 <div class="bound hero">
   <div>
-    <span class="eyebrow rise d1">subscribetome · claude code plugin · macOS</span>
+    <span class="eyebrow rise d1">stm · security for AI-assisted coding · macOS</span>
     <h1 class="rise d2">Hand Claude Code every <span class="ac">API</span> key it needs — and <em>never show it one.</em></h1>
     <p class="hero-sub rise d3">
       Paste an API key into a chat and it's logged there forever. subscribetome keeps
@@ -384,6 +421,35 @@
       <span class="now">Available now</span> for <b>macOS</b> and <b>Claude Code</b>.
       Linux, Windows, and other coding agents — Codex, opencode, Cursor — are on the
       roadmap. subscribetome is open source and the core idea is portable.
+    </div>
+  </div>
+</div>
+
+<!-- LAYER (rebrand framing) -->
+<div class="bound layer">
+  <div class="layer-head">
+    <h2>More than <em>just keys.</em></h2>
+  </div>
+  <div class="layer-grid">
+    <div class="layer-col now">
+      <span class="lt">Today · ships</span>
+      <h3>Security for the keys</h3>
+      <ul>
+        <li><b>Keys out of the chat.</b> Every API key your agent uses, kept out of the transcript.</li>
+        <li><b>Pasted-secret guardrail.</b> A secret you paste in chat is blocked before the model sees it.</li>
+        <li><b>Leaked-key alert.</b> A command that echoes its own input is flagged so you can rotate.</li>
+      </ul>
+    </div>
+    <div class="layer-col next">
+      <span class="lt">Coming · on the roadmap</span>
+      <h3>Security for the rest</h3>
+      <ul>
+        <li><b>Spend visibility.</b> Real usage pulled from provider APIs, on demand.</li>
+        <li><b>Provider-side rotation.</b> <code>stm revoke</code> calls the provider, not just flags.</li>
+        <li><b>Audit log.</b> A local record of which key each command used.</li>
+        <li><b>Command policy.</b> Allow / deny rules at the PreToolUse layer.</li>
+        <li><b>Linux, Windows, and other agents</b> (Codex, opencode, Cursor).</li>
+      </ul>
     </div>
   </div>
 </div>

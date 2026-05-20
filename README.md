@@ -207,6 +207,8 @@ descriptor). Key values are in the macOS Keychain under the service name
 - [`TODOS.md`](./TODOS.md) — the deferred v1.5 scope.
 - [`specs/cross-platform-and-codex.md`](./specs/cross-platform-and-codex.md) —
   v2 plan: Linux, Windows, and OpenAI Codex support.
+- [`specs/spend-visibility.md`](./specs/spend-visibility.md) — the second
+  product: real spend pulled from provider APIs, on demand only.
 
 ## License
 
