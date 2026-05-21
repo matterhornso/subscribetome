@@ -18,7 +18,7 @@ Last updated: **2026-05-21**.
 | 02 | [`spend-visibility.md`](./spend-visibility.md) | v0.2 (post-cross-platform) | Draft | ~160 |
 | 03 | [`session-and-project-scope.md`](./session-and-project-scope.md) | v0.3 | Draft | ~230 |
 | 04 | [`command-policy.md`](./command-policy.md) | v0.4 (Phases 1–2 shipped) | **Phases 1–2 shipped** · Phases 3–4 deferred | ~230 |
-| 05 | [`audit-log.md`](./audit-log.md) | v0.3 (between command-policy P2 and P3) | Draft | ~200 |
+| 05 | [`audit-log.md`](./audit-log.md) | v0.3 | **Phase 1 shipped** · Phases 2–4 pending | ~200 |
 
 ## 2. What each spec covers (one paragraph each)
 

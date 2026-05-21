@@ -90,10 +90,25 @@ export async function preToolUse(): Promise<void> {
     let known: string[] = [];
     try {
       const s = new Store();
-      known = s.activePlaceholders();
-      s.close();
+      try {
+        known = s.activePlaceholders();
+        for (const m of near) {
+          try {
+            s.recordAudit({
+              event: "malformed",
+              command,
+              agent: "claude-code",
+              reason: m.raw,
+            });
+          } catch {
+            /* audit is best-effort */
+          }
+        }
+      } finally {
+        s.close();
+      }
     } catch {
-      /* suggestions are best-effort */
+      /* suggestions + audit are best-effort */
     }
     const lines = near.map((m) => {
       const s = suggest(m.raw, known);
@@ -127,6 +142,27 @@ export async function preToolUse(): Promise<void> {
     if (rules.length > 0) {
       const keys = [...new Set(exact.map((p) => `${p.tool}:${p.label}`))];
       const decision = evaluateAll(rules, command, "claude-code", keys);
+      // Audit every per-key policy hit so the user can see what fired even
+      // when severity collapsed the verdict to one rule. Writes happen on
+      // the un-substituted command, before any keychain read.
+      for (const pk of decision.perKey) {
+        if (pk.decision.action === "deny" || pk.decision.action === "warn") {
+          const [tool, label] = pk.key.split(":");
+          try {
+            store.recordAudit({
+              event: pk.decision.action === "deny" ? "policy.deny" : "policy.warn",
+              tool,
+              label,
+              command,
+              agent: "claude-code",
+              policyId: pk.decision.rule?.id ?? null,
+              reason: pk.decision.reason ?? null,
+            });
+          } catch {
+            /* audit is best-effort */
+          }
+        }
+      }
       if (decision.action === "deny") {
         store.close();
         const ruleTag = decision.rule ? `policy rule #${decision.rule.id}` : "policy";
@@ -157,12 +193,51 @@ export async function preToolUse(): Promise<void> {
 
   const resolved = new Map<string, string>();
   const unresolved: string[] = [];
+  // Track which (tool,label) pairs we've audited so a command that uses the
+  // same placeholder twice writes one substitute row, not two.
+  const auditedKeys = new Set<string>();
   try {
     for (const p of exact) {
       if (resolved.has(p.raw)) continue;
       const val = store.resolve(p.tool, p.label);
       if (val == null) unresolved.push(p.raw);
       else resolved.set(p.raw, val);
+    }
+    // Write audit rows BEFORE closing the store. Unresolved gets its own
+    // event class; the success path queues substitute rows here so the
+    // store is still open when we write them.
+    for (const u of [...new Set(unresolved)]) {
+      const m = u.match(/^\{\{stm:([a-z0-9-]+):([a-z0-9-]+)\}\}$/);
+      try {
+        store.recordAudit({
+          event: "unresolved",
+          tool: m?.[1] ?? null,
+          label: m?.[2] ?? null,
+          command,
+          agent: "claude-code",
+        });
+      } catch {
+        /* audit is best-effort */
+      }
+    }
+    if (unresolved.length === 0) {
+      // Success path — one substitute row per distinct (tool,label).
+      for (const p of exact) {
+        const k = `${p.tool}:${p.label}`;
+        if (auditedKeys.has(k)) continue;
+        auditedKeys.add(k);
+        try {
+          store.recordAudit({
+            event: "substitute",
+            tool: p.tool,
+            label: p.label,
+            command,
+            agent: "claude-code",
+          });
+        } catch {
+          /* audit is best-effort */
+        }
+      }
     }
   } catch {
     // Unexpected failure mid-resolution (e.g. a SQLite error). Fail safe:

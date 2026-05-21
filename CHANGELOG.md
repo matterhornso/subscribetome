@@ -3,6 +3,31 @@
 All notable changes to subscribetome. This project is pre-1.0; minor versions
 may still change behaviour. Format follows [Keep a Changelog](https://keepachangelog.com).
 
+## [0.2.2] — 2026-05-21
+
+### Added
+- **Audit log (Phase 1)** — every `PreToolUse` decision now writes a
+  forensic row to a new `audit_log` SQLite table. Five event classes:
+  `substitute`, `policy.deny`, `policy.warn`, `unresolved`, `malformed`.
+  Rolling 10,000-row cap (configurable via `STM_AUDIT_MAX`), with
+  pruning batched inside the same insert transaction.
+
+### Security
+- Load-bearing invariant enforced by construction: **the audit log
+  never contains a real key value**. Rows are written before
+  substitution is applied to the command, with placeholders intact.
+  An integration test seeds a recognizable key, exercises all five
+  event-class branches, and asserts no audit row anywhere contains
+  the seeded value. See `specs/audit-log.md` §5.
+- `audit_log.policy_id` has `ON DELETE SET NULL` so removing a rule
+  clears the linkage but preserves the historical record of when it
+  fired. Tested.
+
+### Notes
+- Phase 2 (CLI: `stm audit`), Phase 3 (dashboard "Recent decisions"
+  subview), and Phase 4 (`GET /api/audit` endpoint) are pending.
+  Phase 1 closes the back-end half of `command-policy.md` Phase 4.
+
 ## [0.2.1] — 2026-05-21
 
 ### Added
@@ -124,6 +149,7 @@ may still change behaviour. Format follows [Keep a Changelog](https://keepachang
   `PostToolUse` (flags a key leaked into output).
 - The `stm` CLI, the localhost dashboard daemon, and `.env` import.
 
+[0.2.2]: https://github.com/matterhornso/subscribetome/releases/tag/v0.2.2
 [0.2.1]: https://github.com/matterhornso/subscribetome/releases/tag/v0.2.1
 [0.2.0]: https://github.com/matterhornso/subscribetome/releases/tag/v0.2.0
 [0.1.9]: https://github.com/matterhornso/subscribetome/releases/tag/v0.1.9

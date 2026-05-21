@@ -61,7 +61,58 @@ CREATE TABLE IF NOT EXISTS policies (
   created_at    TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS policies_order_idx ON policies(ordering, id);
+CREATE TABLE IF NOT EXISTS audit_log (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  ts         TEXT    NOT NULL,
+  event      TEXT    NOT NULL CHECK(event IN (
+                       'substitute','policy.deny','policy.warn',
+                       'unresolved','malformed')),
+  tool       TEXT,
+  label      TEXT,
+  command    TEXT,
+  agent      TEXT,
+  policy_id  INTEGER REFERENCES policies(id) ON DELETE SET NULL,
+  reason     TEXT
+);
+CREATE INDEX IF NOT EXISTS audit_log_ts_idx     ON audit_log(ts DESC);
+CREATE INDEX IF NOT EXISTS audit_log_event_idx  ON audit_log(event, ts DESC);
 `;
+
+/** Default cap on the audit_log rolling buffer. Overridable via STM_AUDIT_MAX. */
+const AUDIT_DEFAULT_MAX = 10_000;
+/** When we exceed the cap, prune this many rows in one pass. */
+const AUDIT_PRUNE_BATCH = 1_000;
+
+function auditMax(): number {
+  const v = process.env.STM_AUDIT_MAX;
+  if (!v) return AUDIT_DEFAULT_MAX;
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : AUDIT_DEFAULT_MAX;
+}
+
+export type AuditEvent =
+  | "substitute"
+  | "policy.deny"
+  | "policy.warn"
+  | "unresolved"
+  | "malformed";
+
+export interface AuditRow {
+  id: number;
+  ts: string;
+  event: AuditEvent;
+  tool: string | null;
+  label: string | null;
+  /**
+   * The Bash command, with `{{stm:...}}` placeholders STILL PRESENT — never
+   * the substituted form. This is the load-bearing invariant of the audit
+   * log; see specs/audit-log.md §5.
+   */
+  command: string | null;
+  agent: string | null;
+  policy_id: number | null;
+  reason: string | null;
+}
 
 const KEY_VIEW_SELECT = `
   SELECT t.name AS tool, t.display_name AS tool_display, k.label AS label,
@@ -340,5 +391,87 @@ export class Store {
   removePolicy(id: number): boolean {
     const r = this.db.query(`DELETE FROM policies WHERE id = ?`).run(id);
     return r.changes > 0;
+  }
+
+  // ---- audit log ---------------------------------------------------------
+
+  /**
+   * Append one row to the audit log, then prune the oldest rows if the table
+   * has grown past STM_AUDIT_MAX (default 10_000).
+   *
+   * The CALLER is responsible for the load-bearing invariant: `command` must
+   * be the un-substituted form (placeholders intact). The store enforces no
+   * resolution; it just writes what it's given. See specs/audit-log.md §5.
+   */
+  recordAudit(input: {
+    event: AuditEvent;
+    tool?: string | null;
+    label?: string | null;
+    command?: string | null;
+    agent?: string | null;
+    policyId?: number | null;
+    reason?: string | null;
+  }): void {
+    this.db
+      .query(
+        `INSERT INTO audit_log (ts, event, tool, label, command, agent, policy_id, reason)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        new Date().toISOString(),
+        input.event,
+        input.tool ?? null,
+        input.label ?? null,
+        input.command ?? null,
+        input.agent ?? null,
+        input.policyId ?? null,
+        input.reason ?? null,
+      );
+
+    const max = auditMax();
+    const count = (this.db
+      .query(`SELECT COUNT(*) AS c FROM audit_log`)
+      .get() as { c: number }).c;
+    if (count > max) {
+      // Prune in one DELETE so the operation stays atomic vis-à-vis the
+      // INSERT above (both inside the implicit SQLite transaction).
+      this.db
+        .query(
+          `DELETE FROM audit_log
+            WHERE id IN (SELECT id FROM audit_log ORDER BY id ASC LIMIT ?)`,
+        )
+        .run(Math.max(AUDIT_PRUNE_BATCH, count - max));
+    }
+  }
+
+  /** Most-recent-first. Defaults to 100 rows. */
+  listAudit(opts?: { limit?: number; event?: AuditEvent; tool?: string }): AuditRow[] {
+    const limit = Math.max(1, Math.min(opts?.limit ?? 100, 10_000));
+    const clauses: string[] = [];
+    const params: unknown[] = [];
+    if (opts?.event) {
+      clauses.push("event = ?");
+      params.push(opts.event);
+    }
+    if (opts?.tool) {
+      clauses.push("tool = ?");
+      params.push(opts.tool);
+    }
+    const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+    params.push(limit);
+    return this.db
+      .query(`SELECT * FROM audit_log ${where} ORDER BY id DESC LIMIT ?`)
+      .all(...(params as any[])) as AuditRow[];
+  }
+
+  auditCount(): number {
+    return (this.db.query(`SELECT COUNT(*) AS c FROM audit_log`).get() as { c: number }).c;
+  }
+
+  /** Delete the entire audit log. Returns the number of rows removed. */
+  clearAudit(): number {
+    const c = this.auditCount();
+    this.db.exec(`DELETE FROM audit_log`);
+    return c;
   }
 }

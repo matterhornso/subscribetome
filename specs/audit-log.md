@@ -1,6 +1,6 @@
 # Spec — Audit log
 
-**Status:** Draft · **Target:** v0.3 (between command-policy Phase 2 and Phase 3) · **Last updated:** 2026-05-21
+**Status:** Phase 1 shipped · Phases 2–4 pending · **Target:** v0.3 · **Last updated:** 2026-05-21
 
 > "A local record of which key each command used."
 > Originally on the landing page roadmap; moved off the public card so
@@ -203,12 +203,12 @@ surface; it must never alter the hook's decision or its fail-safe path.
 
 ## 8. Phasing
 
-| Phase | What lands | Why |
+| Phase | What lands | Status |
 |---|---|---|
-| **1.** Schema + Store method + PreToolUse integration + `STM_AUDIT_MAX`. | Foundation; closes Phase 4 of Command policy on the back end. |
-| **2.** CLI: `stm audit`, `stm audit prune`, `stm audit clear`. | Power-user surface; first thing a developer will use to debug. |
-| **3.** Dashboard "Recent decisions" subview + refresh + export + clear. | Visual surface; closes the Command policy card. |
-| **4.** Daemon endpoint behind the existing token: `GET /api/audit` with cursor pagination. | Powers the dashboard subview. |
+| **1.** Schema + Store method + PreToolUse integration + `STM_AUDIT_MAX`. Closes Phase 4 of Command policy on the back end. | v0.2.2 (2026-05-21) | **shipped** |
+| **2.** CLI: `stm audit`, `stm audit prune`, `stm audit clear`. | After Phase 1 | pending |
+| **3.** Dashboard "Recent decisions" subview + refresh + export + clear. | After Phase 2 | pending |
+| **4.** Daemon endpoint behind the existing token: `GET /api/audit` with cursor pagination. | After Phase 3 | pending |
 
 ## 9. Open questions
 
