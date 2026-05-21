@@ -3,6 +3,25 @@
 All notable changes to subscribetome. This project is pre-1.0; minor versions
 may still change behaviour. Format follows [Keep a Changelog](https://keepachangelog.com).
 
+## [0.2.1] — 2026-05-21
+
+### Added
+- **Command policy in the dashboard (Phase 2)** — a new "Command policy"
+  card in `/stm:dashboard` for managing rules visually:
+  - A table of every rule (ordered ASC, with a Remove button per row).
+  - An "Add rule" inline form: three glob inputs (key / command / agent),
+    action select, order, reason, Add button.
+  - A "Test a command" widget — paste a Bash command with `{{stm:…}}`
+    placeholders, get back a coloured verdict card (deny / warn / allow),
+    the matching rule id, the reason, and per-substitution detail.
+- 4 new daemon endpoints behind the localhost-only auth token: `GET
+  /api/policies`, `POST /api/policies`, `DELETE /api/policies/:id`, and
+  `POST /api/policies/test`.
+
+### Changed
+- Dashboard token palette gains explicit `deny` / `warn` / `allow` badge
+  variants; verdict card borders tint by severity.
+
 ## [0.2.0] — 2026-05-21
 
 ### Added
@@ -105,6 +124,7 @@ may still change behaviour. Format follows [Keep a Changelog](https://keepachang
   `PostToolUse` (flags a key leaked into output).
 - The `stm` CLI, the localhost dashboard daemon, and `.env` import.
 
+[0.2.1]: https://github.com/matterhornso/subscribetome/releases/tag/v0.2.1
 [0.2.0]: https://github.com/matterhornso/subscribetome/releases/tag/v0.2.0
 [0.1.9]: https://github.com/matterhornso/subscribetome/releases/tag/v0.1.9
 [0.1.8]: https://github.com/matterhornso/subscribetome/releases/tag/v0.1.8

@@ -15,6 +15,8 @@ import { Store } from "./store.ts";
 import { DAEMON_FILE, ensureDataDir } from "./paths.ts";
 import { dashboardHTML } from "./dashboard.ts";
 import { importSelected, scanEnv } from "./import.ts";
+import { evaluateAll, type PolicyAction } from "./policy.ts";
+import { findExact } from "./grammar.ts";
 
 interface DaemonInfo {
   port: number;
@@ -176,6 +178,64 @@ async function apiRoute(path: string, req: Request, store: Store): Promise<Respo
     const b: any = await req.json().catch(() => ({}));
     return json(importSelected(Array.isArray(b.selections) ? b.selections : []));
   }
+
+  // ---- command policy (spec: specs/command-policy.md, Phase 2) -----------
+
+  if (path === "/api/policies" && req.method === "GET") {
+    return json({ policies: store.listPolicies() });
+  }
+  if (path === "/api/policies" && req.method === "POST") {
+    const b: any = await req.json().catch(() => ({}));
+    const action = b.action;
+    if (action !== "allow" && action !== "deny" && action !== "warn") {
+      return json({ error: "action must be allow, deny, or warn" }, 400);
+    }
+    const order = b.ordering != null && b.ordering !== "" ? Number(b.ordering) : undefined;
+    if (order !== undefined && !Number.isFinite(order)) {
+      return json({ error: "ordering must be a number" }, 400);
+    }
+    try {
+      const rule = store.addPolicy({
+        ordering: order,
+        whenKey: b.whenKey ?? null,
+        whenCommand: b.whenCommand ?? null,
+        whenAgent: b.whenAgent ?? null,
+        action: action as PolicyAction,
+        reason: b.reason ?? null,
+      });
+      return json({ policy: rule });
+    } catch (e: any) {
+      return json({ error: e?.message ?? String(e) }, 400);
+    }
+  }
+  {
+    const m = path.match(/^\/api\/policies\/(\d+)$/);
+    if (m && req.method === "DELETE") {
+      const id = Number(m[1]);
+      return store.removePolicy(id)
+        ? json({ ok: true })
+        : json({ error: "no such policy" }, 404);
+    }
+  }
+  if (path === "/api/policies/test" && req.method === "POST") {
+    const b: any = await req.json().catch(() => ({}));
+    const command: string = typeof b.command === "string" ? b.command : "";
+    if (!command) return json({ error: "command is required" }, 400);
+    const exact = findExact(command);
+    if (exact.length === 0) {
+      return json({
+        action: "allow",
+        rule: null,
+        reason: null,
+        perKey: [],
+        note: "No stm placeholders in this command — policy not consulted.",
+      });
+    }
+    const keys = [...new Set(exact.map((p) => `${p.tool}:${p.label}`))];
+    const decision = evaluateAll(store.listPolicies(), command, "claude-code", keys);
+    return json(decision);
+  }
+
   return json({ error: "not found" }, 404);
 }
 

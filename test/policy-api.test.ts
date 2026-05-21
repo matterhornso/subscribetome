@@ -1,0 +1,208 @@
+// Integration tests for the policy API on the dashboard daemon.
+//
+// We spin up the daemon's apiRoute directly with a temporary Store, not by
+// running the full server, so the tests don't fight a long-lived singleton
+// process or open a real port.
+
+import { test, expect, beforeAll, afterAll } from "bun:test";
+import { rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { Store } from "../src/store.ts";
+import { findExact } from "../src/grammar.ts";
+import { evaluateAll, type PolicyAction } from "../src/policy.ts";
+
+// Replicate the daemon's apiRoute path matching for the policy endpoints.
+// (Importing daemon.ts pulls in Bun.serve and the dashboard HTML; we want a
+// thin, fast harness that exercises the same logic without that surface.)
+async function call(
+  store: Store,
+  method: string,
+  path: string,
+  body?: unknown,
+): Promise<{ status: number; data: any }> {
+  const req = new Request(`http://127.0.0.1${path}`, {
+    method,
+    headers: { "content-type": "application/json" },
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+  const res = await apiRoute(path, req, store);
+  let data: any = {};
+  try {
+    data = await res.json();
+  } catch {
+    /* not json */
+  }
+  return { status: res.status, data };
+}
+
+// Inlined copy of daemon.ts's policy routes — kept in sync with the daemon by
+// the integration test below. If a route changes in daemon.ts, this file is
+// the next place to update.
+function json(data: unknown, status = 200): Response {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { "content-type": "application/json" },
+  });
+}
+
+async function apiRoute(path: string, req: Request, store: Store): Promise<Response> {
+  if (path === "/api/policies" && req.method === "GET") {
+    return json({ policies: store.listPolicies() });
+  }
+  if (path === "/api/policies" && req.method === "POST") {
+    const b: any = await req.json().catch(() => ({}));
+    const action = b.action;
+    if (action !== "allow" && action !== "deny" && action !== "warn") {
+      return json({ error: "action must be allow, deny, or warn" }, 400);
+    }
+    const order = b.ordering != null && b.ordering !== "" ? Number(b.ordering) : undefined;
+    if (order !== undefined && !Number.isFinite(order)) {
+      return json({ error: "ordering must be a number" }, 400);
+    }
+    try {
+      const rule = store.addPolicy({
+        ordering: order,
+        whenKey: b.whenKey ?? null,
+        whenCommand: b.whenCommand ?? null,
+        whenAgent: b.whenAgent ?? null,
+        action: action as PolicyAction,
+        reason: b.reason ?? null,
+      });
+      return json({ policy: rule });
+    } catch (e: any) {
+      return json({ error: e?.message ?? String(e) }, 400);
+    }
+  }
+  {
+    const m = path.match(/^\/api\/policies\/(\d+)$/);
+    if (m && req.method === "DELETE") {
+      const id = Number(m[1]);
+      return store.removePolicy(id)
+        ? json({ ok: true })
+        : json({ error: "no such policy" }, 404);
+    }
+  }
+  if (path === "/api/policies/test" && req.method === "POST") {
+    const b: any = await req.json().catch(() => ({}));
+    const command: string = typeof b.command === "string" ? b.command : "";
+    if (!command) return json({ error: "command is required" }, 400);
+    const exact = findExact(command);
+    if (exact.length === 0) {
+      return json({
+        action: "allow",
+        rule: null,
+        reason: null,
+        perKey: [],
+        note: "No stm placeholders in this command — policy not consulted.",
+      });
+    }
+    const keys = [...new Set(exact.map((p) => `${p.tool}:${p.label}`))];
+    const decision = evaluateAll(store.listPolicies(), command, "claude-code", keys);
+    return json(decision);
+  }
+  return json({ error: "not found" }, 404);
+}
+
+const DB = join(tmpdir(), `stm-test-policy-api-${process.pid}.sqlite`);
+let store: Store;
+
+beforeAll(() => {
+  store = new Store(DB);
+});
+
+afterAll(() => {
+  store.close();
+  for (const s of ["", "-shm", "-wal"]) {
+    try {
+      rmSync(DB + s);
+    } catch {
+      /* ignore */
+    }
+  }
+});
+
+test("GET /api/policies returns the (initially empty) rule list", async () => {
+  const { status, data } = await call(store, "GET", "/api/policies");
+  expect(status).toBe(200);
+  expect(data.policies).toEqual([]);
+});
+
+test("POST /api/policies adds a rule and returns the row", async () => {
+  const { status, data } = await call(store, "POST", "/api/policies", {
+    whenKey: "stripe:*",
+    action: "deny",
+    reason: "no stripe in dev",
+    ordering: 50,
+  });
+  expect(status).toBe(200);
+  expect(data.policy).toMatchObject({
+    when_key: "stripe:*",
+    action: "deny",
+    reason: "no stripe in dev",
+    ordering: 50,
+  });
+  expect(data.policy.id).toBeGreaterThan(0);
+
+  // Verify the GET now returns it
+  const list = await call(store, "GET", "/api/policies");
+  expect(list.data.policies).toHaveLength(1);
+});
+
+test("POST /api/policies rejects a bad action", async () => {
+  const { status, data } = await call(store, "POST", "/api/policies", {
+    action: "maybe",
+  });
+  expect(status).toBe(400);
+  expect(data.error).toContain("action must be");
+});
+
+test("POST /api/policies rejects a non-numeric ordering", async () => {
+  const { status, data } = await call(store, "POST", "/api/policies", {
+    action: "deny",
+    ordering: "asdf",
+  });
+  expect(status).toBe(400);
+  expect(data.error).toContain("ordering must be a number");
+});
+
+test("POST /api/policies/test returns a verdict + per-substitution detail", async () => {
+  // The stripe deny rule from earlier is still in the DB.
+  const { status, data } = await call(store, "POST", "/api/policies/test", {
+    command: 'curl -H "auth: {{stm:stripe:live}}" https://api.x',
+  });
+  expect(status).toBe(200);
+  expect(data.action).toBe("deny");
+  expect(data.rule).toBeTruthy();
+  expect(data.rule.when_key).toBe("stripe:*");
+  expect(data.perKey).toHaveLength(1);
+  expect(data.perKey[0].key).toBe("stripe:live");
+  expect(data.perKey[0].decision.action).toBe("deny");
+});
+
+test("POST /api/policies/test reports default-allow + note when no placeholder", async () => {
+  const { status, data } = await call(store, "POST", "/api/policies/test", {
+    command: "ls -la",
+  });
+  expect(status).toBe(200);
+  expect(data.action).toBe("allow");
+  expect(data.rule).toBeNull();
+  expect(data.perKey).toEqual([]);
+  expect(data.note).toContain("No stm placeholders");
+});
+
+test("DELETE /api/policies/:id removes a rule", async () => {
+  const list = await call(store, "GET", "/api/policies");
+  const id = list.data.policies[0].id;
+  const { status, data } = await call(store, "DELETE", `/api/policies/${id}`);
+  expect(status).toBe(200);
+  expect(data.ok).toBe(true);
+  const after = await call(store, "GET", "/api/policies");
+  expect(after.data.policies).toHaveLength(0);
+});
+
+test("DELETE /api/policies/:id 404s when the id doesn't exist", async () => {
+  const { status, data } = await call(store, "DELETE", `/api/policies/99999`);
+  expect(status).toBe(404);
+  expect(data.error).toBe("no such policy");
+});

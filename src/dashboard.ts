@@ -190,6 +190,43 @@ export function dashboardHTML(): string {
   .badge.active::before { background:var(--emerald-400); }
   .badge.revoked { background:rgba(139,148,164,.12); color:var(--text-muted); }
   .badge.revoked::before { background:var(--text-dim); }
+  .badge.allow { background:rgba(52,211,154,.13); color:var(--emerald-300); }
+  .badge.allow::before { background:var(--emerald-400); }
+  .badge.warn { background:rgba(245,185,66,.13); color:var(--amber-400); }
+  .badge.warn::before { background:var(--amber-400); }
+  .badge.deny { background:rgba(240,109,109,.13); color:var(--red-400); }
+  .badge.deny::before { background:var(--red-400); }
+
+  /* ---- policy ---- */
+  .policy-grid {
+    display:grid; grid-template-columns:1fr 1fr 1fr; gap:calc(var(--space)*4);
+  }
+  .policy-row2 {
+    display:grid; grid-template-columns:140px 100px 1fr auto;
+    gap:calc(var(--space)*4); align-items:end; margin-top:calc(var(--space)*4);
+  }
+  .verdict-card {
+    margin-top:calc(var(--space)*4); padding:calc(var(--space)*4);
+    background:var(--surface-2); border:1px solid var(--border);
+    border-radius:var(--r-md); font-size:13px;
+  }
+  .verdict-card.deny { border-color:rgba(240,109,109,.45); }
+  .verdict-card.warn { border-color:rgba(245,185,66,.45); }
+  .verdict-card.allow { border-color:rgba(52,211,154,.35); }
+  .verdict-card .v-head {
+    display:flex; align-items:center; gap:10px; margin-bottom:8px;
+    font-weight:600;
+  }
+  .verdict-card .v-key {
+    display:flex; gap:10px; align-items:center;
+    padding:4px 0; font-family:var(--font-mono); font-size:12.5px;
+    color:var(--text-muted);
+  }
+  .verdict-card .v-key code { color:var(--primary-bright); }
+  .pred-any { color:var(--text-dim); }
+  @media (max-width:640px) {
+    .policy-grid,.policy-row2 { grid-template-columns:1fr; }
+  }
 
   /* ---- misc ---- */
   .note {
@@ -280,6 +317,60 @@ export function dashboardHTML(): string {
   </section>
 
   <section class="card">
+    <div class="card-head">
+      <h2>Command policy</h2>
+      <span class="meta">Allow / deny / warn rules at PreToolUse</span>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr>
+          <th>Order</th><th>Key</th><th>Command</th><th>Agent</th>
+          <th>Action</th><th>Reason</th><th></th>
+        </tr></thead>
+        <tbody id="policies"></tbody>
+      </table>
+    </div>
+
+    <div class="sub-head">Add rule</div>
+    <div class="policy-grid">
+      <div class="field"><label for="p-key">Key glob</label>
+        <input id="p-key" placeholder="* (any) — e.g. stripe:*" autocomplete="off" spellcheck="false"></div>
+      <div class="field"><label for="p-cmd">Command glob</label>
+        <input id="p-cmd" placeholder="* (any) — e.g. *rm -rf*" autocomplete="off" spellcheck="false"></div>
+      <div class="field"><label for="p-agent">Agent glob</label>
+        <input id="p-agent" placeholder="* (any) — e.g. claude-code" autocomplete="off" spellcheck="false"></div>
+    </div>
+    <div class="policy-row2">
+      <div class="field"><label for="p-action">Action</label>
+        <select id="p-action">
+          <option value="deny">Deny</option>
+          <option value="warn">Warn</option>
+          <option value="allow">Allow</option>
+        </select>
+      </div>
+      <div class="field"><label for="p-order">Order</label>
+        <input id="p-order" type="number" value="100"></div>
+      <div class="field"><label for="p-reason">Reason</label>
+        <input id="p-reason" placeholder="surfaced to the agent on deny" autocomplete="off"></div>
+      <button class="btn-primary" id="add-policy-btn">Add</button>
+    </div>
+    <div id="policy-msg" class="msg"></div>
+
+    <div class="sub-head">Test a command</div>
+    <div class="grid" style="grid-template-columns:1fr auto;align-items:end">
+      <div class="field"><label for="p-test-cmd">Command (use stm placeholders)</label>
+        <input id="p-test-cmd" class="mono" placeholder='echo {{stm:openai:default}}' autocomplete="off" spellcheck="false"></div>
+      <button class="btn-ghost" id="test-policy-btn">Test</button>
+    </div>
+    <div id="policy-test" class="verdict-card" style="display:none"></div>
+
+    <p class="note">Rules evaluate at <code>PreToolUse</code>, before the keychain is read.
+      Strictest verdict wins per command (<code>deny &gt; warn &gt; allow</code>).
+      No matching rule means allow — add a final catch-all to flip to default-deny.
+      A predicate left blank matches anything.</p>
+  </section>
+
+  <section class="card">
     <div class="card-head"><h2>Import from .env files</h2></div>
     <div class="grid" style="grid-template-columns:1fr auto;align-items:end">
       <div class="field"><label for="imp-dir">Directory to scan</label>
@@ -351,6 +442,116 @@ async function refresh(){
   var inv=await api("/api/inventory");
   lastInv=inv;
   render(inv);
+  refreshPolicies().catch(function(e){
+    setMsg("policy-msg","Failed to load policies: "+e.message,"err");
+  });
+}
+
+async function refreshPolicies(){
+  var r=await api("/api/policies");
+  renderPolicies(r.policies||[]);
+}
+
+function predCell(v){
+  return v==null||v===""
+    ? '<span class="pred-any">*</span>'
+    : '<code style="font-size:12px">'+esc(v)+'</code>';
+}
+
+function renderPolicies(rules){
+  var tb=el("policies");
+  if(!rules.length){
+    tb.innerHTML='<tr><td colspan="7" class="empty">No policy rules. Default action when no rule matches is allow.</td></tr>';
+    return;
+  }
+  tb.innerHTML=rules.map(function(r){
+    return '<tr>'
+      +'<td class="num" style="color:var(--text-muted);width:60px">'+r.ordering+'</td>'
+      +'<td>'+predCell(r.when_key)+'</td>'
+      +'<td>'+predCell(r.when_command)+'</td>'
+      +'<td>'+predCell(r.when_agent)+'</td>'
+      +'<td><span class="badge '+esc(r.action)+'">'+esc(r.action)+'</span></td>'
+      +'<td style="color:var(--text-muted);font-size:13px">'+esc(r.reason||"")+'</td>'
+      +'<td style="text-align:right"><button class="btn-ghost pol-del" '
+      +'style="height:28px;padding:0 12px" data-id="'+r.id+'">Remove</button></td>'
+      +'</tr>';
+  }).join("");
+}
+
+async function addPolicy(){
+  var btn=el("add-policy-btn"); btn.disabled=true;
+  try{
+    var body={
+      whenKey:val("p-key")||null,
+      whenCommand:val("p-cmd")||null,
+      whenAgent:val("p-agent")||null,
+      action:el("p-action").value,
+      reason:val("p-reason")||null,
+      ordering:val("p-order")?Number(val("p-order")):100
+    };
+    var r=await api("/api/policies",{method:"POST",body:JSON.stringify(body)});
+    setMsg("policy-msg","Added rule #"+r.policy.id+" (order "+r.policy.ordering+")","ok");
+    ["p-key","p-cmd","p-agent","p-reason"].forEach(function(i){el(i).value="";});
+    el("p-order").value="100";
+    el("p-action").value="deny";
+    refreshPolicies();
+  }catch(e){setMsg("policy-msg",e.message,"err");}
+  finally{btn.disabled=false;}
+}
+
+async function removePolicy(id){
+  try{
+    await api("/api/policies/"+encodeURIComponent(id),{method:"DELETE"});
+    toast("Rule #"+id+" removed");
+    refreshPolicies();
+  }catch(e){setMsg("policy-msg",e.message,"err");}
+}
+
+async function testPolicy(){
+  var btn=el("test-policy-btn"); btn.disabled=true;
+  try{
+    var cmd=val("p-test-cmd");
+    if(!cmd)throw new Error("Enter a command to test.");
+    var r=await api("/api/policies/test",{method:"POST",body:JSON.stringify({command:cmd})});
+    renderVerdict(r);
+  }catch(e){
+    var box=el("policy-test");
+    box.className="verdict-card";
+    box.style.display="";
+    box.innerHTML='<div class="v-head" style="color:var(--danger)">Error</div>'
+      +'<div style="color:var(--text-muted)">'+esc(e.message)+'</div>';
+  }
+  finally{btn.disabled=false;}
+}
+
+function renderVerdict(r){
+  var box=el("policy-test");
+  box.style.display="";
+  box.className="verdict-card "+esc(r.action);
+  var parts='<div class="v-head">'
+    +'<span class="badge '+esc(r.action)+'">'+esc(r.action)+'</span>'
+    +(r.rule?'<span style="color:var(--text-muted);font-weight:500">rule #'+r.rule.id+'</span>'
+            :'<span style="color:var(--text-muted);font-weight:500">no rule matched — default allow</span>')
+    +'</div>';
+  if(r.reason){
+    parts+='<div style="color:var(--text);margin-bottom:8px">'+esc(r.reason)+'</div>';
+  }
+  if(r.note){
+    parts+='<div style="color:var(--text-dim);font-size:12.5px">'+esc(r.note)+'</div>';
+  }
+  if(r.perKey&&r.perKey.length){
+    parts+='<div style="margin-top:8px;color:var(--text-dim);font-size:11.5px;letter-spacing:.6px;text-transform:uppercase">Per substitution</div>';
+    parts+=r.perKey.map(function(p){
+      var act=p.decision.action;
+      return '<div class="v-key">'
+        +'<code>{{stm:'+esc(p.key)+'}}</code>'
+        +'<span style="color:var(--text-dim)">\\u2192</span>'
+        +'<span class="badge '+esc(act)+'">'+esc(act)+'</span>'
+        +(p.decision.rule?'<span style="color:var(--text-dim);font-size:11.5px">rule #'+p.decision.rule.id+'</span>':'')
+        +'</div>';
+    }).join("");
+  }
+  box.innerHTML=parts;
 }
 
 function render(inv){
@@ -564,6 +765,16 @@ async function confirmImport(){
 }
 
 el("add-btn").addEventListener("click",addKeys);
+el("add-policy-btn").addEventListener("click",addPolicy);
+el("test-policy-btn").addEventListener("click",testPolicy);
+el("policies").addEventListener("click",function(e){
+  var b=e.target.closest(".pol-del"); if(!b)return;
+  if(confirm("Remove rule #"+b.dataset.id+"?")) removePolicy(b.dataset.id);
+});
+// Enter key in the test box runs the test
+el("p-test-cmd").addEventListener("keydown",function(e){
+  if(e.key==="Enter"){ e.preventDefault(); testPolicy(); }
+});
 el("svc").addEventListener("change",renderSvcFields);
 el("svc-fields").addEventListener("click",function(e){
   if(e.target.id==="add-field-btn"){ addCustomField(); return; }

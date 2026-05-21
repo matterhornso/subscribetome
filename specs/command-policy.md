@@ -1,6 +1,6 @@
 # Spec — Command policy
 
-**Status:** Draft → Phase 1 in-flight · **Target:** v0.4 · **Last updated:** 2026-05-21
+**Status:** Phases 1–2 shipped · Phases 3–4 deferred · **Target:** v0.4 · **Last updated:** 2026-05-21
 
 > "Allow / deny rules at the PreToolUse layer."
 > Public roadmap card on subscribetome.pro
@@ -193,8 +193,8 @@ stm policy add --order 99 --when-key 'aws:*'           --then deny \
 
 | Phase | What lands | Status |
 |---|---|---|
-| **1.** Engine + schema + CLI + hook integration. `deny`/`warn`/`allow`. Test suite. | This commit | **in flight** |
-| **2.** Dashboard tab for editing rules. | After Phase 1 | pending |
+| **1.** Engine + schema + CLI + hook integration. `deny`/`warn`/`allow`. Test suite. | v0.2.0 (2026-05-21) | **shipped** |
+| **2.** Dashboard editor: list, add, remove, dry-run test, all backed by `/api/policies*`. | v0.2.1 (2026-05-21) | **shipped** |
 | **3.** Project predicate (`when.project`) — depends on session-scope spec. | After session-scope ships | pending |
 | **4.** Audit log integration — depends on audit-log spec. | After audit-log spec | pending |
 
