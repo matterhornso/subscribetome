@@ -14,6 +14,8 @@
 //   stm hook <pretooluse|posttooluse|userpromptsubmit|sessionstart>  (called by hooks)
 import { Store } from "./store.ts";
 import { preToolUse, postToolUse, userPromptSubmit, sessionStart } from "./hooks.ts";
+import { evaluateAll, type PolicyAction } from "./policy.ts";
+import { findExact } from "./grammar.ts";
 
 function parseFlags(args: string[]): {
   flags: Record<string, string>;
@@ -191,6 +193,174 @@ function resolveCmd(args: string[]): void {
   }
 }
 
+// ---- policy ---------------------------------------------------------------
+
+function policyHelp(): void {
+  process.stdout.write(
+    `subscribetome — command policy\n\n` +
+      `  stm policy list                            list every rule (in order)\n` +
+      `  stm policy add --then <allow|deny|warn>\n` +
+      `       [--when-key <glob>] [--when-command <glob>] [--when-agent <glob>]\n` +
+      `       [--reason "..."] [--order <n>]        add a rule\n` +
+      `  stm policy remove <id>                     delete one rule by id\n` +
+      `  stm policy test "<bash command>"           dry-run: which rule fires?\n` +
+      `\nGlob: \`*\` matches any run of characters. An omitted predicate matches anything.\n` +
+      `Default action when no rule matches: allow. To get default-deny, add a final\n` +
+      `catch-all rule with high order, e.g.:\n` +
+      `  stm policy add --then deny --order 999 --reason "default deny"\n`,
+  );
+}
+
+function policyListCmd(): void {
+  const store = new Store();
+  try {
+    const rules = store.listPolicies();
+    if (rules.length === 0) {
+      process.stdout.write(
+        "No policy rules.\n  Add one: stm policy add --then deny --when-key 'stripe:*'\n",
+      );
+      return;
+    }
+    printTable(
+      ["ID", "ORDER", "KEY", "COMMAND", "AGENT", "ACTION", "REASON"],
+      rules.map((r) => [
+        String(r.id),
+        String(r.ordering),
+        r.when_key ?? "*",
+        r.when_command ?? "*",
+        r.when_agent ?? "*",
+        r.action,
+        r.reason ?? "",
+      ]),
+    );
+  } finally {
+    store.close();
+  }
+}
+
+function policyAddCmd(args: string[]): void {
+  const { flags } = parseFlags(args);
+  const then = flags.then;
+  if (then !== "allow" && then !== "deny" && then !== "warn") {
+    process.stderr.write(
+      "usage: stm policy add --then <allow|deny|warn> [--when-key g] " +
+        "[--when-command g] [--when-agent g] [--reason \"...\"] [--order n]\n",
+    );
+    process.exit(1);
+  }
+  const order = flags.order ? Number(flags.order) : undefined;
+  if (order !== undefined && !Number.isFinite(order)) {
+    process.stderr.write(`error: --order must be a number\n`);
+    process.exit(1);
+  }
+  const store = new Store();
+  try {
+    const rule = store.addPolicy({
+      ordering: order,
+      whenKey: flags["when-key"] ?? null,
+      whenCommand: flags["when-command"] ?? null,
+      whenAgent: flags["when-agent"] ?? null,
+      action: then as PolicyAction,
+      reason: flags.reason ?? null,
+    });
+    process.stdout.write(
+      `added policy #${rule.id} (order ${rule.ordering}): ` +
+        `key=${rule.when_key ?? "*"} command=${rule.when_command ?? "*"} ` +
+        `agent=${rule.when_agent ?? "*"} → ${rule.action}` +
+        (rule.reason ? ` (${rule.reason})` : "") +
+        `\n`,
+    );
+  } finally {
+    store.close();
+  }
+}
+
+function policyRemoveCmd(args: string[]): void {
+  const id = Number(args[0]);
+  if (!Number.isFinite(id) || id <= 0) {
+    process.stderr.write("usage: stm policy remove <id>\n");
+    process.exit(1);
+  }
+  const store = new Store();
+  try {
+    const ok = store.removePolicy(id);
+    if (!ok) {
+      process.stderr.write(`no such policy: #${id}\n`);
+      process.exit(1);
+    }
+    process.stdout.write(`removed policy #${id}\n`);
+  } finally {
+    store.close();
+  }
+}
+
+function policyTestCmd(args: string[]): void {
+  const command = args.join(" ").trim();
+  if (!command) {
+    process.stderr.write('usage: stm policy test "<bash command with {{stm:..}} placeholder(s)>"\n');
+    process.exit(1);
+  }
+  const exact = findExact(command);
+  if (exact.length === 0) {
+    process.stdout.write(
+      `No stm placeholders in this command — policy not consulted. Verdict: allow.\n`,
+    );
+    return;
+  }
+  const keys = [...new Set(exact.map((p) => `${p.tool}:${p.label}`))];
+  const store = new Store();
+  try {
+    const rules = store.listPolicies();
+    const decision = evaluateAll(rules, command, "claude-code", keys);
+    process.stdout.write(`Verdict: ${decision.action.toUpperCase()}`);
+    if (decision.rule) {
+      process.stdout.write(` (rule #${decision.rule.id})`);
+    } else {
+      process.stdout.write(` (no rule matched — default allow)`);
+    }
+    process.stdout.write("\n");
+    if (decision.reason) process.stdout.write(`Reason: ${decision.reason}\n`);
+    process.stdout.write(`\nPer-substitution:\n`);
+    for (const p of decision.perKey) {
+      const r = p.decision.rule;
+      process.stdout.write(
+        `  ${p.key.padEnd(28)} → ${p.decision.action}` +
+          (r ? ` (rule #${r.id})` : ` (no match)`) +
+          `\n`,
+      );
+    }
+  } finally {
+    store.close();
+  }
+}
+
+async function policyCmd(args: string[]): Promise<void> {
+  const [sub, ...rest] = args;
+  switch (sub) {
+    case "list":
+    case "ls":
+      return policyListCmd();
+    case "add":
+      return policyAddCmd(rest);
+    case "remove":
+    case "rm":
+    case "delete":
+      return policyRemoveCmd(rest);
+    case "test":
+    case "check":
+      return policyTestCmd(rest);
+    case undefined:
+    case "help":
+    case "--help":
+    case "-h":
+      return policyHelp();
+    default:
+      process.stderr.write(`stm policy: unknown subcommand "${sub}"\n\n`);
+      policyHelp();
+      process.exit(1);
+  }
+}
+
 function revokeCmd(args: string[]): void {
   if (args.length < 2) {
     process.stderr.write("usage: stm revoke <tool> <label>\n");
@@ -218,6 +388,7 @@ function helpCmd(): void {
       `  stm list                        show keys, subscriptions, monthly spend\n` +
       `  stm resolve {{stm:t:l}}          print a key value (local use only)\n` +
       `  stm revoke <tool> <label>       mark a key revoked\n` +
+      `  stm policy <list|add|remove|test>  allow/deny rules at PreToolUse\n` +
       `  stm import [dir...]             scan .env files for importable keys\n` +
       `  stm dashboard                   open the localhost web dashboard\n` +
       `  stm stop                        stop the dashboard daemon\n` +
@@ -251,6 +422,8 @@ async function main(): Promise<void> {
       return resolveCmd(rest);
     case "revoke":
       return revokeCmd(rest);
+    case "policy":
+      return policyCmd(rest);
     case "import": {
       const imp = await import("./import.ts");
       return imp.runImport(rest);

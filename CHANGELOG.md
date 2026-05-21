@@ -3,6 +3,20 @@
 All notable changes to subscribetome. This project is pre-1.0; minor versions
 may still change behaviour. Format follows [Keep a Changelog](https://keepachangelog.com).
 
+## [0.2.0] — 2026-05-21
+
+### Added
+- **Command policy (Phase 1)** — `stm policy {list|add|remove|test}`. Rules
+  are evaluated inside the `PreToolUse` hook **before** the keychain is
+  consulted, so a deny rule prevents a key from ever being read for a
+  rejected command. Predicates are glob patterns over `(key, command,
+  agent)`; actions are `allow` / `deny` / `warn`; first-matching rule wins
+  by `ordering` then `id`; per-substitution decisions collapse with
+  severity `deny > warn > allow`. New `policies` table on the SQLite
+  store. Default action when no rule matches is still `allow` (opt-in
+  enforcement). Dashboard editor and project predicate land in later
+  phases — see [`specs/command-policy.md`](./specs/command-policy.md).
+
 ## [0.1.9] — 2026-05-20
 
 ### Added
@@ -91,6 +105,7 @@ may still change behaviour. Format follows [Keep a Changelog](https://keepachang
   `PostToolUse` (flags a key leaked into output).
 - The `stm` CLI, the localhost dashboard daemon, and `.env` import.
 
+[0.2.0]: https://github.com/matterhornso/subscribetome/releases/tag/v0.2.0
 [0.1.9]: https://github.com/matterhornso/subscribetome/releases/tag/v0.1.9
 [0.1.8]: https://github.com/matterhornso/subscribetome/releases/tag/v0.1.8
 [0.1.7]: https://github.com/matterhornso/subscribetome/releases/tag/v0.1.7

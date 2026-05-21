@@ -16,6 +16,7 @@
 import { Store } from "./store.ts";
 import { findExact, findNearMisses, suggest } from "./grammar.ts";
 import { detectKeys } from "./detect.ts";
+import { evaluateAll } from "./policy.ts";
 
 async function readStdin(): Promise<string> {
   const chunks: Uint8Array[] = [];
@@ -114,6 +115,44 @@ export async function preToolUse(): Promise<void> {
     store = new Store();
   } catch {
     process.exit(0); // store unavailable — fail safe, command runs unsubstituted
+  }
+
+  // Command policy — run BEFORE keychain resolution so a deny rule never
+  // touches the keychain (no Touch ID prompt for a request we'll reject).
+  // The policy engine sees the command in its un-substituted form, which
+  // means the rule predicates and any audit trail never carry the real
+  // secret value.
+  try {
+    const rules = store.listPolicies();
+    if (rules.length > 0) {
+      const keys = [...new Set(exact.map((p) => `${p.tool}:${p.label}`))];
+      const decision = evaluateAll(rules, command, "claude-code", keys);
+      if (decision.action === "deny") {
+        store.close();
+        const ruleTag = decision.rule ? `policy rule #${decision.rule.id}` : "policy";
+        block(
+          `subscribetome: blocked by ${ruleTag}.\n` +
+            (decision.reason ? `Reason: ${decision.reason}\n` : "") +
+            `The command was NOT substituted and will NOT run.\n` +
+            `Inspect the rule with \`stm policy list\`, or test future ` +
+            `commands with \`stm policy test <command>\`.`,
+        );
+      }
+      if (decision.action === "warn" && decision.rule) {
+        process.stderr.write(
+          `subscribetome: policy warning (rule #${decision.rule.id})` +
+            (decision.reason ? `: ${decision.reason}` : "") +
+            `\n`,
+        );
+      }
+    }
+  } catch {
+    // Policy evaluation must never bubble. A failure here drops the command
+    // back into the un-policed path — but ALSO into the standard fail-safe
+    // (an internal error means we exit 0 without rewriting; the command
+    // then runs with the literal placeholder and simply fails).
+    store.close();
+    process.exit(0);
   }
 
   const resolved = new Map<string, string>();

@@ -128,6 +128,7 @@ stm dashboard          open the localhost web UI
 stm list               keys, subscriptions, monthly spend
 stm import [dir]       scan .env files for keys to import
 stm revoke <tool> <l>  mark a key revoked
+stm policy <subcmd>    allow / deny / warn rules at PreToolUse
 stm status             daemon + inventory summary
 stm stop               stop the dashboard daemon
 ```
@@ -215,6 +216,9 @@ descriptor). Key values are in the macOS Keychain under the service name
 - [`specs/session-and-project-scope.md`](./specs/session-and-project-scope.md) —
   per-project key scope so multi-session, multi-project users see only the
   keys each session needs.
+- [`specs/command-policy.md`](./specs/command-policy.md) — allow / deny / warn
+  rules at the PreToolUse layer (Phase 1 implemented; dashboard + project
+  predicate pending).
 
 ## License
 

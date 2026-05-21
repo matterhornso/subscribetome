@@ -8,6 +8,7 @@ import { randomUUID } from "node:crypto";
 import { DB_PATH, ensureDataDir } from "./paths.ts";
 import { keychainSet, keychainGet, keychainDelete } from "./keychain.ts";
 import { makePlaceholder, normalizeSegment } from "./grammar.ts";
+import type { PolicyAction, PolicyRule } from "./policy.ts";
 
 export interface Tool {
   id: number;
@@ -49,6 +50,17 @@ CREATE TABLE IF NOT EXISTS keys (
   created_at    TEXT NOT NULL,
   UNIQUE (tool_id, label)
 );
+CREATE TABLE IF NOT EXISTS policies (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  ordering      INTEGER NOT NULL DEFAULT 100,
+  when_key      TEXT,
+  when_command  TEXT,
+  when_agent    TEXT,
+  action        TEXT NOT NULL CHECK(action IN ('allow','deny','warn')),
+  reason        TEXT,
+  created_at    TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS policies_order_idx ON policies(ordering, id);
 `;
 
 const KEY_VIEW_SELECT = `
@@ -275,5 +287,58 @@ export class Store {
       if (v) out.push(v);
     }
     return out;
+  }
+
+  // ---- policies ----------------------------------------------------------
+
+  /**
+   * Insert a new policy rule. Returns the inserted rule with its assigned
+   * id. Empty-string predicates are coerced to null ("match anything") since
+   * an empty glob has no useful meaning at this level.
+   */
+  addPolicy(input: {
+    ordering?: number;
+    whenKey?: string | null;
+    whenCommand?: string | null;
+    whenAgent?: string | null;
+    action: PolicyAction;
+    reason?: string | null;
+  }): PolicyRule {
+    const norm = (s: string | null | undefined): string | null =>
+      s == null || s === "" ? null : s;
+    const ordering = input.ordering ?? 100;
+    const r = this.db
+      .query(
+        `INSERT INTO policies (ordering, when_key, when_command, when_agent, action, reason, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        ordering,
+        norm(input.whenKey),
+        norm(input.whenCommand),
+        norm(input.whenAgent),
+        input.action,
+        norm(input.reason),
+        new Date().toISOString(),
+      );
+    return this.getPolicy(Number(r.lastInsertRowid))!;
+  }
+
+  getPolicy(id: number): PolicyRule | null {
+    return (this.db
+      .query(`SELECT * FROM policies WHERE id = ?`)
+      .get(id) as PolicyRule | null) ?? null;
+  }
+
+  /** All policies in evaluation order (ordering ASC, id ASC). */
+  listPolicies(): PolicyRule[] {
+    return this.db
+      .query(`SELECT * FROM policies ORDER BY ordering ASC, id ASC`)
+      .all() as PolicyRule[];
+  }
+
+  removePolicy(id: number): boolean {
+    const r = this.db.query(`DELETE FROM policies WHERE id = ?`).run(id);
+    return r.changes > 0;
   }
 }
