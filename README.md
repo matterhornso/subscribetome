@@ -209,16 +209,12 @@ descriptor). Key values are in the macOS Keychain under the service name
   vulnerability privately.
 - [`CHANGELOG.md`](./CHANGELOG.md) — release history.
 - [`TODOS.md`](./TODOS.md) — the deferred v1.5 scope.
-- [`specs/cross-platform-and-codex.md`](./specs/cross-platform-and-codex.md) —
-  v2 plan: Linux, Windows, and OpenAI Codex support.
-- [`specs/spend-visibility.md`](./specs/spend-visibility.md) — the second
-  product: real spend pulled from provider APIs, on demand only.
-- [`specs/session-and-project-scope.md`](./specs/session-and-project-scope.md) —
-  per-project key scope so multi-session, multi-project users see only the
-  keys each session needs.
-- [`specs/command-policy.md`](./specs/command-policy.md) — allow / deny / warn
-  rules at the PreToolUse layer (Phase 1 implemented; dashboard + project
-  predicate pending).
+- [`specs/`](./specs/README.md) — the design docs that drive the
+  roadmap beyond v1. The [spec index](./specs/README.md) lists every
+  spec with its target version, current status, and the dependency
+  graph between them. Today's specs cover cross-platform support,
+  spend visibility, per-project key scope, command policy, and the
+  audit log.
 
 ## License
 
