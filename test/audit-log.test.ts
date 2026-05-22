@@ -118,6 +118,86 @@ test("clearAudit nukes everything and reports count", () => {
   }
 });
 
+test("listAudit filters by sinceISO", () => {
+  const s = new Store(STORE_DB);
+  try {
+    s.clearAudit();
+    // Insert a couple of rows, then synthesize a timestamp in the past by
+    // manually writing one. We use the test DB directly to set ts.
+    s.recordAudit({ event: "substitute", tool: "fresh", label: "a", command: "now" });
+    s.db
+      .query(
+        `INSERT INTO audit_log (ts, event, tool, label, command, agent)
+         VALUES ('2020-01-01T00:00:00.000Z', 'substitute', 'stale', 'a', 'old', 'claude-code')`,
+      )
+      .run();
+
+    // Filter to rows in the last hour — only the fresh one matches.
+    const sinceISO = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const rows = s.listAudit({ sinceISO });
+    expect(rows).toHaveLength(1);
+    expect(rows[0].tool).toBe("fresh");
+
+    // No since => both rows.
+    expect(s.listAudit().length).toBe(2);
+  } finally {
+    s.close();
+  }
+});
+
+test("pruneAudit { beforeISO } drops only rows older than the cutoff", () => {
+  const s = new Store(STORE_DB);
+  try {
+    s.clearAudit();
+    // One fresh, one stale.
+    s.recordAudit({ event: "substitute", tool: "fresh", label: "a", command: "now" });
+    s.db
+      .query(
+        `INSERT INTO audit_log (ts, event, tool, label, command, agent)
+         VALUES ('2020-01-01T00:00:00.000Z', 'substitute', 'stale', 'a', 'old', 'claude-code')`,
+      )
+      .run();
+    expect(s.auditCount()).toBe(2);
+
+    // Prune anything older than 1h ago.
+    const beforeISO = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const removed = s.pruneAudit({ beforeISO });
+    expect(removed).toBe(1);
+    expect(s.auditCount()).toBe(1);
+    expect(s.listAudit()[0].tool).toBe("fresh");
+  } finally {
+    s.close();
+  }
+});
+
+test("pruneAudit { keepNewest } keeps only the N most-recent rows", () => {
+  const s = new Store(STORE_DB);
+  try {
+    s.clearAudit();
+    for (let i = 0; i < 7; i++) {
+      s.recordAudit({ event: "substitute", tool: "t", label: "l", command: `c${i}` });
+    }
+    expect(s.auditCount()).toBe(7);
+    const removed = s.pruneAudit({ keepNewest: 3 });
+    expect(removed).toBe(4);
+    expect(s.auditCount()).toBe(3);
+    // The 3 newest by id remain; they should be c4, c5, c6.
+    const cmds = s.listAudit().map((r) => r.command);
+    expect(cmds).toEqual(["c6", "c5", "c4"]);
+  } finally {
+    s.close();
+  }
+});
+
+test("pruneAudit throws if neither option is provided", () => {
+  const s = new Store(STORE_DB);
+  try {
+    expect(() => s.pruneAudit({})).toThrow();
+  } finally {
+    s.close();
+  }
+});
+
 test("rolling buffer prunes the oldest rows past STM_AUDIT_MAX", () => {
   // Lower the cap so the test is fast.
   const prev = process.env.STM_AUDIT_MAX;

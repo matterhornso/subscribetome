@@ -3,6 +3,41 @@
 All notable changes to subscribetome. This project is pre-1.0; minor versions
 may still change behaviour. Format follows [Keep a Changelog](https://keepachangelog.com).
 
+## [0.2.3] — 2026-05-22
+
+### Added
+- **Audit log CLI (Phase 2 of `specs/audit-log.md`)** — a complete
+  `stm audit` subcommand surface:
+  - `stm audit [--tail N] [--event <class>] [--tool <name>] [--since <dur>]`
+    tails the log most-recent-first as a fixed-width table.
+  - `stm audit prune --before <dur>` drops rows older than a friendly
+    duration (5m / 1h / 7d).
+  - `stm audit prune --keep <N>` keeps only the N most-recent rows.
+  - `stm audit clear` (refuses without `--yes` in interactive
+    terminals).
+- **Audit log dashboard subview (Phase 3)** — a "Recent decisions"
+  section on the existing Command policy card. Compact monospace
+  table with colour-coded event badges (`policy.deny` red,
+  `policy.warn` amber, `unresolved` amber, `substitute` emerald,
+  `malformed` grey). Filters: event class dropdown + tool input.
+  Refresh + Clear log buttons. Renders the un-substituted command
+  every time — same load-bearing invariant as the storage layer.
+- **Audit log daemon API (Phase 4)** — two new authenticated endpoints
+  behind the existing token + Host/Origin allowlist:
+    - `GET /api/audit?limit=&event=&tool=` (limit clamped to [1,500],
+      bad event class → 400)
+    - `POST /api/audit/clear`
+
+### Changed
+- `Store.listAudit` now accepts an optional `sinceISO` filter.
+- `Store.pruneAudit({ beforeISO?, keepNewest? })` is the new pruning
+  primitive used by both the CLI and the rolling-buffer.
+
+### Notes
+- This release closes `specs/audit-log.md` end-to-end (all four
+  phases). It also fulfils Phase 4 of `specs/command-policy.md`,
+  which was waiting on audit-log integration.
+
 ## [0.2.2] — 2026-05-21
 
 ### Added
@@ -149,6 +184,7 @@ may still change behaviour. Format follows [Keep a Changelog](https://keepachang
   `PostToolUse` (flags a key leaked into output).
 - The `stm` CLI, the localhost dashboard daemon, and `.env` import.
 
+[0.2.3]: https://github.com/matterhornso/subscribetome/releases/tag/v0.2.3
 [0.2.2]: https://github.com/matterhornso/subscribetome/releases/tag/v0.2.2
 [0.2.1]: https://github.com/matterhornso/subscribetome/releases/tag/v0.2.1
 [0.2.0]: https://github.com/matterhornso/subscribetome/releases/tag/v0.2.0

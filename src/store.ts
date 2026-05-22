@@ -444,8 +444,16 @@ export class Store {
     }
   }
 
-  /** Most-recent-first. Defaults to 100 rows. */
-  listAudit(opts?: { limit?: number; event?: AuditEvent; tool?: string }): AuditRow[] {
+  /**
+   * Most-recent-first. Defaults to 100 rows. Optional `sinceISO` filters to
+   * rows newer than the given timestamp (the caller parses durations).
+   */
+  listAudit(opts?: {
+    limit?: number;
+    event?: AuditEvent;
+    tool?: string;
+    sinceISO?: string;
+  }): AuditRow[] {
     const limit = Math.max(1, Math.min(opts?.limit ?? 100, 10_000));
     const clauses: string[] = [];
     const params: unknown[] = [];
@@ -457,6 +465,10 @@ export class Store {
       clauses.push("tool = ?");
       params.push(opts.tool);
     }
+    if (opts?.sinceISO) {
+      clauses.push("ts >= ?");
+      params.push(opts.sinceISO);
+    }
     const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
     params.push(limit);
     return this.db
@@ -466,6 +478,32 @@ export class Store {
 
   auditCount(): number {
     return (this.db.query(`SELECT COUNT(*) AS c FROM audit_log`).get() as { c: number }).c;
+  }
+
+  /**
+   * Prune the audit log. Exactly one of `beforeISO` or `keepNewest` must be
+   * provided. `beforeISO` drops rows whose `ts` is older than the cutoff;
+   * `keepNewest` keeps the N most-recent rows by `id`. Returns the count of
+   * rows removed.
+   */
+  pruneAudit(opts: { beforeISO?: string; keepNewest?: number }): number {
+    if (opts.beforeISO != null) {
+      const before = this.auditCount();
+      this.db.query(`DELETE FROM audit_log WHERE ts < ?`).run(opts.beforeISO);
+      return before - this.auditCount();
+    }
+    if (opts.keepNewest != null) {
+      const keep = Math.max(0, Math.floor(opts.keepNewest));
+      const before = this.auditCount();
+      this.db
+        .query(
+          `DELETE FROM audit_log
+            WHERE id NOT IN (SELECT id FROM audit_log ORDER BY id DESC LIMIT ?)`,
+        )
+        .run(keep);
+      return before - this.auditCount();
+    }
+    throw new Error("pruneAudit needs either beforeISO or keepNewest");
   }
 
   /** Delete the entire audit log. Returns the number of rows removed. */

@@ -236,6 +236,32 @@ async function apiRoute(path: string, req: Request, store: Store): Promise<Respo
     return json(decision);
   }
 
+  // ---- audit log (spec: specs/audit-log.md, Phase 4) ---------------------
+
+  if (path === "/api/audit" && req.method === "GET") {
+    const u = new URL(req.url);
+    const limitRaw = Number(u.searchParams.get("limit") ?? "20");
+    const limit = Number.isFinite(limitRaw)
+      ? Math.max(1, Math.min(Math.floor(limitRaw), 500))
+      : 20;
+    const event = u.searchParams.get("event") || undefined;
+    if (
+      event !== undefined &&
+      !["substitute", "policy.deny", "policy.warn", "unresolved", "malformed"].includes(event)
+    ) {
+      return json({ error: "unknown event class" }, 400);
+    }
+    const tool = u.searchParams.get("tool") || undefined;
+    return json({
+      rows: store.listAudit({ limit, event: event as any, tool }),
+      count: store.auditCount(),
+    });
+  }
+  if (path === "/api/audit/clear" && req.method === "POST") {
+    const removed = store.clearAudit();
+    return json({ ok: true, removed });
+  }
+
   return json({ error: "not found" }, 404);
 }
 

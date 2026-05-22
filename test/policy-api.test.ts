@@ -26,7 +26,10 @@ async function call(
     headers: { "content-type": "application/json" },
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
-  const res = await apiRoute(path, req, store);
+  // The real daemon extracts URL.pathname before dispatching; mirror that
+  // so the route checks line up.
+  const pathname = new URL(req.url).pathname;
+  const res = await apiRoute(pathname, req, store);
   let data: any = {};
   try {
     data = await res.json();
@@ -47,6 +50,29 @@ function json(data: unknown, status = 200): Response {
 }
 
 async function apiRoute(path: string, req: Request, store: Store): Promise<Response> {
+  if (path === "/api/audit" && req.method === "GET") {
+    const u = new URL(req.url);
+    const limitRaw = Number(u.searchParams.get("limit") ?? "20");
+    const limit = Number.isFinite(limitRaw)
+      ? Math.max(1, Math.min(Math.floor(limitRaw), 500))
+      : 20;
+    const event = u.searchParams.get("event") || undefined;
+    if (
+      event !== undefined &&
+      !["substitute", "policy.deny", "policy.warn", "unresolved", "malformed"].includes(event)
+    ) {
+      return json({ error: "unknown event class" }, 400);
+    }
+    const tool = u.searchParams.get("tool") || undefined;
+    return json({
+      rows: store.listAudit({ limit, event: event as any, tool }),
+      count: store.auditCount(),
+    });
+  }
+  if (path === "/api/audit/clear" && req.method === "POST") {
+    const removed = store.clearAudit();
+    return json({ ok: true, removed });
+  }
   if (path === "/api/policies" && req.method === "GET") {
     return json({ policies: store.listPolicies() });
   }
@@ -205,4 +231,46 @@ test("DELETE /api/policies/:id 404s when the id doesn't exist", async () => {
   const { status, data } = await call(store, "DELETE", `/api/policies/99999`);
   expect(status).toBe(404);
   expect(data.error).toBe("no such policy");
+});
+
+// ---- /api/audit ----------------------------------------------------------
+
+test("GET /api/audit returns rows + total count", async () => {
+  store.recordAudit({ event: "substitute", tool: "openai", label: "default", command: "echo" });
+  store.recordAudit({ event: "policy.deny", tool: "stripe", label: "live", command: "x", reason: "no live" });
+  const { status, data } = await call(store, "GET", "/api/audit");
+  expect(status).toBe(200);
+  expect(data.rows.length).toBeGreaterThanOrEqual(2);
+  expect(data.count).toBeGreaterThanOrEqual(2);
+  // Most-recent-first.
+  expect(data.rows[0].event).toBe("policy.deny");
+});
+
+test("GET /api/audit?event= filters by event class", async () => {
+  const { status, data } = await call(store, "GET", "/api/audit?event=substitute&limit=50");
+  expect(status).toBe(200);
+  expect(data.rows.every((r: any) => r.event === "substitute")).toBe(true);
+});
+
+test("GET /api/audit?event=garbage 400s", async () => {
+  const { status, data } = await call(store, "GET", "/api/audit?event=garbage");
+  expect(status).toBe(400);
+  expect(data.error).toBe("unknown event class");
+});
+
+test("GET /api/audit?limit= is clamped to [1, 500]", async () => {
+  const r1 = await call(store, "GET", "/api/audit?limit=0");
+  expect(r1.status).toBe(200); // clamps to 1
+  const r2 = await call(store, "GET", "/api/audit?limit=99999");
+  expect(r2.status).toBe(200); // clamps to 500
+});
+
+test("POST /api/audit/clear removes every row and reports count", async () => {
+  const before = store.auditCount();
+  expect(before).toBeGreaterThan(0);
+  const { status, data } = await call(store, "POST", "/api/audit/clear", {});
+  expect(status).toBe(200);
+  expect(data.ok).toBe(true);
+  expect(data.removed).toBe(before);
+  expect(store.auditCount()).toBe(0);
 });

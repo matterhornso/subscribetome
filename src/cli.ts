@@ -12,10 +12,23 @@
 //   stm stop                                    stop the daemon
 //   stm status                                  daemon + inventory summary
 //   stm hook <pretooluse|posttooluse|userpromptsubmit|sessionstart>  (called by hooks)
-import { Store } from "./store.ts";
+import { Store, type AuditEvent } from "./store.ts";
 import { preToolUse, postToolUse, userPromptSubmit, sessionStart } from "./hooks.ts";
 import { evaluateAll, type PolicyAction } from "./policy.ts";
 import { findExact } from "./grammar.ts";
+
+/**
+ * Parse a friendly duration like `30s`, `5m`, `2h`, `7d` into milliseconds.
+ * Returns null on a malformed input.
+ */
+function parseDuration(s: string): number | null {
+  const m = s.trim().match(/^(\d+)\s*([smhd])$/);
+  if (!m) return null;
+  const n = Number(m[1]);
+  const unit = m[2];
+  const mult = unit === "s" ? 1000 : unit === "m" ? 60_000 : unit === "h" ? 3_600_000 : 86_400_000;
+  return n * mult;
+}
 
 function parseFlags(args: string[]): {
   flags: Record<string, string>;
@@ -334,6 +347,178 @@ function policyTestCmd(args: string[]): void {
   }
 }
 
+// ---- audit ----------------------------------------------------------------
+
+const AUDIT_EVENTS = new Set([
+  "substitute",
+  "policy.deny",
+  "policy.warn",
+  "unresolved",
+  "malformed",
+]);
+
+function auditHelp(): void {
+  process.stdout.write(
+    `subscribetome — audit log of PreToolUse decisions\n\n` +
+      `  stm audit                                 last 20 events (most recent first)\n` +
+      `  stm audit --tail N                        last N (max 10000)\n` +
+      `  stm audit --event <class>                 filter by event class:\n` +
+      `                                            substitute | policy.deny | policy.warn\n` +
+      `                                            | unresolved | malformed\n` +
+      `  stm audit --tool <name>                   filter by tool, e.g. openai\n` +
+      `  stm audit --since <duration>              5m, 1h, 7d\n` +
+      `  stm audit prune --before <duration>       drop rows older than 7d, etc.\n` +
+      `  stm audit prune --keep <N>                keep only the N most-recent rows\n` +
+      `  stm audit clear                           remove every row (no undo)\n` +
+      `\nThe log NEVER contains a real key value — placeholders only. See README\n` +
+      `and specs/audit-log.md §5 for the load-bearing invariant.\n`,
+  );
+}
+
+function fmtTs(iso: string): string {
+  // 2026-05-21T04:25:09.123Z  ->  2026-05-21 04:25:09
+  return iso.slice(0, 10) + " " + iso.slice(11, 19);
+}
+
+function auditListCmd(args: string[]): void {
+  const { flags } = parseFlags(args);
+  const tail = flags.tail ? Number(flags.tail) : 20;
+  if (!Number.isFinite(tail) || tail <= 0) {
+    process.stderr.write("error: --tail must be a positive number\n");
+    process.exit(1);
+  }
+  const event = flags.event;
+  if (event !== undefined && !AUDIT_EVENTS.has(event)) {
+    process.stderr.write(
+      `error: --event must be one of: ${[...AUDIT_EVENTS].join(", ")}\n`,
+    );
+    process.exit(1);
+  }
+  let sinceISO: string | undefined;
+  if (flags.since) {
+    const ms = parseDuration(flags.since);
+    if (ms == null) {
+      process.stderr.write(`error: --since "${flags.since}" — use forms like 5m, 1h, 7d\n`);
+      process.exit(1);
+    }
+    sinceISO = new Date(Date.now() - ms).toISOString();
+  }
+
+  const store = new Store();
+  try {
+    const rows = store.listAudit({
+      limit: tail,
+      event: event as AuditEvent | undefined,
+      tool: flags.tool,
+      sinceISO,
+    });
+    if (rows.length === 0) {
+      process.stdout.write("No audit rows.\n");
+      return;
+    }
+    // chronological display: oldest first so a tail reads like a console log
+    rows.reverse();
+    printTable(
+      ["TIME", "EVENT", "KEY", "INFO"],
+      rows.map((r) => {
+        const key =
+          r.tool && r.label ? `${r.tool}:${r.label}` : r.tool ?? r.label ?? "—";
+        const info = r.policy_id
+          ? `rule #${r.policy_id}${r.reason ? `: ${r.reason}` : ""}`
+          : r.reason ?? "";
+        return [fmtTs(r.ts), r.event, key, info];
+      }),
+    );
+    process.stdout.write(
+      `\n  ${rows.length} row${rows.length === 1 ? "" : "s"} shown · ` +
+        `${store.auditCount()} total in log\n\n`,
+    );
+  } finally {
+    store.close();
+  }
+}
+
+function auditPruneCmd(args: string[]): void {
+  const { flags } = parseFlags(args);
+  const hasBefore = flags.before != null && flags.before !== "true";
+  const hasKeep = flags.keep != null && flags.keep !== "true";
+  if (hasBefore === hasKeep) {
+    process.stderr.write(
+      "usage: stm audit prune --before <duration>  |  stm audit prune --keep <N>\n",
+    );
+    process.exit(1);
+  }
+  const store = new Store();
+  try {
+    let removed = 0;
+    if (hasBefore) {
+      const ms = parseDuration(flags.before);
+      if (ms == null) {
+        process.stderr.write(`error: --before "${flags.before}" — use forms like 5m, 1h, 7d\n`);
+        process.exit(1);
+      }
+      const beforeISO = new Date(Date.now() - ms).toISOString();
+      removed = store.pruneAudit({ beforeISO });
+    } else {
+      const n = Number(flags.keep);
+      if (!Number.isFinite(n) || n < 0) {
+        process.stderr.write("error: --keep must be a non-negative number\n");
+        process.exit(1);
+      }
+      removed = store.pruneAudit({ keepNewest: n });
+    }
+    process.stdout.write(
+      `pruned ${removed} row${removed === 1 ? "" : "s"} · ${store.auditCount()} remain\n`,
+    );
+  } finally {
+    store.close();
+  }
+}
+
+function auditClearCmd(args: string[]): void {
+  const { flags } = parseFlags(args);
+  if (!flags.yes && process.stdout.isTTY) {
+    process.stderr.write(
+      "stm audit clear deletes every row. Re-run with --yes to confirm:\n" +
+        "  stm audit clear --yes\n",
+    );
+    process.exit(1);
+  }
+  const store = new Store();
+  try {
+    const removed = store.clearAudit();
+    process.stdout.write(`cleared ${removed} row${removed === 1 ? "" : "s"}\n`);
+  } finally {
+    store.close();
+  }
+}
+
+async function auditCmd(args: string[]): Promise<void> {
+  const [sub, ...rest] = args;
+  switch (sub) {
+    case undefined:
+    case "list":
+    case "tail":
+      return auditListCmd(args.slice(args[0] === "list" || args[0] === "tail" ? 1 : 0));
+    case "prune":
+      return auditPruneCmd(rest);
+    case "clear":
+      return auditClearCmd(rest);
+    case "help":
+    case "--help":
+    case "-h":
+      return auditHelp();
+    default:
+      // Treat unknown leading tokens as flags-on-`list`. So
+      //   `stm audit --tail 5 --event substitute`
+      // works without typing `list`.
+      if (sub.startsWith("--")) return auditListCmd(args);
+      process.stderr.write(`stm audit: unknown subcommand "${sub}"\n\n`);
+      auditHelp();
+      process.exit(1);
+  }
+}
+
 async function policyCmd(args: string[]): Promise<void> {
   const [sub, ...rest] = args;
   switch (sub) {
@@ -389,6 +574,7 @@ function helpCmd(): void {
       `  stm resolve {{stm:t:l}}          print a key value (local use only)\n` +
       `  stm revoke <tool> <label>       mark a key revoked\n` +
       `  stm policy <list|add|remove|test>  allow/deny rules at PreToolUse\n` +
+      `  stm audit [--tail N] [--event] [--tool] [--since]  PreToolUse decision log\n` +
       `  stm import [dir...]             scan .env files for importable keys\n` +
       `  stm dashboard                   open the localhost web dashboard\n` +
       `  stm stop                        stop the dashboard daemon\n` +
@@ -424,6 +610,8 @@ async function main(): Promise<void> {
       return revokeCmd(rest);
     case "policy":
       return policyCmd(rest);
+    case "audit":
+      return auditCmd(rest);
     case "import": {
       const imp = await import("./import.ts");
       return imp.runImport(rest);

@@ -1,6 +1,6 @@
 # Spec — Audit log
 
-**Status:** Phase 1 shipped · Phases 2–4 pending · **Target:** v0.3 · **Last updated:** 2026-05-21
+**Status:** All four phases shipped · **Target:** v0.3 (completed v0.2.3) · **Last updated:** 2026-05-22
 
 > "A local record of which key each command used."
 > Originally on the landing page roadmap; moved off the public card so
@@ -203,12 +203,12 @@ surface; it must never alter the hook's decision or its fail-safe path.
 
 ## 8. Phasing
 
-| Phase | What lands | Status |
-|---|---|---|
+| Phase | What lands | Released | Status |
+|---|---|---|---|
 | **1.** Schema + Store method + PreToolUse integration + `STM_AUDIT_MAX`. Closes Phase 4 of Command policy on the back end. | v0.2.2 (2026-05-21) | **shipped** |
-| **2.** CLI: `stm audit`, `stm audit prune`, `stm audit clear`. | After Phase 1 | pending |
-| **3.** Dashboard "Recent decisions" subview + refresh + export + clear. | After Phase 2 | pending |
-| **4.** Daemon endpoint behind the existing token: `GET /api/audit` with cursor pagination. | After Phase 3 | pending |
+| **2.** CLI: `stm audit [--tail --event --tool --since]`, `stm audit prune --before/--keep`, `stm audit clear --yes`. | v0.2.3 (2026-05-22) | **shipped** |
+| **3.** Dashboard "Recent decisions" subview on the Command policy card — event-class filter, tool filter, refresh, clear, colour-coded badges. | v0.2.3 (2026-05-22) | **shipped** |
+| **4.** Daemon endpoints behind the existing token: `GET /api/audit` (limit clamped to [1,500], event + tool filters), `POST /api/audit/clear`. | v0.2.3 (2026-05-22) | **shipped** |
 
 ## 9. Open questions
 

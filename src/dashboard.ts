@@ -224,8 +224,35 @@ export function dashboardHTML(): string {
   }
   .verdict-card .v-key code { color:var(--primary-bright); }
   .pred-any { color:var(--text-dim); }
+
+  /* ---- audit log subview ---- */
+  .audit-controls {
+    display:grid; grid-template-columns:180px 1fr auto auto;
+    gap:calc(var(--space)*3); align-items:center; margin-top:calc(var(--space)*3);
+  }
+  .audit-controls select,
+  .audit-controls input { height:34px; }
+  .audit-controls button { height:34px; }
+  .ev-badge {
+    display:inline-block; font-size:10.5px; font-weight:600; padding:2px 8px;
+    border-radius:999px; text-transform:lowercase; letter-spacing:.3px;
+    font-family:var(--font-mono);
+  }
+  .ev-substitute  { background:rgba(52,211,154,.13); color:var(--emerald-300); }
+  .ev-policy-deny { background:rgba(240,109,109,.13); color:var(--red-400); }
+  .ev-policy-warn { background:rgba(245,185,66,.13); color:var(--amber-400); }
+  .ev-unresolved  { background:rgba(245,185,66,.10); color:var(--amber-400); }
+  .ev-malformed   { background:rgba(139,148,164,.14); color:var(--text-muted); }
+  #audit-rows td {
+    font-family:var(--font-mono); font-size:12px;
+    padding:calc(var(--space)*2) calc(var(--space)*2);
+    color:var(--text-muted);
+  }
+  #audit-rows td.t-time { color:var(--text-dim); font-variant-numeric:tabular-nums; }
+  #audit-rows td.t-key  { color:var(--primary-bright); }
   @media (max-width:640px) {
     .policy-grid,.policy-row2 { grid-template-columns:1fr; }
+    .audit-controls { grid-template-columns:1fr; }
   }
 
   /* ---- misc ---- */
@@ -364,6 +391,38 @@ export function dashboardHTML(): string {
     </div>
     <div id="policy-test" class="verdict-card" style="display:none"></div>
 
+    <div class="sub-head" style="display:flex;align-items:center;justify-content:space-between">
+      <span>Recent decisions</span>
+      <span style="font-weight:400;text-transform:none;letter-spacing:.2px;font-size:12px;color:var(--text-dim)">
+        forensic log of what PreToolUse did · never holds a real key value
+      </span>
+    </div>
+    <div class="audit-controls">
+      <select id="audit-event">
+        <option value="">All events</option>
+        <option value="substitute">substitute</option>
+        <option value="policy.deny">policy.deny</option>
+        <option value="policy.warn">policy.warn</option>
+        <option value="unresolved">unresolved</option>
+        <option value="malformed">malformed</option>
+      </select>
+      <input id="audit-tool" placeholder="filter by tool (optional)" autocomplete="off" spellcheck="false">
+      <button class="btn-ghost" id="audit-refresh-btn">Refresh</button>
+      <button class="btn-ghost" id="audit-clear-btn" style="color:var(--danger);border-color:var(--danger)">Clear log</button>
+    </div>
+    <div class="table-wrap" style="margin-top:12px">
+      <table>
+        <thead><tr>
+          <th style="width:135px">Time</th>
+          <th style="width:110px">Event</th>
+          <th>Key</th>
+          <th>Info</th>
+        </tr></thead>
+        <tbody id="audit-rows"></tbody>
+      </table>
+    </div>
+    <div id="audit-meta" style="margin-top:8px;font-size:12px;color:var(--text-dim)"></div>
+
     <p class="note">Rules evaluate at <code>PreToolUse</code>, before the keychain is read.
       Strictest verdict wins per command (<code>deny &gt; warn &gt; allow</code>).
       No matching rule means allow — add a final catch-all to flip to default-deny.
@@ -445,6 +504,63 @@ async function refresh(){
   refreshPolicies().catch(function(e){
     setMsg("policy-msg","Failed to load policies: "+e.message,"err");
   });
+  refreshAudit().catch(function(e){
+    el("audit-meta").textContent="Failed to load audit log: "+e.message;
+  });
+}
+
+function fmtTs(iso){
+  if(!iso)return "";
+  return iso.slice(0,10)+" "+iso.slice(11,19);
+}
+function evClass(ev){
+  return "ev-badge ev-"+ev.replace(".","-");
+}
+function renderAudit(rows,total){
+  var tb=el("audit-rows");
+  if(!rows.length){
+    tb.innerHTML='<tr><td colspan="4" class="empty" style="font-family:inherit">No audit rows. Run a command with an stm placeholder to see one appear.</td></tr>';
+    el("audit-meta").textContent=total>0?(total+" total rows · none match the current filter"):"";
+    return;
+  }
+  tb.innerHTML=rows.map(function(r){
+    var key=r.tool&&r.label
+      ? "{{stm:"+esc(r.tool)+":"+esc(r.label)+"}}"
+      : (r.tool||r.label||"\\u2014");
+    var info="";
+    if(r.policy_id){
+      info='rule #'+r.policy_id+(r.reason?': '+esc(r.reason):'');
+    }else if(r.reason){
+      info=esc(r.reason);
+    }
+    return '<tr>'
+      +'<td class="t-time">'+esc(fmtTs(r.ts))+'</td>'
+      +'<td><span class="'+evClass(r.event)+'">'+esc(r.event)+'</span></td>'
+      +'<td class="t-key">'+key+'</td>'
+      +'<td>'+info+'</td></tr>';
+  }).join("");
+  var shown=rows.length;
+  el("audit-meta").textContent=shown+" row"+(shown===1?"":"s")+" shown · "+total+" total in log";
+}
+async function refreshAudit(){
+  var qs=[];
+  var ev=el("audit-event").value;
+  var tool=val("audit-tool");
+  qs.push("limit=50");
+  if(ev)qs.push("event="+encodeURIComponent(ev));
+  if(tool)qs.push("tool="+encodeURIComponent(tool));
+  var r=await api("/api/audit?"+qs.join("&"));
+  renderAudit(r.rows||[],r.count||0);
+}
+async function clearAuditLog(){
+  if(!confirm("Delete every row in the audit log? This cannot be undone."))return;
+  try{
+    var r=await api("/api/audit/clear",{method:"POST"});
+    toast("Cleared "+r.removed+" row"+(r.removed===1?"":"s"));
+    refreshAudit();
+  }catch(e){
+    el("audit-meta").textContent="Failed to clear: "+e.message;
+  }
 }
 
 async function refreshPolicies(){
@@ -774,6 +890,20 @@ el("policies").addEventListener("click",function(e){
 // Enter key in the test box runs the test
 el("p-test-cmd").addEventListener("keydown",function(e){
   if(e.key==="Enter"){ e.preventDefault(); testPolicy(); }
+});
+el("audit-refresh-btn").addEventListener("click",function(){
+  refreshAudit().catch(function(e){
+    el("audit-meta").textContent="Failed: "+e.message;
+  });
+});
+el("audit-clear-btn").addEventListener("click",clearAuditLog);
+el("audit-event").addEventListener("change",function(){
+  refreshAudit().catch(function(e){ el("audit-meta").textContent="Failed: "+e.message; });
+});
+el("audit-tool").addEventListener("keydown",function(e){
+  if(e.key==="Enter"){ e.preventDefault();
+    refreshAudit().catch(function(err){ el("audit-meta").textContent="Failed: "+err.message; });
+  }
 });
 el("svc").addEventListener("change",renderSvcFields);
 el("svc-fields").addEventListener("click",function(e){

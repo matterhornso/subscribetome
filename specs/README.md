@@ -8,7 +8,7 @@ This index is the source of truth — when a new spec lands, add a row
 to the table below and a short summary in §1, then update statuses
 here as features ship.
 
-Last updated: **2026-05-21**.
+Last updated: **2026-05-22**.
 
 ## 1. Index of specs
 
@@ -17,8 +17,8 @@ Last updated: **2026-05-21**.
 | 01 | [`cross-platform-and-codex.md`](./cross-platform-and-codex.md) | v2 | Draft | ~280 |
 | 02 | [`spend-visibility.md`](./spend-visibility.md) | v0.2 (post-cross-platform) | Draft | ~160 |
 | 03 | [`session-and-project-scope.md`](./session-and-project-scope.md) | v0.3 | Draft | ~230 |
-| 04 | [`command-policy.md`](./command-policy.md) | v0.4 (Phases 1–2 shipped) | **Phases 1–2 shipped** · Phases 3–4 deferred | ~230 |
-| 05 | [`audit-log.md`](./audit-log.md) | v0.3 | **Phase 1 shipped** · Phases 2–4 pending | ~200 |
+| 04 | [`command-policy.md`](./command-policy.md) | v0.4 | **Phases 1, 2, 4 shipped** · Phase 3 needs `session-and-project-scope` | ~230 |
+| 05 | [`audit-log.md`](./audit-log.md) | v0.3 | **All four phases shipped** (v0.2.3) | ~200 |
 
 ## 2. What each spec covers (one paragraph each)
 
@@ -126,9 +126,8 @@ Reading the graph:
 
 ## 4. Suggested build order
 
-1. **`audit-log.md`** — small spec, small implementation, closes
-   Phase 4 of an already-shipped feature (Command policy). High
-   leverage per hour.
+1. ~~**`audit-log.md`** — small spec, small implementation, closes
+   Phase 4 of an already-shipped feature (Command policy).~~ **Shipped v0.2.3.**
 2. **`session-and-project-scope.md`** — biggest user-visible
    improvement still on the table. Unblocks Command policy Phase 3.
 3. **`command-policy.md` Phase 3** — fold in the project predicate
