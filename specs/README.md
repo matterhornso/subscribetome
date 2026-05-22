@@ -8,7 +8,7 @@ This index is the source of truth — when a new spec lands, add a row
 to the table below and a short summary in §1, then update statuses
 here as features ship.
 
-Last updated: **2026-05-22** (session-and-project-scope Phase 1 landed in v0.2.4).
+Last updated: **2026-05-22** (session-and-project-scope Phase 1 landed in v0.2.4; service-catalog-browser drafted; command-policy Phase 3 + catalog browser builds queued via `/schedule`).
 
 ## 1. Index of specs
 
@@ -19,6 +19,7 @@ Last updated: **2026-05-22** (session-and-project-scope Phase 1 landed in v0.2.4
 | 03 | [`session-and-project-scope.md`](./session-and-project-scope.md) | v0.3 | **Phase 1 shipped** (v0.2.4) · Phases 2–3 pending | ~230 |
 | 04 | [`command-policy.md`](./command-policy.md) | v0.4 | **Phases 1, 2, 4 shipped** · Phase 3 needs `session-and-project-scope` | ~230 |
 | 05 | [`audit-log.md`](./audit-log.md) | v0.3 | **All four phases shipped** (v0.2.3) | ~200 |
+| 06 | [`service-catalog-browser.md`](./service-catalog-browser.md) | v0.3 | Draft | ~280 |
 
 ## 2. What each spec covers (one paragraph each)
 
@@ -73,6 +74,19 @@ to the command, with placeholders intact). Storage is a single
 `STM_AUDIT_MAX`). UX is a "Recent decisions" subview on the existing
 **Command policy** dashboard card, plus an `stm audit` CLI. Closes
 Phase 4 of `command-policy.md`.
+
+### 06 — `service-catalog-browser.md`
+A discovery surface on the dashboard. Today's "Add keys" form
+assumes the user already knows which provider they want; this spec
+adds a browsable, categorized grid of every service stm knows about
+above the form. Click a tile → opens the provider's API-keys page
+in a new tab + pre-arms the Add keys dropdown + smooth-scrolls to the
+form + flashes the card so the user's eye finds it on return. Catalog
+grows from 36 to 50 (adds Apollo, Postiz, Typefully, Linear, Notion,
+Brevo, Mailgun, Postmark, PlanetScale, Fly.io, Lemon Squeezy, Paddle,
+Clay, DigitalOcean). New `category` and `url` fields on every
+`ServiceDef`. No outbound calls, no logos, no tracking; preserves
+the no-backend posture.
 
 ## 3. Dependency graph
 
@@ -130,13 +144,16 @@ Reading the graph:
    Phase 4 of an already-shipped feature (Command policy).~~ **Shipped v0.2.3.**
 2. ~~**`session-and-project-scope.md`** Phase 1 — the CLI + SessionStart
    integration.~~ **Shipped v0.2.4.**
-3. **`session-and-project-scope.md`** Phase 2 — dashboard Projects
+3. **`command-policy.md` Phase 3** — the `when.project` predicate +
+   per-project `enforce_scope` toggle. **Queued for 10:45 IST 2026-05-22**
+   via `/schedule`.
+4. **`service-catalog-browser.md`** — discovery surface on the
+   dashboard. **Queued for 12:21 IST 2026-05-22** via `/schedule`.
+5. **`session-and-project-scope.md`** Phase 2 — dashboard Projects
    view + `?from=<cwd>` integration.
-4. **`command-policy.md` Phase 3** — fold in the project predicate
-   now that scope is in the store.
-5. **`spend-visibility.md`** — the "second product." Worth its own
+6. **`spend-visibility.md`** — the "second product." Worth its own
    launch moment; do not bury inside an unrelated release.
-6. **`cross-platform-and-codex.md`** — biggest scope; do after the
+7. **`cross-platform-and-codex.md`** — biggest scope; do after the
    macOS / Claude Code build feels complete.
 
 ## 5. Authoring conventions
