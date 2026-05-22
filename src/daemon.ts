@@ -264,6 +264,118 @@ async function apiRoute(path: string, req: Request, store: Store): Promise<Respo
     }
   }
 
+  // ---- projects CRUD + scope (spec: session-and-project-scope.md Phase 2)
+
+  /**
+   * Build a "project + scope" view object — everything the dashboard
+   * Projects card needs to render one row in one fetch. Returns:
+   *   { id, path, name, enforce_scope, created_at,
+   *     scope: [{ tool, label, placeholder }, ...] }
+   */
+  function projectView(p: ReturnType<Store["getProject"]>) {
+    if (!p) return null;
+    return { ...p, scope: store.projectScope(p.id) };
+  }
+
+  if (path === "/api/projects" && req.method === "GET") {
+    const projects = store.listProjects();
+    return json({
+      projects: projects.map((p) => projectView(p)),
+    });
+  }
+  if (path === "/api/projects" && req.method === "POST") {
+    const b: any = await req.json().catch(() => ({}));
+    if (typeof b?.path !== "string" || !b.path.trim()) {
+      return json({ error: "path is required" }, 400);
+    }
+    if (typeof b?.name !== "string" || !b.name.trim()) {
+      return json({ error: "name is required" }, 400);
+    }
+    try {
+      const p = store.addProject({ path: b.path, name: b.name });
+      return json({ project: projectView(p) });
+    } catch (e: any) {
+      return json({ error: e?.message ?? String(e) }, 400);
+    }
+  }
+  /**
+   * Match the longest-prefix project for a given cwd — used by the
+   * dashboard's `?from=<cwd>` header signal. Returns the matched project
+   * (or null) PLUS a normalized form of the cwd, so the UI can show a
+   * canonical path and offer "Create project from this path".
+   */
+  if (path === "/api/projects/match" && req.method === "GET") {
+    const u = new URL(req.url);
+    const cwd = (u.searchParams.get("cwd") ?? "").trim();
+    if (!cwd) return json({ project: null, cwd: "" });
+    let normalized = cwd;
+    try {
+      // Reuse the same normalization the store applies on writes so the
+      // UI's "create project from this path" round-trip is idempotent.
+      const { normalizeProjectPath } = await import("./store.ts");
+      normalized = normalizeProjectPath(cwd);
+    } catch {
+      /* fall back to raw cwd */
+    }
+    const p = store.matchProject(cwd);
+    return json({ project: projectView(p), cwd: normalized });
+  }
+  {
+    const m = path.match(/^\/api\/projects\/(\d+)$/);
+    if (m) {
+      const id = Number(m[1]);
+      if (req.method === "GET") {
+        const p = store.getProject(id);
+        return p ? json({ project: projectView(p) }) : json({ error: "no such project" }, 404);
+      }
+      if (req.method === "PATCH") {
+        const b: any = await req.json().catch(() => ({}));
+        if (typeof b?.name !== "string" || !b.name.trim()) {
+          return json({ error: "name is required" }, 400);
+        }
+        const ok = store.renameProject(id, b.name);
+        return ok
+          ? json({ project: projectView(store.getProject(id)) })
+          : json({ error: "no such project" }, 404);
+      }
+      if (req.method === "DELETE") {
+        return store.removeProject(id)
+          ? json({ ok: true })
+          : json({ error: "no such project" }, 404);
+      }
+    }
+  }
+  {
+    const m = path.match(/^\/api\/projects\/(\d+)\/scope$/);
+    if (m) {
+      const id = Number(m[1]);
+      const p = store.getProject(id);
+      if (!p) return json({ error: "no such project" }, 404);
+      if (req.method === "POST") {
+        const b: any = await req.json().catch(() => ({}));
+        if (typeof b?.tool !== "string" || typeof b?.label !== "string") {
+          return json({ error: "tool and label are required" }, 400);
+        }
+        try {
+          store.addProjectScope(id, b.tool, b.label);
+          return json({ project: projectView(store.getProject(id)) });
+        } catch (e: any) {
+          return json({ error: e?.message ?? String(e) }, 400);
+        }
+      }
+      if (req.method === "DELETE") {
+        const b: any = await req.json().catch(() => ({}));
+        if (typeof b?.tool !== "string" || typeof b?.label !== "string") {
+          return json({ error: "tool and label are required" }, 400);
+        }
+        const ok = store.removeProjectScope(id, b.tool, b.label);
+        return ok
+          ? json({ project: projectView(store.getProject(id)) })
+          : json({ error: "(tool, label) not in scope" }, 404);
+      }
+    }
+  }
+
   // ---- audit log (spec: specs/audit-log.md, Phase 4) ---------------------
 
   if (path === "/api/audit" && req.method === "GET") {
@@ -394,7 +506,16 @@ export async function openDashboard(): Promise<void> {
   // The token-bearing URL goes ONLY to the browser via `open`. stdout may be
   // captured into a terminal transcript or an agent's conversation, so the
   // token must never be printed there.
-  const tokenUrl = `http://127.0.0.1:${info.port}/?token=${info.token}`;
+  //
+  // Phase 2 of session-and-project-scope: pass the current cwd as
+  // `?from=<encoded>` so the dashboard can render its "Session in <name>"
+  // header signal. The dashboard fetches /api/projects/match?cwd= and
+  // either resolves it to a registered project or offers a one-click
+  // "Create project from this path" affordance. Failing silently here
+  // (no STM_CWD env override etc.) is fine — the dashboard renders
+  // without the signal and the user can still use Browse/Projects.
+  const fromParam = `&from=${encodeURIComponent(process.cwd())}`;
+  const tokenUrl = `http://127.0.0.1:${info.port}/?token=${info.token}${fromParam}`;
   process.stdout.write(
     `dashboard: http://127.0.0.1:${info.port}/  (opening in your browser)\n`,
   );

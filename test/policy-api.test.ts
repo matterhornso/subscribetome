@@ -151,6 +151,81 @@ async function apiRoute(path: string, req: Request, store: Store): Promise<Respo
         : json({ error: "no such project" }, 404);
     }
   }
+
+  // Phase 2 of session-and-project-scope: projects CRUD + scope + match.
+  function projectView(p: ReturnType<Store["getProject"]>) {
+    if (!p) return null;
+    return { ...p, scope: store.projectScope(p.id) };
+  }
+  if (path === "/api/projects" && req.method === "GET") {
+    return json({ projects: store.listProjects().map((p) => projectView(p)) });
+  }
+  if (path === "/api/projects" && req.method === "POST") {
+    const b: any = await req.json().catch(() => ({}));
+    if (typeof b?.path !== "string" || !b.path.trim()) return json({ error: "path is required" }, 400);
+    if (typeof b?.name !== "string" || !b.name.trim()) return json({ error: "name is required" }, 400);
+    try {
+      const p = store.addProject({ path: b.path, name: b.name });
+      return json({ project: projectView(p) });
+    } catch (e: any) {
+      return json({ error: e?.message ?? String(e) }, 400);
+    }
+  }
+  if (path === "/api/projects/match" && req.method === "GET") {
+    const u = new URL(req.url);
+    const cwd = (u.searchParams.get("cwd") ?? "").trim();
+    if (!cwd) return json({ project: null, cwd: "" });
+    let normalized = cwd;
+    try {
+      const { normalizeProjectPath } = await import("../src/store.ts");
+      normalized = normalizeProjectPath(cwd);
+    } catch { /* fall back */ }
+    const p = store.matchProject(cwd);
+    return json({ project: projectView(p), cwd: normalized });
+  }
+  {
+    const m = path.match(/^\/api\/projects\/(\d+)$/);
+    if (m) {
+      const id = Number(m[1]);
+      if (req.method === "GET") {
+        const p = store.getProject(id);
+        return p ? json({ project: projectView(p) }) : json({ error: "no such project" }, 404);
+      }
+      if (req.method === "PATCH") {
+        const b: any = await req.json().catch(() => ({}));
+        if (typeof b?.name !== "string" || !b.name.trim()) return json({ error: "name is required" }, 400);
+        const ok = store.renameProject(id, b.name);
+        return ok ? json({ project: projectView(store.getProject(id)) }) : json({ error: "no such project" }, 404);
+      }
+      if (req.method === "DELETE") {
+        return store.removeProject(id) ? json({ ok: true }) : json({ error: "no such project" }, 404);
+      }
+    }
+  }
+  {
+    const m = path.match(/^\/api\/projects\/(\d+)\/scope$/);
+    if (m) {
+      const id = Number(m[1]);
+      const p = store.getProject(id);
+      if (!p) return json({ error: "no such project" }, 404);
+      if (req.method === "POST") {
+        const b: any = await req.json().catch(() => ({}));
+        if (typeof b?.tool !== "string" || typeof b?.label !== "string") return json({ error: "tool and label are required" }, 400);
+        try {
+          store.addProjectScope(id, b.tool, b.label);
+          return json({ project: projectView(store.getProject(id)) });
+        } catch (e: any) {
+          return json({ error: e?.message ?? String(e) }, 400);
+        }
+      }
+      if (req.method === "DELETE") {
+        const b: any = await req.json().catch(() => ({}));
+        if (typeof b?.tool !== "string" || typeof b?.label !== "string") return json({ error: "tool and label are required" }, 400);
+        const ok = store.removeProjectScope(id, b.tool, b.label);
+        return ok ? json({ project: projectView(store.getProject(id)) }) : json({ error: "(tool, label) not in scope" }, 404);
+      }
+    }
+  }
   return json({ error: "not found" }, 404);
 }
 
@@ -350,4 +425,110 @@ test("POST /api/projects/:id/enforce 404s for an unknown id", async () => {
   });
   expect(status).toBe(404);
   expect(data.error).toBe("no such project");
+});
+
+// ---- Phase 2: projects CRUD + scope + match -----------------------------
+
+test("POST /api/projects creates a project; GET returns it with empty scope", async () => {
+  // Clean any test residue first
+  for (const p of store.listProjects()) store.removeProject(p.id);
+  const created = await call(store, "POST", "/api/projects", {
+    path: "/tmp/stm-api-proj-1",
+    name: "ProjOne",
+  });
+  expect(created.status).toBe(200);
+  expect(created.data.project.name).toBe("ProjOne");
+  expect(created.data.project.scope).toEqual([]);
+  expect(created.data.project.enforce_scope).toBe(0);
+
+  const list = await call(store, "GET", "/api/projects");
+  expect(list.status).toBe(200);
+  expect(list.data.projects.length).toBe(1);
+  expect(list.data.projects[0].name).toBe("ProjOne");
+});
+
+test("POST /api/projects 400s on missing path or name", async () => {
+  const noPath = await call(store, "POST", "/api/projects", { name: "X" });
+  expect(noPath.status).toBe(400);
+  expect(noPath.data.error).toContain("path");
+  const noName = await call(store, "POST", "/api/projects", { path: "/x" });
+  expect(noName.status).toBe(400);
+  expect(noName.data.error).toContain("name");
+});
+
+test("POST /api/projects/:id/scope adds a (tool,label) and surfaces it in the view", async () => {
+  // Seed a tool/key for scope to point at
+  try { store.addKey({ tool: "openai", label: "default", value: "v" }); } catch {}
+  const list = await call(store, "GET", "/api/projects");
+  const p = list.data.projects[0];
+
+  const added = await call(store, "POST", `/api/projects/${p.id}/scope`, {
+    tool: "openai", label: "default",
+  });
+  expect(added.status).toBe(200);
+  expect(added.data.project.scope.map((s: any) => s.tool + ":" + s.label)).toContain(
+    "openai:default",
+  );
+});
+
+test("DELETE /api/projects/:id/scope removes one (tool,label)", async () => {
+  const list = await call(store, "GET", "/api/projects");
+  const p = list.data.projects[0];
+  const removed = await call(store, "DELETE", `/api/projects/${p.id}/scope`, {
+    tool: "openai", label: "default",
+  });
+  expect(removed.status).toBe(200);
+  expect(removed.data.project.scope).toEqual([]);
+  // Removing again is a 404
+  const again = await call(store, "DELETE", `/api/projects/${p.id}/scope`, {
+    tool: "openai", label: "default",
+  });
+  expect(again.status).toBe(404);
+});
+
+test("PATCH /api/projects/:id renames", async () => {
+  const list = await call(store, "GET", "/api/projects");
+  const p = list.data.projects[0];
+  const renamed = await call(store, "PATCH", `/api/projects/${p.id}`, { name: "ProjOne-Renamed" });
+  expect(renamed.status).toBe(200);
+  expect(renamed.data.project.name).toBe("ProjOne-Renamed");
+  const bad = await call(store, "PATCH", `/api/projects/${p.id}`, { name: "  " });
+  expect(bad.status).toBe(400);
+});
+
+test("GET /api/projects/match returns the longest-prefix project for a cwd", async () => {
+  // The project at /tmp/stm-api-proj-1 should match any cwd inside it
+  const m = await call(store, "GET", "/api/projects/match?cwd=" + encodeURIComponent("/tmp/stm-api-proj-1/sub/dir"));
+  expect(m.status).toBe(200);
+  expect(m.data.project).not.toBeNull();
+  expect(m.data.project.path).toBe("/tmp/stm-api-proj-1");
+  // And the cwd field is normalized
+  expect(typeof m.data.cwd).toBe("string");
+  expect(m.data.cwd.length).toBeGreaterThan(0);
+});
+
+test("GET /api/projects/match returns null project for an unrelated path", async () => {
+  const m = await call(store, "GET", "/api/projects/match?cwd=/elsewhere/unmatched");
+  expect(m.status).toBe(200);
+  expect(m.data.project).toBeNull();
+  expect(m.data.cwd).toBe("/elsewhere/unmatched");
+});
+
+test("GET /api/projects/match with empty cwd returns project:null without crashing", async () => {
+  const m = await call(store, "GET", "/api/projects/match?cwd=");
+  expect(m.status).toBe(200);
+  expect(m.data.project).toBeNull();
+  expect(m.data.cwd).toBe("");
+});
+
+test("DELETE /api/projects/:id removes the project", async () => {
+  const list = await call(store, "GET", "/api/projects");
+  const p = list.data.projects[0];
+  const r = await call(store, "DELETE", `/api/projects/${p.id}`);
+  expect(r.status).toBe(200);
+  expect(r.data.ok).toBe(true);
+  const after = await call(store, "GET", "/api/projects");
+  expect(after.data.projects).toHaveLength(0);
+  const gone = await call(store, "DELETE", `/api/projects/${p.id}`);
+  expect(gone.status).toBe(404);
 });

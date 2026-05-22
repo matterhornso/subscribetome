@@ -138,6 +138,82 @@ export function dashboardHTML(): string {
   }
   .card.flash { animation:stm-flash 1.5s ease-out; }
 
+  /* ---- session signal (?from=<cwd>) ---- */
+  .session-signal {
+    margin-bottom:calc(var(--space)*4);
+    padding:calc(var(--space)*3) calc(var(--space)*4);
+    background:rgba(52,211,154,.05); border:1px solid rgba(52,211,154,.25);
+    border-radius:var(--r-md); font-size:13px; color:var(--text);
+    display:flex; align-items:center; gap:calc(var(--space)*3); flex-wrap:wrap;
+  }
+  .session-signal.unmatched {
+    background:var(--ink-850); border-color:var(--border);
+    color:var(--text-dim);
+  }
+  .session-signal code {
+    color:var(--text); background:rgba(255,255,255,.05);
+    padding:1px 6px; border-radius:4px; font-size:12px;
+  }
+  .session-signal .pill {
+    margin-left:auto;
+  }
+
+  /* ---- projects card (Phase 2) ---- */
+  .proj-row {
+    border:1px solid var(--border); border-radius:var(--r-md);
+    padding:calc(var(--space)*4); margin-bottom:calc(var(--space)*3);
+    background:var(--ink-850);
+  }
+  .proj-row .head {
+    display:flex; align-items:baseline; gap:calc(var(--space)*3);
+    flex-wrap:wrap; margin-bottom:calc(var(--space)*2);
+  }
+  .proj-row .head .name {
+    font-size:14px; font-weight:600; color:var(--text);
+  }
+  .proj-row .head .path {
+    font-family:var(--mono,ui-monospace,monospace); font-size:12px;
+    color:var(--text-dim);
+  }
+  .proj-row .head .controls { margin-left:auto; display:flex; gap:8px; }
+  .proj-pills {
+    display:flex; flex-wrap:wrap; gap:6px; margin-top:6px;
+  }
+  .proj-pills code.copy {
+    background:rgba(255,255,255,.04); border:1px solid var(--border);
+    padding:3px 8px; font-size:12px;
+  }
+  .proj-pills .empty {
+    font-size:12.5px; color:var(--text-dim); font-style:italic;
+  }
+  .proj-enforce {
+    display:inline-flex; align-items:center; gap:6px;
+    font-size:12px; color:var(--text-dim);
+  }
+  .proj-enforce input { accent-color:var(--emerald-400); }
+  .proj-edit {
+    margin-top:calc(var(--space)*3); padding-top:calc(var(--space)*3);
+    border-top:1px solid var(--border);
+  }
+  .proj-edit .checklist {
+    display:grid; grid-template-columns:repeat(auto-fill,minmax(240px,1fr));
+    gap:6px 12px; margin-top:calc(var(--space)*2);
+  }
+  .proj-edit .checklist label {
+    display:flex; align-items:center; gap:8px;
+    font-size:12.5px; color:var(--text); cursor:pointer;
+    padding:4px 6px; border-radius:6px;
+  }
+  .proj-edit .checklist label:hover { background:rgba(255,255,255,.03); }
+  .proj-edit .checklist input { accent-color:var(--emerald-400); }
+  .proj-add {
+    display:grid; grid-template-columns:2fr 2fr auto; gap:calc(var(--space)*3);
+    align-items:end; margin-top:calc(var(--space)*3);
+  }
+  @media (max-width:640px) {
+    .proj-add { grid-template-columns:1fr; }
+  }
+
   /* ---- forms ---- */
   .grid { display:grid; gap:calc(var(--space)*4); }
   .grid.cols-2 { grid-template-columns:1fr 1fr; }
@@ -336,6 +412,8 @@ export function dashboardHTML(): string {
 </header>
 
 <main>
+  <div id="session-signal" class="session-signal" style="display:none"></div>
+
   <section id="browse-services" class="card">
     <div class="card-head">
       <h2>Browse services</h2>
@@ -389,6 +467,29 @@ export function dashboardHTML(): string {
         <tbody id="tools"></tbody>
       </table>
     </div>
+  </section>
+
+  <section id="projects-card" class="card">
+    <div class="card-head">
+      <h2>Projects</h2>
+      <span class="meta">Per-project key scope · longest-prefix cwd match</span>
+    </div>
+    <p class="note" style="margin-top:0;padding-top:0;border-top:0">
+      Register a project (path + name), then pick which keys are in
+      scope. SessionStart will tell only those keys to Claude Code when
+      a session opens inside that path. Flip <b>Enforce</b> on to make
+      PreToolUse refuse out-of-scope substitutions.
+    </p>
+    <div id="projects-list"></div>
+    <div class="sub-head">Add a project</div>
+    <div class="proj-add">
+      <div class="field"><label for="proj-path">Path</label>
+        <input id="proj-path" class="mono" placeholder="~/code/acme-app" autocomplete="off" spellcheck="false"></div>
+      <div class="field"><label for="proj-name">Name</label>
+        <input id="proj-name" placeholder="Acme App" autocomplete="off"></div>
+      <button class="btn-primary" id="proj-add-btn">Add</button>
+    </div>
+    <div id="proj-msg" class="msg"></div>
   </section>
 
   <section class="card">
@@ -557,6 +658,9 @@ async function refresh(){
   refreshAudit().catch(function(e){
     el("audit-meta").textContent="Failed to load audit log: "+e.message;
   });
+  refreshProjects().catch(function(e){
+    setMsg("proj-msg","Failed to load projects: "+e.message,"err");
+  });
 }
 
 function fmtTs(iso){
@@ -671,6 +775,180 @@ async function removePolicy(id){
     toast("Rule #"+id+" removed");
     refreshPolicies();
   }catch(e){setMsg("policy-msg",e.message,"err");}
+}
+
+// ---- projects (Phase 2 of session-and-project-scope) -------------------
+
+/**
+ * Cache the last-rendered projects list so toggling an enforce switch or
+ * removing a scope pill can update one row without a full refetch.
+ * Editing-state lives here too: the id of the project whose checklist
+ * is currently expanded, or null.
+ */
+var lastProjects = [];
+var editingProject = null;
+
+async function refreshProjects(){
+  var r=await api("/api/projects");
+  lastProjects=r.projects||[];
+  renderProjects(lastProjects);
+}
+
+function renderProjects(projects){
+  var box=el("projects-list"); if(!box)return;
+  if(!projects.length){
+    box.innerHTML='<div class="note" style="margin:0;padding:0;border-top:0">'
+      +'No projects registered. Add one below — its path matches your '
+      +"session's <code>cwd</code> by longest prefix."
+      +'</div>';
+    return;
+  }
+  // Catalog of every (tool,label) the user has stored. Drives the checklist
+  // in the edit panel. Active keys only — a revoked key shouldn't appear.
+  var allKeys=lastInv?lastInv.keys.filter(function(k){return k.status==="active";}):[];
+  var html="";
+  for(var i=0;i<projects.length;i++){
+    var p=projects[i];
+    var pills="";
+    if(p.scope.length===0){
+      pills='<span class="empty">no keys scoped yet</span>';
+    } else {
+      pills=p.scope.map(function(s){
+        return '<code class="copy" data-ph="'+esc(s.placeholder)+'">'+esc(s.placeholder)+'</code>';
+      }).join("");
+    }
+    html+='<div class="proj-row" data-id="'+p.id+'">';
+    html+='<div class="head">';
+    html+='<span class="name">'+esc(p.name)+'</span>';
+    html+='<span class="path">'+esc(p.path)+'</span>';
+    html+='<span class="controls">';
+    html+='<label class="proj-enforce" title="When ON, PreToolUse denies any out-of-scope substitution in this project">'
+      +'<input type="checkbox" class="enf" data-id="'+p.id+'"'+(p.enforce_scope===1?' checked':'')+'>'
+      +'Enforce</label>';
+    html+='<button class="btn-ghost proj-edit-btn" data-id="'+p.id+'">'
+      +(editingProject===p.id?'Done':'Edit scope')+'</button>';
+    html+='<button class="btn-ghost proj-remove-btn" data-id="'+p.id+'" '
+      +'style="color:var(--danger);border-color:var(--danger)">Remove</button>';
+    html+='</span></div>';
+    html+='<div class="proj-pills">'+pills+'</div>';
+    if(editingProject===p.id){
+      html+='<div class="proj-edit">';
+      html+='<div class="sub-head" style="margin:0">In-scope keys</div>';
+      if(allKeys.length===0){
+        html+='<p class="note" style="margin:8px 0 0;padding:0;border-top:0">'
+          +'No keys stored yet. Add one in the Add keys card above, then come back.</p>';
+      } else {
+        var inScope={};
+        for(var s=0;s<p.scope.length;s++){
+          inScope[p.scope[s].tool+":"+p.scope[s].label]=true;
+        }
+        html+='<div class="checklist">';
+        for(var j=0;j<allKeys.length;j++){
+          var k=allKeys[j];
+          var addr=k.tool+":"+k.label;
+          var checked=inScope[addr]?' checked':'';
+          html+='<label><input type="checkbox" class="scope-toggle" data-id="'+p.id+'"'
+            +' data-tool="'+esc(k.tool)+'" data-label="'+esc(k.label)+'"'+checked+'>'
+            +esc(k.placeholder)+'</label>';
+        }
+        html+='</div>';
+      }
+      html+='</div>';
+    }
+    html+='</div>';
+  }
+  box.innerHTML=html;
+}
+
+async function addProject(){
+  var btn=el("proj-add-btn"); btn.disabled=true;
+  try{
+    var p=val("proj-path"), n=val("proj-name");
+    if(!p||!n)throw new Error("Path and name are both required.");
+    await api("/api/projects",{method:"POST",body:JSON.stringify({path:p,name:n})});
+    el("proj-path").value=""; el("proj-name").value="";
+    setMsg("proj-msg","Project added.","ok");
+    refreshProjects();
+  }catch(e){setMsg("proj-msg",e.message,"err");}
+  finally{btn.disabled=false;}
+}
+
+async function removeProjectRow(id){
+  try{
+    await api("/api/projects/"+encodeURIComponent(id),{method:"DELETE"});
+    if(editingProject===id)editingProject=null;
+    toast("Project removed");
+    refreshProjects();
+  }catch(e){setMsg("proj-msg",e.message,"err");}
+}
+
+async function toggleEnforce(id,on){
+  try{
+    await api("/api/projects/"+encodeURIComponent(id)+"/enforce",
+      {method:"POST",body:JSON.stringify({on:on})});
+    toast(on?"Enforcement ON":"Enforcement OFF");
+    refreshProjects();
+  }catch(e){setMsg("proj-msg",e.message,"err"); refreshProjects();}
+}
+
+async function toggleScope(id,tool,label,on){
+  try{
+    await api("/api/projects/"+encodeURIComponent(id)+"/scope",
+      {method:on?"POST":"DELETE",
+       body:JSON.stringify({tool:tool,label:label})});
+    refreshProjects();
+  }catch(e){setMsg("proj-msg",e.message,"err"); refreshProjects();}
+}
+
+/**
+ * Resolve ?from=<cwd> from the URL and render the session signal at the
+ * top of the dashboard. When the cwd maps to a registered project, the
+ * signal links to that project's row; otherwise it offers a "Create
+ * project from this path" affordance.
+ */
+async function renderSessionSignal(){
+  var box=el("session-signal"); if(!box)return;
+  var from=new URLSearchParams(location.search).get("from");
+  if(!from){ box.style.display="none"; return; }
+  try{
+    var r=await api("/api/projects/match?cwd="+encodeURIComponent(from));
+    if(r.project){
+      box.className="session-signal";
+      var n=r.project.scope.length;
+      box.innerHTML='Session in <b>'+esc(r.project.name)+'</b> · '
+        +n+' key'+(n===1?'':'s')+' in scope · '
+        +'<code>'+esc(r.project.path)+'</code>'
+        +'<button class="btn-ghost pill" data-pid="'+r.project.id+'" id="signal-edit-btn">Edit scope</button>';
+    } else {
+      box.className="session-signal unmatched";
+      box.innerHTML='Session in <code>'+esc(r.cwd||from)+'</code> · no project matches this path · '
+        +'<button class="btn-primary pill" id="signal-create-btn" data-cwd="'+esc(r.cwd||from)+'">'
+        +'Create project from this path</button>';
+    }
+    box.style.display="";
+  }catch(e){
+    /* signal is best-effort — hide silently on error so it never blocks the dashboard */
+    box.style.display="none";
+  }
+}
+
+/**
+ * "Create project from this path" — prefills the Add-project form with
+ * the cwd and a name derived from the last path segment, then scrolls
+ * and flashes the Projects card so the user can confirm + tweak before
+ * submitting.
+ */
+function prefillProjectFromCwd(cwd){
+  var name=cwd.replace(/\\/+$/,"").split("/").filter(Boolean).pop() || cwd;
+  el("proj-path").value=cwd;
+  el("proj-name").value=name;
+  var card=el("projects-card");
+  if(card){
+    card.scrollIntoView({behavior:"smooth",block:"start"});
+    flashCard("projects-card");
+  }
+  el("proj-name").focus();
+  el("proj-name").select();
 }
 
 async function testPolicy(){
@@ -1057,7 +1335,73 @@ el("svc-categories").addEventListener("click",function(e){
   var idx=Number(t.getAttribute("data-idx"));
   if(Number.isFinite(idx))pickService(idx);
 });
-refresh().catch(function(e){setMsg("add-msg","Failed to load: "+e.message,"err");});
+
+// ---- projects card wiring ----
+el("proj-add-btn").addEventListener("click",addProject);
+el("proj-name").addEventListener("keydown",function(e){
+  if(e.key==="Enter"){ e.preventDefault(); addProject(); }
+});
+el("projects-list").addEventListener("click",function(e){
+  // Copy a scope placeholder pill
+  var c=e.target.closest(".proj-pills code.copy");
+  if(c){ copyText(c.dataset.ph); return; }
+  // Edit / Done toggle
+  var edBtn=e.target.closest(".proj-edit-btn");
+  if(edBtn){
+    var id=Number(edBtn.getAttribute("data-id"));
+    editingProject=(editingProject===id)?null:id;
+    renderProjects(lastProjects);
+    return;
+  }
+  // Remove
+  var rmBtn=e.target.closest(".proj-remove-btn");
+  if(rmBtn){
+    if(confirm("Remove this project? Scope rows are dropped (keys are kept).")){
+      removeProjectRow(Number(rmBtn.getAttribute("data-id")));
+    }
+    return;
+  }
+});
+el("projects-list").addEventListener("change",function(e){
+  // Enforce checkbox
+  var enf=e.target.closest("input.enf");
+  if(enf){
+    toggleEnforce(Number(enf.getAttribute("data-id")), enf.checked);
+    return;
+  }
+  // Scope checklist toggle
+  var sc=e.target.closest("input.scope-toggle");
+  if(sc){
+    toggleScope(
+      Number(sc.getAttribute("data-id")),
+      sc.getAttribute("data-tool"),
+      sc.getAttribute("data-label"),
+      sc.checked,
+    );
+    return;
+  }
+});
+
+// ---- session signal wiring (?from=<cwd>) ----
+document.addEventListener("click",function(e){
+  var ed=e.target.closest("#signal-edit-btn");
+  if(ed){
+    editingProject=Number(ed.getAttribute("data-pid"));
+    renderProjects(lastProjects);
+    var card=el("projects-card");
+    if(card){
+      card.scrollIntoView({behavior:"smooth",block:"start"});
+      flashCard("projects-card");
+    }
+    return;
+  }
+  var cr=e.target.closest("#signal-create-btn");
+  if(cr){ prefillProjectFromCwd(cr.getAttribute("data-cwd")); return; }
+});
+
+refresh()
+  .then(function(){ return renderSessionSignal(); })
+  .catch(function(e){setMsg("add-msg","Failed to load: "+e.message,"err");});
 </script>
 </body>
 </html>`;

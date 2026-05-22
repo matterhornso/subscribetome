@@ -3,6 +3,66 @@
 All notable changes to subscribetome. This project is pre-1.0; minor versions
 may still change behaviour. Format follows [Keep a Changelog](https://keepachangelog.com).
 
+## [0.2.7] — 2026-05-22
+
+### Added
+- **Dashboard Projects card (`specs/session-and-project-scope.md`
+  Phase 2)** — a new card under "API keys" lists every registered
+  project as a row showing:
+    - Name + canonical path
+    - The in-scope `(tool, label)` pairs as click-to-copy placeholder
+      pills (same UX as the API keys table)
+    - An **Enforce** checkbox that toggles `enforce_scope` (was already
+      wired into PreToolUse by v0.2.5; now toggle-able from the UI)
+    - **Edit scope** → expands a checklist of every active key the
+      user has stored; tick/untick to add/remove from this project's
+      scope. Each toggle hits the API immediately — no save button.
+    - **Remove** (with a confirm prompt).
+  Below the list, an inline "Add a project" form (path + name).
+- **Session signal (`?from=<cwd>`)** — when `stm dashboard` opens the
+  browser it now appends `?from=<encoded cwd>` to the URL. The
+  dashboard parses that, calls a new
+  `GET /api/projects/match?cwd=` endpoint, and renders a small
+  emerald-tinted banner at the top:
+    - Matched project →
+      "Session in **<name>** · N keys in scope · `<path>`" + an
+      **Edit scope** button that expands that project's row.
+    - No match →
+      "Session in `<cwd>` · no project matches this path" + a
+      **Create project from this path** button that pre-fills the
+      Add-project form with the cwd and the last-segment name,
+      scrolls + flashes the Projects card, and focuses the name
+      field so the user can confirm.
+- New daemon endpoints (auth + Host/Origin allowlist applies):
+    - `GET /api/projects` — list + scope + enforce flag for every
+      project, one fetch.
+    - `POST /api/projects` — add (`{path, name}`).
+    - `PATCH /api/projects/:id` — rename (`{name}`).
+    - `DELETE /api/projects/:id` — drop project + cascade scope.
+    - `POST /api/projects/:id/scope` — add `{tool, label}` to scope.
+    - `DELETE /api/projects/:id/scope` — remove `{tool, label}` from
+      scope.
+    - `GET /api/projects/match?cwd=` — longest-prefix lookup; returns
+      `{project, cwd}` with `cwd` normalized through the same path
+      canonicalization the store applies on writes (so the round-trip
+      via "Create project from this path" is idempotent).
+
+### Changed
+- `stm dashboard` (`openDashboard` in `daemon.ts`) now appends
+  `&from=<encodeURIComponent(process.cwd())>` to the URL it `open`s.
+  The token-bearing URL still never goes to stdout; the `?from` value
+  is the same `cwd` the agent itself has, so it's nothing
+  conversation-sensitive.
+
+### Notes
+- This release closes Phase 2 of `specs/session-and-project-scope.md`.
+  Phase 3 (the `stm import` auto-suggest "create a scope from these
+  imported keys" flow) is the last remaining piece of that spec.
+- Default behaviour for users without any registered projects is
+  unchanged: the session signal hides itself when no project matches
+  AND the URL has no `?from`, and the Projects card just shows the
+  empty-state nudge.
+
 ## [0.2.6] — 2026-05-22
 
 ### Added
@@ -317,6 +377,7 @@ may still change behaviour. Format follows [Keep a Changelog](https://keepachang
   `PostToolUse` (flags a key leaked into output).
 - The `stm` CLI, the localhost dashboard daemon, and `.env` import.
 
+[0.2.7]: https://github.com/matterhornso/subscribetome/releases/tag/v0.2.7
 [0.2.6]: https://github.com/matterhornso/subscribetome/releases/tag/v0.2.6
 [0.2.5]: https://github.com/matterhornso/subscribetome/releases/tag/v0.2.5
 [0.2.4]: https://github.com/matterhornso/subscribetome/releases/tag/v0.2.4
