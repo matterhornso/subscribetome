@@ -23,12 +23,19 @@ Three other hooks back this up:
 - `SessionStart` teaches every new Claude Code session how to use stm-managed
   keys, with no per-project setup.
 
-The dashboard ships with 36 services pre-configured (OpenAI, Anthropic,
+The dashboard ships with 50 services pre-configured (OpenAI, Anthropic,
 Google Gemini, Groq, Mistral, OpenRouter, fal.ai, Replicate, ElevenLabs,
-Supabase, Neon, MongoDB Atlas, Upstash Redis, Firebase, Vercel, Netlify,
-Railway, Cloudflare, AWS, Clerk, Auth0, Stripe, Resend, SendGrid, Twilio,
-Slack, Telegram, Discord, Twitter/X, Tavily, Firecrawl, Exa, Parallel Web
-Systems, Sentry, PostHog, GitHub) plus custom fields for anything else.
+Supabase, Neon, MongoDB Atlas, Upstash Redis, Firebase, PlanetScale,
+Vercel, Netlify, Railway, Cloudflare, AWS, Fly.io, DigitalOcean, Clerk,
+Auth0, Stripe, Lemon Squeezy, Paddle, Resend, SendGrid, Postmark, Brevo,
+Mailgun, Twilio, Slack, Telegram, Discord, Twitter/X, Typefully, Postiz,
+Apollo, Clay, Tavily, Firecrawl, Exa, Parallel Web Systems, Sentry,
+PostHog, GitHub, Linear, Notion) plus custom fields for anything else.
+A "Browse services" card on the dashboard groups them by category
+(AI, database, hosting, auth, payments, email, comms, social, sales,
+search, monitoring, dev-tools) so a new user can discover what they
+can wire up; clicking a tile opens that provider's API-keys page in a
+new tab and pre-arms the Add keys form below.
 
 The project is MIT-licensed, built on Bun, has zero runtime dependencies, and
 runs entirely on the user's own machine. No backend. No telemetry. No

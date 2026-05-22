@@ -3,6 +3,55 @@
 All notable changes to subscribetome. This project is pre-1.0; minor versions
 may still change behaviour. Format follows [Keep a Changelog](https://keepachangelog.com).
 
+## [0.2.6] — 2026-05-22
+
+### Added
+- **Service catalog browser (`specs/service-catalog-browser.md` Phases 1–2)** —
+  a discovery surface on the dashboard. New "Browse services" card sits
+  above "Add keys" and lists every catalog entry as a categorized grid of
+  tile buttons. Clicking a tile:
+    1. Opens the provider's API-keys page in a new tab (plain
+       `target="_blank" rel="noopener noreferrer"` — no tracking, no
+       redirect, no UTM).
+    2. Pre-selects that service in the Add keys dropdown so the right
+       credential fields are already rendered when the user comes back.
+    3. Smooth-scrolls the dashboard to the Add keys card and triggers a
+       1.5-second emerald-outline flash so the user's eye finds the form.
+- **Catalog grew from 36 to 50 services.** 14 net-new entries:
+    - **Sales & outreach**: Apollo, Clay
+    - **Social media**: Typefully, Postiz
+    - **Dev tools**: Linear, Notion
+    - **Email**: Brevo, Mailgun, Postmark
+    - **Database**: PlanetScale
+    - **Hosting**: Fly.io, DigitalOcean
+    - **Payments**: Lemon Squeezy, Paddle
+- New `category` and `url` fields on every `ServiceDef`. `category` is a
+  closed `ServiceCategory` union (12 buckets — AI, database, hosting,
+  auth, payments, email, comms, social, sales, search, monitoring, vcs).
+  `url` is the provider's API-keys settings page (HEAD-checked at build
+  time; signup root substituted with a `// FIXME` comment for any 404).
+- New exports `CATEGORY_LABEL` (display names) and `CATEGORY_ORDER`
+  (render order) drive the dashboard browser without baking strings into
+  the HTML template.
+
+### Changed
+- Landing page `description` and trust strip now read **"50 services
+  pre-configured"** (was 36). `docs/llms.txt` paragraph updated with the
+  full provider list and a note about the browser card. JSON-LD
+  `softwareVersion` bumped to 0.2.6.
+
+### Notes
+- No outbound network calls at runtime. Provider URLs are bundled into
+  the catalog at build time; the dashboard never fetches anything from a
+  provider. Matches the project's no-backend / no-phone-home posture.
+- No tracking on outbound clicks. Plain `noopener noreferrer` so the
+  provider sees a direct visit and `subscribetome.pro` never sees the
+  hop.
+- The existing Service dropdown stays exactly as before — power users
+  who already know what they want skip the browser entirely. The
+  browser is additive discovery.
+- Phase 3 (search box + keyboard navigation) is deferred to v2.
+
 ## [0.2.5] — 2026-05-22
 
 ### Added
@@ -268,6 +317,7 @@ may still change behaviour. Format follows [Keep a Changelog](https://keepachang
   `PostToolUse` (flags a key leaked into output).
 - The `stm` CLI, the localhost dashboard daemon, and `.env` import.
 
+[0.2.6]: https://github.com/matterhornso/subscribetome/releases/tag/v0.2.6
 [0.2.5]: https://github.com/matterhornso/subscribetome/releases/tag/v0.2.5
 [0.2.4]: https://github.com/matterhornso/subscribetome/releases/tag/v0.2.4
 [0.2.3]: https://github.com/matterhornso/subscribetome/releases/tag/v0.2.3

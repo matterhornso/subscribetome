@@ -8,7 +8,7 @@ This index is the source of truth — when a new spec lands, add a row
 to the table below and a short summary in §1, then update statuses
 here as features ship.
 
-Last updated: **2026-05-22** (command-policy Phase 3 landed in v0.2.5 — `when.project` predicate + per-project `enforce_scope` toggle; closes session-and-project-scope §7).
+Last updated: **2026-05-22** (service-catalog-browser shipped in v0.2.6 — catalog grew 36 → 50 with category + url fields on every entry; dashboard now has a categorized "Browse services" card with click-to-open + prefill UX).
 
 ## 1. Index of specs
 
@@ -19,7 +19,7 @@ Last updated: **2026-05-22** (command-policy Phase 3 landed in v0.2.5 — `when.
 | 03 | [`session-and-project-scope.md`](./session-and-project-scope.md) | v0.3 | **Phase 1 shipped** (v0.2.4) · §7 enforcement shipped via `command-policy` Phase 3 (v0.2.5) · Phase 2 (dashboard view) pending | ~230 |
 | 04 | [`command-policy.md`](./command-policy.md) | v0.4 | **All four phases shipped** (v0.2.5) | ~230 |
 | 05 | [`audit-log.md`](./audit-log.md) | v0.3 | **All four phases shipped** (v0.2.3) | ~200 |
-| 06 | [`service-catalog-browser.md`](./service-catalog-browser.md) | v0.3 | Draft | ~280 |
+| 06 | [`service-catalog-browser.md`](./service-catalog-browser.md) | v0.3 | **Phases 1–2 shipped** (v0.2.6) · Phase 3 (search/typeahead) deferred | ~280 |
 
 ## 2. What each spec covers (one paragraph each)
 
@@ -148,8 +148,8 @@ Reading the graph:
    integration.~~ **Shipped v0.2.4.**
 3. ~~**`command-policy.md` Phase 3** — the `when.project` predicate +
    per-project `enforce_scope` toggle.~~ **Shipped v0.2.5.**
-4. **`service-catalog-browser.md`** — discovery surface on the
-   dashboard. Next.
+4. ~~**`service-catalog-browser.md`** — discovery surface on the
+   dashboard.~~ **Shipped v0.2.6.**
 5. **`session-and-project-scope.md`** Phase 2 — dashboard Projects
    view + `?from=<cwd>` integration.
 6. **`spend-visibility.md`** — the "second product." Worth its own

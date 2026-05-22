@@ -1,6 +1,6 @@
 # Spec — Service catalog browser
 
-**Status:** Draft · **Target:** v0.3 · **Last updated:** 2026-05-22
+**Status:** Phases 1–2 shipped (v0.2.6) · Phase 3 deferred · **Target:** v0.3 · **Last updated:** 2026-05-22
 
 > "List all the common platforms that people use with Claude Code on a
 > separate section, grouped by category. Click a service → open its API-key
@@ -224,8 +224,8 @@ browser card hides itself rather than rendering an empty shell.
 
 | Phase | What lands | Status |
 |---|---|---|
-| **1.** Catalog schema + 14 new entries + categories on existing 36 + URLs on all 50. Unit tests confirm every entry has a `category`, a `url`, and a credentials list. | This spec build | pending |
-| **2.** Dashboard "Browse services" card with the click-open-and-prefill UX. CSS, JS, smooth-scroll, flash pulse. | This spec build | pending |
+| **1.** Catalog schema + 14 new entries + categories on existing 36 + URLs on all 50. Unit tests confirm every entry has a `category`, a `url`, and a credentials list. | v0.2.6 (2026-05-22) | **shipped** |
+| **2.** Dashboard "Browse services" card with the click-open-and-prefill UX. CSS, JS, smooth-scroll, flash pulse. | v0.2.6 (2026-05-22) | **shipped** |
 | **3.** Search box (typeahead) and keyboard navigation. Deferred until usage shows category browsing isn't enough. | v2 | deferred |
 
 ## 8. Hard rules

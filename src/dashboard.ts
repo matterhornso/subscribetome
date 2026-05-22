@@ -8,7 +8,7 @@
 // type scales. Client JS uses string concatenation (no template literals) to
 // keep this server-side template literal free of escaping hazards.
 
-import { CATALOG } from "./catalog.ts";
+import { CATALOG, CATEGORY_LABEL, CATEGORY_ORDER } from "./catalog.ts";
 
 export function dashboardHTML(): string {
   return `<!doctype html>
@@ -102,6 +102,41 @@ export function dashboardHTML(): string {
     font-size:11px; font-weight:600; letter-spacing:1.4px; text-transform:uppercase;
     color:var(--text-muted); margin:calc(var(--space)*7) 0 calc(var(--space)*4);
   }
+
+  /* ---- browse services (catalog browser, v0.2.6) ---- */
+  .browse-intro {
+    font-size:13px; color:var(--text-dim); margin-bottom:calc(var(--space)*4);
+    max-width:62ch;
+  }
+  .svc-grid {
+    display:grid; grid-template-columns:repeat(auto-fill,minmax(140px,1fr));
+    gap:calc(var(--space)*3);
+  }
+  .svc-tile {
+    display:flex; align-items:center; justify-content:space-between;
+    gap:calc(var(--space)*2);
+    background:var(--ink-850); border:1px solid var(--border);
+    border-radius:var(--r-md); padding:calc(var(--space)*3) calc(var(--space)*4);
+    color:var(--text); font-size:13px; font-weight:500;
+    cursor:pointer; user-select:none; text-align:left;
+    transition:border-color 120ms ease, background 120ms ease, transform 120ms ease;
+    font-family:inherit;
+  }
+  .svc-tile:hover {
+    border-color:var(--emerald-400); background:rgba(52,211,154,.06);
+    transform:translateY(-1px);
+  }
+  .svc-tile:focus-visible {
+    outline:2px solid var(--emerald-400); outline-offset:2px;
+  }
+  .svc-tile .ext { color:var(--text-muted); font-size:12px; }
+  .svc-tile:hover .ext { color:var(--emerald-300); }
+  @keyframes stm-flash {
+    0%   { box-shadow:0 0 0 0 rgba(52,211,154,.0), inset 0 0 0 1px var(--border); }
+    20%  { box-shadow:0 0 0 4px rgba(52,211,154,.35), inset 0 0 0 1px var(--emerald-400); }
+    100% { box-shadow:0 0 0 0 rgba(52,211,154,.0), inset 0 0 0 1px var(--border); }
+  }
+  .card.flash { animation:stm-flash 1.5s ease-out; }
 
   /* ---- forms ---- */
   .grid { display:grid; gap:calc(var(--space)*4); }
@@ -301,7 +336,20 @@ export function dashboardHTML(): string {
 </header>
 
 <main>
-  <section class="card">
+  <section id="browse-services" class="card">
+    <div class="card-head">
+      <h2>Browse services</h2>
+      <span class="meta">50 pre-configured · click to open API-keys page</span>
+    </div>
+    <p class="browse-intro">
+      Pick what you want to wire up. Each tile opens the provider's
+      API-keys page in a new tab and pre-arms the Add keys form below —
+      paste the key when you come back.
+    </p>
+    <div id="svc-categories"></div>
+  </section>
+
+  <section id="add-keys-card" class="card">
     <div class="card-head"><h2>Add keys</h2></div>
     <div class="field">
       <label for="svc">Service</label>
@@ -454,6 +502,8 @@ export function dashboardHTML(): string {
 <script>
 var TOKEN = new URLSearchParams(location.search).get("token") || "";
 var CATALOG = ${JSON.stringify(CATALOG)};
+var CATEGORY_LABEL = ${JSON.stringify(CATEGORY_LABEL)};
+var CATEGORY_ORDER = ${JSON.stringify(CATEGORY_ORDER)};
 var scanned = [];
 var lastInv = null;
 var editingTool = null;
@@ -748,6 +798,76 @@ function initSvc(){
   renderSvcFields();
 }
 
+/**
+ * Render the "Browse services" card: each category as a section with a
+ * grid of tile buttons. The tile button carries data-idx so the click
+ * handler can index into CATALOG without parsing names.
+ */
+function renderBrowseServices(){
+  var box=el("svc-categories"); if(!box)return;
+  // Bucket every catalog entry by its category, preserving CATALOG order.
+  var buckets={};
+  for(var i=0;i<CATALOG.length;i++){
+    var s=CATALOG[i]; var c=s.category||"";
+    if(!buckets[c])buckets[c]=[];
+    buckets[c].push({idx:i,svc:s});
+  }
+  var html="";
+  for(var k=0;k<CATEGORY_ORDER.length;k++){
+    var cat=CATEGORY_ORDER[k];
+    var rows=buckets[cat];
+    if(!rows||!rows.length)continue;
+    html+='<div class="sub-head">'+esc(CATEGORY_LABEL[cat]||cat)+'</div>';
+    html+='<div class="svc-grid">';
+    for(var r=0;r<rows.length;r++){
+      var entry=rows[r];
+      var title=entry.svc.tagline?' title="'+esc(entry.svc.tagline)+'"':'';
+      html+='<button type="button" class="svc-tile" data-idx="'+entry.idx+'"'+title+'>'
+        +'<span>'+esc(entry.svc.name)+'</span>'
+        +'<span class="ext" aria-hidden="true">\\u2197</span>'
+        +'</button>';
+    }
+    html+='</div>';
+  }
+  box.innerHTML=html;
+}
+
+/**
+ * Add a brief emerald pulse to a card so the user's eye finds the form
+ * when they switch tabs back from the provider's API-keys page.
+ */
+function flashCard(id){
+  var c=el(id); if(!c)return;
+  c.classList.remove("flash");
+  // Force reflow so re-adding the class restarts the animation.
+  void c.offsetWidth;
+  c.classList.add("flash");
+}
+
+/**
+ * Click handler for a Browse-services tile. Opens the provider's URL in
+ * a new tab (no referrer, no opener), pre-selects that service in the
+ * Add keys dropdown, smooth-scrolls to the form, and flashes the card so
+ * the user's eye lands in the right place on tab-back.
+ *
+ * No tracking. Plain target="_blank" rel="noopener noreferrer" — the
+ * user goes straight to the provider; subscribetome.pro never sees the
+ * click.
+ */
+function pickService(catalogIndex){
+  var svc=CATALOG[catalogIndex]; if(!svc)return;
+  if(svc.url){
+    window.open(svc.url, "_blank", "noopener,noreferrer");
+  }
+  var sel=el("svc"); if(sel){ sel.value=String(catalogIndex); }
+  renderSvcFields();
+  var card=el("add-keys-card");
+  if(card){
+    card.scrollIntoView({behavior:"smooth", block:"start"});
+    flashCard("add-keys-card");
+  }
+}
+
 function renderSvcFields(){
   var v=el("svc").value, box=el("svc-fields");
   if(v==="other"){
@@ -931,6 +1051,12 @@ document.addEventListener("click",function(e){
   if(c)copyText(c.dataset.ph);
 });
 initSvc();
+renderBrowseServices();
+el("svc-categories").addEventListener("click",function(e){
+  var t=e.target.closest(".svc-tile"); if(!t)return;
+  var idx=Number(t.getAttribute("data-idx"));
+  if(Number.isFinite(idx))pickService(idx);
+});
 refresh().catch(function(e){setMsg("add-msg","Failed to load: "+e.message,"err");});
 </script>
 </body>
