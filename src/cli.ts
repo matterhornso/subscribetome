@@ -347,6 +347,246 @@ function policyTestCmd(args: string[]): void {
   }
 }
 
+// ---- project --------------------------------------------------------------
+
+function projectHelp(): void {
+  process.stdout.write(
+    `subscribetome — per-project key scope\n\n` +
+      `  stm project add <path> <name>                    register a project\n` +
+      `  stm project list                                 summary of all projects\n` +
+      `  stm project show <path>                          full scope + placeholders\n` +
+      `  stm project scope <path> <tool>:<label>          add a (tool,label) to scope\n` +
+      `  stm project unscope <path> <tool>:<label>        remove one (tool,label)\n` +
+      `  stm project rename <path> <new-name>             change the display name\n` +
+      `  stm project remove <path>                        drop the project + scope\n` +
+      `\nWhen a Claude Code session opens in a path that matches a registered\n` +
+      `project (longest-prefix wins), SessionStart emits scoped guidance — the\n` +
+      `model is told about ONLY that project's keys, not the global inventory.\n` +
+      `Default behaviour for unregistered paths is unchanged.\n`,
+  );
+}
+
+function parseToolLabel(s: string): { tool: string; label: string } {
+  const m = s.match(/^([a-z0-9-]+):([a-z0-9-]+)$/);
+  if (!m) {
+    process.stderr.write(
+      `error: expected <tool>:<label>, got "${s}". Both segments are lowercase a-z, 0-9, hyphen.\n`,
+    );
+    process.exit(1);
+  }
+  return { tool: m[1], label: m[2] };
+}
+
+function projectAddCmd(args: string[]): void {
+  if (args.length < 2) {
+    process.stderr.write("usage: stm project add <path> <name>\n");
+    process.exit(1);
+  }
+  const [path, ...rest] = args;
+  const name = rest.join(" ").trim();
+  const store = new Store();
+  try {
+    const existing = store.getProjectByPath(path);
+    if (existing) {
+      process.stderr.write(
+        `error: a project at "${existing.path}" already exists (id ${existing.id}, name "${existing.name}")\n`,
+      );
+      process.exit(1);
+    }
+    const p = store.addProject({ path, name });
+    process.stdout.write(`added project #${p.id} "${p.name}" at ${p.path}\n`);
+  } catch (e: any) {
+    process.stderr.write(`error: ${e?.message ?? e}\n`);
+    process.exit(1);
+  } finally {
+    store.close();
+  }
+}
+
+function projectListCmd(): void {
+  const store = new Store();
+  try {
+    const projects = store.listProjects();
+    if (projects.length === 0) {
+      process.stdout.write(
+        "No projects.\n  Add one: stm project add <path> <name>\n",
+      );
+      return;
+    }
+    printTable(
+      ["ID", "NAME", "PATH", "IN SCOPE"],
+      projects.map((p) => [
+        String(p.id),
+        p.name,
+        p.path,
+        String(store.projectScope(p.id).length),
+      ]),
+    );
+  } finally {
+    store.close();
+  }
+}
+
+function projectShowCmd(args: string[]): void {
+  const [pathArg] = args;
+  if (!pathArg) {
+    process.stderr.write("usage: stm project show <path>\n");
+    process.exit(1);
+  }
+  const store = new Store();
+  try {
+    const p = store.getProjectByPath(pathArg);
+    if (!p) {
+      process.stderr.write(`no project at "${pathArg}"\n`);
+      process.exit(1);
+    }
+    process.stdout.write(
+      `#${p.id}  ${p.name}\n` +
+        `    path:    ${p.path}\n` +
+        `    added:   ${p.created_at.slice(0, 10)}\n\n` +
+        `  Scope:\n`,
+    );
+    const scope = store.projectScope(p.id);
+    if (scope.length === 0) {
+      process.stdout.write(
+        `    (none) — add with: stm project scope ${p.path} <tool>:<label>\n`,
+      );
+    } else {
+      for (const s of scope) {
+        process.stdout.write(`    ${s.placeholder}\n`);
+      }
+    }
+    process.stdout.write("\n");
+  } finally {
+    store.close();
+  }
+}
+
+function projectScopeCmd(args: string[]): void {
+  const [pathArg, kl] = args;
+  if (!pathArg || !kl) {
+    process.stderr.write("usage: stm project scope <path> <tool>:<label>\n");
+    process.exit(1);
+  }
+  const { tool, label } = parseToolLabel(kl);
+  const store = new Store();
+  try {
+    const p = store.getProjectByPath(pathArg);
+    if (!p) {
+      process.stderr.write(`no project at "${pathArg}"\n`);
+      process.exit(1);
+    }
+    store.addProjectScope(p.id, tool, label);
+    process.stdout.write(`scoped ${tool}:${label} to "${p.name}"\n`);
+  } catch (e: any) {
+    process.stderr.write(`error: ${e?.message ?? e}\n`);
+    process.exit(1);
+  } finally {
+    store.close();
+  }
+}
+
+function projectUnscopeCmd(args: string[]): void {
+  const [pathArg, kl] = args;
+  if (!pathArg || !kl) {
+    process.stderr.write("usage: stm project unscope <path> <tool>:<label>\n");
+    process.exit(1);
+  }
+  const { tool, label } = parseToolLabel(kl);
+  const store = new Store();
+  try {
+    const p = store.getProjectByPath(pathArg);
+    if (!p) {
+      process.stderr.write(`no project at "${pathArg}"\n`);
+      process.exit(1);
+    }
+    const ok = store.removeProjectScope(p.id, tool, label);
+    if (!ok) {
+      process.stderr.write(
+        `${tool}:${label} is not in "${p.name}" scope (nothing to do)\n`,
+      );
+      process.exit(1);
+    }
+    process.stdout.write(`unscoped ${tool}:${label} from "${p.name}"\n`);
+  } finally {
+    store.close();
+  }
+}
+
+function projectRenameCmd(args: string[]): void {
+  const [pathArg, ...rest] = args;
+  const newName = rest.join(" ").trim();
+  if (!pathArg || !newName) {
+    process.stderr.write("usage: stm project rename <path> <new-name>\n");
+    process.exit(1);
+  }
+  const store = new Store();
+  try {
+    const p = store.getProjectByPath(pathArg);
+    if (!p) {
+      process.stderr.write(`no project at "${pathArg}"\n`);
+      process.exit(1);
+    }
+    store.renameProject(p.id, newName);
+    process.stdout.write(`renamed #${p.id} "${p.name}" → "${newName}"\n`);
+  } finally {
+    store.close();
+  }
+}
+
+function projectRemoveCmd(args: string[]): void {
+  const [pathArg] = args;
+  if (!pathArg) {
+    process.stderr.write("usage: stm project remove <path>\n");
+    process.exit(1);
+  }
+  const store = new Store();
+  try {
+    const p = store.getProjectByPath(pathArg);
+    if (!p) {
+      process.stderr.write(`no project at "${pathArg}"\n`);
+      process.exit(1);
+    }
+    store.removeProject(p.id);
+    process.stdout.write(`removed project #${p.id} "${p.name}"\n`);
+  } finally {
+    store.close();
+  }
+}
+
+async function projectCmd(args: string[]): Promise<void> {
+  const [sub, ...rest] = args;
+  switch (sub) {
+    case "add":
+      return projectAddCmd(rest);
+    case "list":
+    case "ls":
+      return projectListCmd();
+    case "show":
+    case "view":
+      return projectShowCmd(rest);
+    case "scope":
+      return projectScopeCmd(rest);
+    case "unscope":
+      return projectUnscopeCmd(rest);
+    case "rename":
+      return projectRenameCmd(rest);
+    case "remove":
+    case "rm":
+    case "delete":
+      return projectRemoveCmd(rest);
+    case undefined:
+    case "help":
+    case "--help":
+    case "-h":
+      return projectHelp();
+    default:
+      process.stderr.write(`stm project: unknown subcommand "${sub}"\n\n`);
+      projectHelp();
+      process.exit(1);
+  }
+}
+
 // ---- audit ----------------------------------------------------------------
 
 const AUDIT_EVENTS = new Set([
@@ -575,6 +815,7 @@ function helpCmd(): void {
       `  stm revoke <tool> <label>       mark a key revoked\n` +
       `  stm policy <list|add|remove|test>  allow/deny rules at PreToolUse\n` +
       `  stm audit [--tail N] [--event] [--tool] [--since]  PreToolUse decision log\n` +
+      `  stm project <add|list|show|scope|unscope|rename|remove>  per-project key scope\n` +
       `  stm import [dir...]             scan .env files for importable keys\n` +
       `  stm dashboard                   open the localhost web dashboard\n` +
       `  stm stop                        stop the dashboard daemon\n` +
@@ -612,6 +853,8 @@ async function main(): Promise<void> {
       return policyCmd(rest);
     case "audit":
       return auditCmd(rest);
+    case "project":
+      return projectCmd(rest);
     case "import": {
       const imp = await import("./import.ts");
       return imp.runImport(rest);

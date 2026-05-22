@@ -430,22 +430,76 @@ const SESSION_GUIDANCE =
   "`/stm:dashboard` slash command — keys are entered out-of-band, never in chat.";
 
 /**
+ * Render the project-scope section that gets appended to SESSION_GUIDANCE
+ * when the session's cwd matches a registered project. Lists ONLY the keys
+ * the user has scoped to this project — the model is told these are the
+ * relevant ones, not the full inventory.
+ *
+ * Adopting project scope is opt-in: when matchProject returns null, this
+ * function isn't called and SessionStart emits the unchanged guidance — no
+ * regression for users who haven't registered any projects.
+ */
+function renderProjectScope(
+  project: { name: string; path: string },
+  scope: { placeholder: string }[],
+): string {
+  const head =
+    `\n\n--- PROJECT SCOPE ---\n` +
+    `This session is in **${project.name}** (${project.path}). ` +
+    `${scope.length === 0 ? "No keys scoped to this project yet — " +
+        "use `stm project scope` to add some, or fall back to `stm list` for the global inventory." :
+      `These ${scope.length} key${scope.length === 1 ? " is" : "s are"} in scope for this project:`}\n`;
+  if (scope.length === 0) return head;
+  return (
+    head +
+    scope.map((s) => `  - ${s.placeholder}`).join("\n") +
+    `\n\nPrefer these placeholders. If the task needs a key not in this list, ` +
+    `run \`stm list\` for the global inventory or tell the user to scope a new one.`
+  );
+}
+
+/**
  * SessionStart hook. Emits stm usage guidance as additive session context.
  * Purely additive — it never blocks. On any error it exits 0 with no output
  * (a missing instruction is harmless; the other hooks still enforce the rules).
+ *
+ * If the session's `cwd` matches a registered project (longest-prefix), the
+ * guidance is appended with the project's scoped key list.
  */
 export async function sessionStart(): Promise<void> {
+  let payload: any = {};
   try {
-    await readStdin(); // drain the payload (unused) so the pipe closes cleanly
+    const text = await readStdin();
+    if (text.trim()) payload = JSON.parse(text);
   } catch {
-    /* ignore */
+    /* unparseable — fall back to no project context */
   }
+
+  const cwd: string =
+    typeof payload?.cwd === "string" && payload.cwd ? payload.cwd : process.cwd();
+
+  let additional = SESSION_GUIDANCE;
+  try {
+    const store = new Store();
+    try {
+      const project = store.matchProject(cwd);
+      if (project) {
+        const scope = store.projectScope(project.id);
+        additional += renderProjectScope(project, scope);
+      }
+    } finally {
+      store.close();
+    }
+  } catch {
+    /* project lookup is best-effort — never fails the hook */
+  }
+
   try {
     process.stdout.write(
       JSON.stringify({
         hookSpecificOutput: {
           hookEventName: "SessionStart",
-          additionalContext: SESSION_GUIDANCE,
+          additionalContext: additional,
         },
       }),
     );

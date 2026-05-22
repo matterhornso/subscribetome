@@ -8,7 +8,7 @@ This index is the source of truth — when a new spec lands, add a row
 to the table below and a short summary in §1, then update statuses
 here as features ship.
 
-Last updated: **2026-05-22**.
+Last updated: **2026-05-22** (session-and-project-scope Phase 1 landed in v0.2.4).
 
 ## 1. Index of specs
 
@@ -16,7 +16,7 @@ Last updated: **2026-05-22**.
 |---|------|--------|--------|------:|
 | 01 | [`cross-platform-and-codex.md`](./cross-platform-and-codex.md) | v2 | Draft | ~280 |
 | 02 | [`spend-visibility.md`](./spend-visibility.md) | v0.2 (post-cross-platform) | Draft | ~160 |
-| 03 | [`session-and-project-scope.md`](./session-and-project-scope.md) | v0.3 | Draft | ~230 |
+| 03 | [`session-and-project-scope.md`](./session-and-project-scope.md) | v0.3 | **Phase 1 shipped** (v0.2.4) · Phases 2–3 pending | ~230 |
 | 04 | [`command-policy.md`](./command-policy.md) | v0.4 | **Phases 1, 2, 4 shipped** · Phase 3 needs `session-and-project-scope` | ~230 |
 | 05 | [`audit-log.md`](./audit-log.md) | v0.3 | **All four phases shipped** (v0.2.3) | ~200 |
 
@@ -128,13 +128,15 @@ Reading the graph:
 
 1. ~~**`audit-log.md`** — small spec, small implementation, closes
    Phase 4 of an already-shipped feature (Command policy).~~ **Shipped v0.2.3.**
-2. **`session-and-project-scope.md`** — biggest user-visible
-   improvement still on the table. Unblocks Command policy Phase 3.
-3. **`command-policy.md` Phase 3** — fold in the project predicate
-   once scope ships.
-4. **`spend-visibility.md`** — the "second product." Worth its own
+2. ~~**`session-and-project-scope.md`** Phase 1 — the CLI + SessionStart
+   integration.~~ **Shipped v0.2.4.**
+3. **`session-and-project-scope.md`** Phase 2 — dashboard Projects
+   view + `?from=<cwd>` integration.
+4. **`command-policy.md` Phase 3** — fold in the project predicate
+   now that scope is in the store.
+5. **`spend-visibility.md`** — the "second product." Worth its own
    launch moment; do not bury inside an unrelated release.
-5. **`cross-platform-and-codex.md`** — biggest scope; do after the
+6. **`cross-platform-and-codex.md`** — biggest scope; do after the
    macOS / Claude Code build feels complete.
 
 ## 5. Authoring conventions

@@ -3,6 +3,42 @@
 All notable changes to subscribetome. This project is pre-1.0; minor versions
 may still change behaviour. Format follows [Keep a Changelog](https://keepachangelog.com).
 
+## [0.2.4] — 2026-05-22
+
+### Added
+- **Per-project key scope (`specs/session-and-project-scope.md` Phase 1)** —
+  multi-session, multi-project users can now register projects and scope
+  specific `(tool, label)` pairs to each one. When a Claude Code session
+  opens in a path that matches a registered project (longest-prefix wins),
+  `SessionStart` appends a "PROJECT SCOPE" section to its guidance listing
+  ONLY that project's keys — the model is told about the relevant
+  placeholders for this work, not the global 30+ inventory.
+- New SQLite tables: `projects (id, path UNIQUE, name, created_at)` and
+  `project_scope (project_id, tool_id, label)` with `ON DELETE CASCADE`
+  on both foreign keys. Path index for fast lookup.
+- New `stm project` CLI subcommand suite:
+    `stm project add <path> <name>`
+    `stm project list`
+    `stm project show <path>`
+    `stm project scope <path> <tool>:<label>`
+    `stm project unscope <path> <tool>:<label>`
+    `stm project rename <path> <new-name>`
+    `stm project remove <path>`
+- Path normalization: `~` expands to home; trailing slashes stripped;
+  `..` / `.` resolved.
+
+### Changed
+- `SessionStart` hook now parses its stdin payload (used to drain and
+  discard) and reads `cwd`. Falls back to `process.cwd()` on malformed
+  input. Behaviour for users without any registered projects is
+  identical to before — adopting scope is opt-in.
+
+### Notes
+- Scope is **guidance only** in this release. The `PreToolUse` hook
+  still substitutes any managed placeholder regardless of project.
+  Enforcement is `command-policy.md` Phase 3 (the `when.project`
+  predicate), now unblocked.
+
 ## [0.2.3] — 2026-05-22
 
 ### Added
@@ -184,6 +220,7 @@ may still change behaviour. Format follows [Keep a Changelog](https://keepachang
   `PostToolUse` (flags a key leaked into output).
 - The `stm` CLI, the localhost dashboard daemon, and `.env` import.
 
+[0.2.4]: https://github.com/matterhornso/subscribetome/releases/tag/v0.2.4
 [0.2.3]: https://github.com/matterhornso/subscribetome/releases/tag/v0.2.3
 [0.2.2]: https://github.com/matterhornso/subscribetome/releases/tag/v0.2.2
 [0.2.1]: https://github.com/matterhornso/subscribetome/releases/tag/v0.2.1

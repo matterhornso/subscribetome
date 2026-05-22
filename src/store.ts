@@ -5,10 +5,27 @@
 // inventory; the keychain is the vault.
 import { Database } from "bun:sqlite";
 import { randomUUID } from "node:crypto";
+import { homedir } from "node:os";
+import { resolve } from "node:path";
 import { DB_PATH, ensureDataDir } from "./paths.ts";
 import { keychainSet, keychainGet, keychainDelete } from "./keychain.ts";
 import { makePlaceholder, normalizeSegment } from "./grammar.ts";
 import type { PolicyAction, PolicyRule } from "./policy.ts";
+
+/**
+ * Canonicalize a project path: expand a leading `~`, then resolve so it is
+ * absolute, with no trailing slash. The trailing-slash rule matters because
+ * `matchProject` does prefix matching on `path + "/"`.
+ */
+export function normalizeProjectPath(p: string): string {
+  let s = p.trim();
+  if (s === "~") s = homedir();
+  else if (s.startsWith("~/")) s = homedir() + s.slice(1);
+  s = resolve(s);
+  // strip any trailing slash except on the root itself ("/")
+  if (s.length > 1 && s.endsWith("/")) s = s.replace(/\/+$/, "");
+  return s;
+}
 
 export interface Tool {
   id: number;
@@ -76,6 +93,19 @@ CREATE TABLE IF NOT EXISTS audit_log (
 );
 CREATE INDEX IF NOT EXISTS audit_log_ts_idx     ON audit_log(ts DESC);
 CREATE INDEX IF NOT EXISTS audit_log_event_idx  ON audit_log(event, ts DESC);
+CREATE TABLE IF NOT EXISTS projects (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  path        TEXT    NOT NULL UNIQUE,
+  name        TEXT    NOT NULL,
+  created_at  TEXT    NOT NULL
+);
+CREATE INDEX IF NOT EXISTS projects_path_idx ON projects(path);
+CREATE TABLE IF NOT EXISTS project_scope (
+  project_id  INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  tool_id     INTEGER NOT NULL REFERENCES tools(id)    ON DELETE CASCADE,
+  label       TEXT    NOT NULL,
+  PRIMARY KEY (project_id, tool_id, label)
+);
 `;
 
 /** Default cap on the audit_log rolling buffer. Overridable via STM_AUDIT_MAX. */
@@ -96,6 +126,22 @@ export type AuditEvent =
   | "policy.warn"
   | "unresolved"
   | "malformed";
+
+export interface Project {
+  id: number;
+  path: string;
+  name: string;
+  created_at: string;
+}
+
+export interface ProjectScopeEntry {
+  /** Tool `name` from the `tools` table. */
+  tool: string;
+  /** The label segment. Together with `tool` it forms a `(tool, label)` address. */
+  label: string;
+  /** Placeholder rendered convenience: `{{stm:tool:label}}`. */
+  placeholder: string;
+}
 
 export interface AuditRow {
   id: number;
@@ -511,5 +557,127 @@ export class Store {
     const c = this.auditCount();
     this.db.exec(`DELETE FROM audit_log`);
     return c;
+  }
+
+  // ---- projects ----------------------------------------------------------
+
+  /**
+   * Register a project: `path` becomes the longest-prefix-match key,
+   * `name` is the human-readable label shown in dashboards and guidance.
+   * Returns the inserted row.
+   */
+  addProject(input: { path: string; name: string }): Project {
+    const path = normalizeProjectPath(input.path);
+    if (!path) throw new Error("project path is empty");
+    const name = input.name.trim();
+    if (!name) throw new Error("project name is empty");
+    this.db
+      .query(
+        `INSERT INTO projects (path, name, created_at) VALUES (?, ?, ?)`,
+      )
+      .run(path, name, new Date().toISOString());
+    return this.getProjectByPath(path)!;
+  }
+
+  getProject(id: number): Project | null {
+    return (this.db
+      .query(`SELECT * FROM projects WHERE id = ?`)
+      .get(id) as Project | null) ?? null;
+  }
+
+  getProjectByPath(path: string): Project | null {
+    return (this.db
+      .query(`SELECT * FROM projects WHERE path = ?`)
+      .get(normalizeProjectPath(path)) as Project | null) ?? null;
+  }
+
+  listProjects(): Project[] {
+    return this.db
+      .query(`SELECT * FROM projects ORDER BY path`)
+      .all() as Project[];
+  }
+
+  /** Update a project's `name` only. Path is immutable; users should remove + re-add. */
+  renameProject(id: number, name: string): boolean {
+    const r = this.db
+      .query(`UPDATE projects SET name = ? WHERE id = ?`)
+      .run(name.trim(), id);
+    return r.changes > 0;
+  }
+
+  removeProject(id: number): boolean {
+    const r = this.db.query(`DELETE FROM projects WHERE id = ?`).run(id);
+    return r.changes > 0;
+  }
+
+  /**
+   * Find the project whose `path` is the LONGEST prefix of `cwd`. A project
+   * registered at `/a/b` matches a session opened in `/a/b` or `/a/b/c`, but
+   * not `/a/bc` — the prefix check is `cwd === path || cwd.startsWith(path + "/")`.
+   * Returns null when no project's path matches.
+   */
+  matchProject(cwd: string): Project | null {
+    const norm = normalizeProjectPath(cwd);
+    // SQLite has no clean way to do "is X a path-prefix of Y", and the row
+    // count will stay small enough that scanning + filtering in JS is the
+    // simpler design. ORDER BY length DESC means the first match is the
+    // longest match.
+    const rows = this.db
+      .query(`SELECT * FROM projects ORDER BY LENGTH(path) DESC`)
+      .all() as Project[];
+    for (const p of rows) {
+      if (norm === p.path || norm.startsWith(p.path + "/")) return p;
+    }
+    return null;
+  }
+
+  /**
+   * Add a (tool, label) entry to a project's scope. The tool must already
+   * exist (we don't auto-create — scope is over keys you've already added).
+   * Duplicate entries are ignored (PRIMARY KEY conflict swallowed).
+   */
+  addProjectScope(projectId: number, tool: string, label: string): void {
+    const t = normalizeSegment(tool);
+    const l = normalizeSegment(label);
+    const toolRow = this.getTool(t);
+    if (!toolRow) throw new Error(`unknown tool: ${tool}`);
+    this.db
+      .query(
+        `INSERT OR IGNORE INTO project_scope (project_id, tool_id, label)
+         VALUES (?, ?, ?)`,
+      )
+      .run(projectId, toolRow.id, l);
+  }
+
+  removeProjectScope(projectId: number, tool: string, label: string): boolean {
+    const t = normalizeSegment(tool);
+    const l = normalizeSegment(label);
+    const toolRow = this.getTool(t);
+    if (!toolRow) return false;
+    const r = this.db
+      .query(
+        `DELETE FROM project_scope
+          WHERE project_id = ? AND tool_id = ? AND label = ?`,
+      )
+      .run(projectId, toolRow.id, l);
+    return r.changes > 0;
+  }
+
+  /** Every (tool, label) pair in a project's scope, in stable order. */
+  projectScope(projectId: number): ProjectScopeEntry[] {
+    const rows = this.db
+      .query(
+        `SELECT t.name AS tool, ps.label AS label
+           FROM project_scope ps
+           JOIN tools t ON t.id = ps.tool_id
+          WHERE ps.project_id = ?
+          ORDER BY t.name, ps.label`,
+      )
+      .all(projectId) as { tool: string; label: string }[];
+    return rows.map((r) => ({
+      tool: r.tool,
+      label: r.label,
+      placeholder: makePlaceholder(r.tool, r.label),
+    }));
   }
 }
