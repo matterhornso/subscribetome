@@ -92,6 +92,7 @@ async function apiRoute(path: string, req: Request, store: Store): Promise<Respo
         whenKey: b.whenKey ?? null,
         whenCommand: b.whenCommand ?? null,
         whenAgent: b.whenAgent ?? null,
+        whenProject: b.whenProject ?? null,
         action: action as PolicyAction,
         reason: b.reason ?? null,
       });
@@ -124,8 +125,31 @@ async function apiRoute(path: string, req: Request, store: Store): Promise<Respo
       });
     }
     const keys = [...new Set(exact.map((p) => `${p.tool}:${p.label}`))];
-    const decision = evaluateAll(store.listPolicies(), command, "claude-code", keys);
+    const cwd: string = typeof b.cwd === "string" && b.cwd ? b.cwd : "";
+    const project = cwd ? store.matchProject(cwd) : null;
+    const decision = evaluateAll(
+      store.listPolicies(),
+      command,
+      "claude-code",
+      keys,
+      project?.name ?? "",
+    );
     return json(decision);
+  }
+  // Phase 3: per-project scope-enforcement toggle.
+  {
+    const m = path.match(/^\/api\/projects\/(\d+)\/enforce$/);
+    if (m && req.method === "POST") {
+      const id = Number(m[1]);
+      const b: any = await req.json().catch(() => ({}));
+      if (typeof b?.on !== "boolean") {
+        return json({ error: "body must be { on: boolean }" }, 400);
+      }
+      const ok = store.setEnforceScope(id, b.on);
+      return ok
+        ? json({ ok: true, enforce_scope: b.on ? 1 : 0 })
+        : json({ error: "no such project" }, 404);
+    }
   }
   return json({ error: "not found" }, 404);
 }
@@ -273,4 +297,57 @@ test("POST /api/audit/clear removes every row and reports count", async () => {
   expect(data.ok).toBe(true);
   expect(data.removed).toBe(before);
   expect(store.auditCount()).toBe(0);
+});
+
+// ---- Phase 3: when_project on policies + /api/projects/:id/enforce ------
+
+test("POST /api/policies persists whenProject when supplied", async () => {
+  const { status, data } = await call(store, "POST", "/api/policies", {
+    whenProject: "acme",
+    whenKey: "stripe:*",
+    action: "deny",
+    reason: "no stripe in acme",
+  });
+  expect(status).toBe(200);
+  expect(data.policy.when_project).toBe("acme");
+  // Cleanup so later listings stay deterministic for this file.
+  await call(store, "DELETE", `/api/policies/${data.policy.id}`);
+});
+
+test("POST /api/projects/:id/enforce toggles enforce_scope", async () => {
+  const p = store.addProject({ path: "/tmp/stm-api-enforce", name: "ApiEnf" });
+  try {
+    const on = await call(store, "POST", `/api/projects/${p.id}/enforce`, { on: true });
+    expect(on.status).toBe(200);
+    expect(on.data.enforce_scope).toBe(1);
+    expect(store.getProject(p.id)?.enforce_scope).toBe(1);
+
+    const off = await call(store, "POST", `/api/projects/${p.id}/enforce`, { on: false });
+    expect(off.status).toBe(200);
+    expect(off.data.enforce_scope).toBe(0);
+    expect(store.getProject(p.id)?.enforce_scope).toBe(0);
+  } finally {
+    store.removeProject(p.id);
+  }
+});
+
+test("POST /api/projects/:id/enforce 400s on a bad body", async () => {
+  const p = store.addProject({ path: "/tmp/stm-api-enforce-2", name: "ApiEnf2" });
+  try {
+    const { status, data } = await call(store, "POST", `/api/projects/${p.id}/enforce`, {
+      on: "yes",
+    });
+    expect(status).toBe(400);
+    expect(data.error).toContain("{ on: boolean }");
+  } finally {
+    store.removeProject(p.id);
+  }
+});
+
+test("POST /api/projects/:id/enforce 404s for an unknown id", async () => {
+  const { status, data } = await call(store, "POST", `/api/projects/999999/enforce`, {
+    on: true,
+  });
+  expect(status).toBe(404);
+  expect(data.error).toBe("no such project");
 });

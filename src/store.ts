@@ -73,6 +73,7 @@ CREATE TABLE IF NOT EXISTS policies (
   when_key      TEXT,
   when_command  TEXT,
   when_agent    TEXT,
+  when_project  TEXT,
   action        TEXT NOT NULL CHECK(action IN ('allow','deny','warn')),
   reason        TEXT,
   created_at    TEXT NOT NULL
@@ -94,10 +95,11 @@ CREATE TABLE IF NOT EXISTS audit_log (
 CREATE INDEX IF NOT EXISTS audit_log_ts_idx     ON audit_log(ts DESC);
 CREATE INDEX IF NOT EXISTS audit_log_event_idx  ON audit_log(event, ts DESC);
 CREATE TABLE IF NOT EXISTS projects (
-  id          INTEGER PRIMARY KEY AUTOINCREMENT,
-  path        TEXT    NOT NULL UNIQUE,
-  name        TEXT    NOT NULL,
-  created_at  TEXT    NOT NULL
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  path            TEXT    NOT NULL UNIQUE,
+  name            TEXT    NOT NULL,
+  enforce_scope   INTEGER NOT NULL DEFAULT 0,
+  created_at      TEXT    NOT NULL
 );
 CREATE INDEX IF NOT EXISTS projects_path_idx ON projects(path);
 CREATE TABLE IF NOT EXISTS project_scope (
@@ -131,6 +133,13 @@ export interface Project {
   id: number;
   path: string;
   name: string;
+  /**
+   * 0 = guidance-only (default); 1 = enforce. When 1, the PreToolUse hook
+   * denies any substitution whose `(tool, label)` is not in this project's
+   * `project_scope` rows. See command-policy.md Phase 3 and
+   * session-and-project-scope.md §7.
+   */
+  enforce_scope: number;
   created_at: string;
 }
 
@@ -174,6 +183,40 @@ export class Store {
     this.db.exec("PRAGMA journal_mode = WAL;");
     this.db.exec("PRAGMA foreign_keys = ON;");
     this.db.exec(SCHEMA);
+    this.migrate();
+  }
+
+  /**
+   * Additive, idempotent migrations for DBs created by earlier versions.
+   *
+   * SQLite has no `ADD COLUMN IF NOT EXISTS`, so we introspect via
+   * `PRAGMA table_info(...)` and only run the ALTER when the column is
+   * missing. Each migration is safe to re-run on a fresh DB (the column
+   * is already present via SCHEMA) and on an existing DB (the column gets
+   * added with the documented default).
+   *
+   * Two columns land in v0.2.5 for command-policy.md Phase 3:
+   *   - policies.when_project  (TEXT, nullable = "match anything")
+   *   - projects.enforce_scope (INTEGER, default 0 = guidance-only)
+   */
+  private migrate(): void {
+    const addColumnIfMissing = (
+      table: string,
+      column: string,
+      ddl: string,
+    ): void => {
+      const cols = this.db
+        .query(`PRAGMA table_info(${table})`)
+        .all() as { name: string }[];
+      if (cols.some((c) => c.name === column)) return;
+      this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${ddl}`);
+    };
+    addColumnIfMissing("policies", "when_project", "when_project TEXT");
+    addColumnIfMissing(
+      "projects",
+      "enforce_scope",
+      "enforce_scope INTEGER NOT NULL DEFAULT 0",
+    );
   }
 
   close(): void {
@@ -398,6 +441,7 @@ export class Store {
     whenKey?: string | null;
     whenCommand?: string | null;
     whenAgent?: string | null;
+    whenProject?: string | null;
     action: PolicyAction;
     reason?: string | null;
   }): PolicyRule {
@@ -406,14 +450,15 @@ export class Store {
     const ordering = input.ordering ?? 100;
     const r = this.db
       .query(
-        `INSERT INTO policies (ordering, when_key, when_command, when_agent, action, reason, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO policies (ordering, when_key, when_command, when_agent, when_project, action, reason, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         ordering,
         norm(input.whenKey),
         norm(input.whenCommand),
         norm(input.whenAgent),
+        norm(input.whenProject),
         input.action,
         norm(input.reason),
         new Date().toISOString(),
@@ -595,6 +640,37 @@ export class Store {
     return this.db
       .query(`SELECT * FROM projects ORDER BY path`)
       .all() as Project[];
+  }
+
+  /**
+   * Toggle a project's scope-enforcement flag. When `on === true`, PreToolUse
+   * denies any substitution whose `(tool, label)` is not in the project's
+   * scope rows. Returns false if the project does not exist.
+   */
+  setEnforceScope(projectId: number, on: boolean): boolean {
+    const r = this.db
+      .query(`UPDATE projects SET enforce_scope = ? WHERE id = ?`)
+      .run(on ? 1 : 0, projectId);
+    return r.changes > 0;
+  }
+
+  /**
+   * True when the (tool, label) pair is registered in this project's scope.
+   * Used by the PreToolUse hook to decide whether a substitution is allowed
+   * under scope enforcement. Reads a single row by composite key.
+   */
+  isInProjectScope(projectId: number, tool: string, label: string): boolean {
+    const t = normalizeSegment(tool);
+    const l = normalizeSegment(label);
+    const toolRow = this.getTool(t);
+    if (!toolRow) return false;
+    const row = this.db
+      .query(
+        `SELECT 1 FROM project_scope
+          WHERE project_id = ? AND tool_id = ? AND label = ?`,
+      )
+      .get(projectId, toolRow.id, l);
+    return row != null;
   }
 
   /** Update a project's `name` only. Path is immutable; users should remove + re-add. */

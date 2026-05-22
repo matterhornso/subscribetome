@@ -59,6 +59,8 @@ export async function preToolUse(): Promise<void> {
 
   const toolName: string = payload?.tool_name ?? payload?.tool ?? "";
   const input = payload?.tool_input ?? {};
+  const cwd: string =
+    typeof payload?.cwd === "string" && payload.cwd ? payload.cwd : process.cwd();
 
   // A file-writing tool must not persist a raw secret to disk. Block a real,
   // key-shaped string in the written content. A placeholder, by contrast, is
@@ -138,10 +140,67 @@ export async function preToolUse(): Promise<void> {
   // means the rule predicates and any audit trail never carry the real
   // secret value.
   try {
+    // Phase 3: find the project this session is inside (longest-prefix match
+    // on `cwd`). Used for two things: the `when.project` predicate, and the
+    // per-project `enforce_scope` toggle that synthesizes an implicit deny.
+    let project: ReturnType<Store["matchProject"]> = null;
+    try {
+      project = store.matchProject(cwd);
+    } catch {
+      /* matchProject is best-effort; null means "no project" */
+    }
+    const projectName = project?.name ?? "";
+
+    // Phase 3: scope enforcement. If the matched project has enforce_scope=1,
+    // any substitution whose (tool, label) is NOT registered as in-scope gets
+    // a synthetic deny — same shape as a real policy.deny but with
+    // policy_id=null. Evaluated BEFORE the user-authored rule list so the
+    // audit trail clearly distinguishes "scope enforcement" from a rule hit.
+    if (project && project.enforce_scope === 1) {
+      const outOfScope: { tool: string; label: string }[] = [];
+      const seen = new Set<string>();
+      for (const p of exact) {
+        const k = `${p.tool}:${p.label}`;
+        if (seen.has(k)) continue;
+        seen.add(k);
+        if (!store.isInProjectScope(project.id, p.tool, p.label)) {
+          outOfScope.push({ tool: p.tool, label: p.label });
+        }
+      }
+      if (outOfScope.length > 0) {
+        for (const { tool, label } of outOfScope) {
+          try {
+            store.recordAudit({
+              event: "policy.deny",
+              tool,
+              label,
+              command,
+              agent: "claude-code",
+              // policy_id is intentionally null: this deny did not come from a
+              // user-authored rule but from the project's scope-enforcement
+              // toggle. The reason string identifies the synthetic source.
+              policyId: null,
+              reason: `scope enforcement: ${tool}:${label} not in project ${project.name}`,
+            });
+          } catch {
+            /* audit is best-effort */
+          }
+        }
+        store.close();
+        const list = outOfScope.map((s) => `${s.tool}:${s.label}`).join(", ");
+        block(
+          `subscribetome: blocked by scope enforcement on project "${project.name}".\n` +
+            `Out-of-scope placeholder(s): ${list}\n` +
+            `Add them with: stm project scope ${project.path} <tool>:<label>\n` +
+            `Or disable enforcement: stm project enforce ${project.path} off`,
+        );
+      }
+    }
+
     const rules = store.listPolicies();
     if (rules.length > 0) {
       const keys = [...new Set(exact.map((p) => `${p.tool}:${p.label}`))];
-      const decision = evaluateAll(rules, command, "claude-code", keys);
+      const decision = evaluateAll(rules, command, "claude-code", keys, projectName);
       // Audit every per-key policy hit so the user can see what fired even
       // when severity collapsed the verdict to one rule. Writes happen on
       // the un-substituted command, before any keychain read.

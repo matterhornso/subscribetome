@@ -8,7 +8,7 @@ This index is the source of truth — when a new spec lands, add a row
 to the table below and a short summary in §1, then update statuses
 here as features ship.
 
-Last updated: **2026-05-22** (session-and-project-scope Phase 1 landed in v0.2.4; service-catalog-browser drafted; command-policy Phase 3 + catalog browser builds queued via `/schedule`).
+Last updated: **2026-05-22** (command-policy Phase 3 landed in v0.2.5 — `when.project` predicate + per-project `enforce_scope` toggle; closes session-and-project-scope §7).
 
 ## 1. Index of specs
 
@@ -16,8 +16,8 @@ Last updated: **2026-05-22** (session-and-project-scope Phase 1 landed in v0.2.4
 |---|------|--------|--------|------:|
 | 01 | [`cross-platform-and-codex.md`](./cross-platform-and-codex.md) | v2 | Draft | ~280 |
 | 02 | [`spend-visibility.md`](./spend-visibility.md) | v0.2 (post-cross-platform) | Draft | ~160 |
-| 03 | [`session-and-project-scope.md`](./session-and-project-scope.md) | v0.3 | **Phase 1 shipped** (v0.2.4) · Phases 2–3 pending | ~230 |
-| 04 | [`command-policy.md`](./command-policy.md) | v0.4 | **Phases 1, 2, 4 shipped** · Phase 3 needs `session-and-project-scope` | ~230 |
+| 03 | [`session-and-project-scope.md`](./session-and-project-scope.md) | v0.3 | **Phase 1 shipped** (v0.2.4) · §7 enforcement shipped via `command-policy` Phase 3 (v0.2.5) · Phase 2 (dashboard view) pending | ~230 |
+| 04 | [`command-policy.md`](./command-policy.md) | v0.4 | **All four phases shipped** (v0.2.5) | ~230 |
 | 05 | [`audit-log.md`](./audit-log.md) | v0.3 | **All four phases shipped** (v0.2.3) | ~200 |
 | 06 | [`service-catalog-browser.md`](./service-catalog-browser.md) | v0.3 | Draft | ~280 |
 
@@ -61,8 +61,10 @@ permissions cannot answer because they don't know what
 against the rule list (first match by `ordering, id`) and collapses
 per-command decisions by severity (`deny > warn > allow`). Phases 1
 (engine + schema + CLI + hook) and 2 (dashboard editor + four
-`/api/policies*` endpoints) shipped on 2026-05-21. Phase 3 (project
-predicate) and Phase 4 (audit log integration) are deferred.
+`/api/policies*` endpoints) shipped on 2026-05-21. Phase 3 (`when.project`
+predicate + per-project `enforce_scope` toggle) and Phase 4 (audit log
+integration) are both shipped — Phase 3 in v0.2.5 (2026-05-22), Phase 4
+via [`audit-log.md`](./audit-log.md) in v0.2.3.
 
 ### 05 — `audit-log.md`
 A local forensic record of what `PreToolUse` did — every successful
@@ -144,11 +146,10 @@ Reading the graph:
    Phase 4 of an already-shipped feature (Command policy).~~ **Shipped v0.2.3.**
 2. ~~**`session-and-project-scope.md`** Phase 1 — the CLI + SessionStart
    integration.~~ **Shipped v0.2.4.**
-3. **`command-policy.md` Phase 3** — the `when.project` predicate +
-   per-project `enforce_scope` toggle. **Queued for 10:45 IST 2026-05-22**
-   via `/schedule`.
+3. ~~**`command-policy.md` Phase 3** — the `when.project` predicate +
+   per-project `enforce_scope` toggle.~~ **Shipped v0.2.5.**
 4. **`service-catalog-browser.md`** — discovery surface on the
-   dashboard. **Queued for 12:21 IST 2026-05-22** via `/schedule`.
+   dashboard. Next.
 5. **`session-and-project-scope.md`** Phase 2 — dashboard Projects
    view + `?from=<cwd>` integration.
 6. **`spend-visibility.md`** — the "second product." Worth its own

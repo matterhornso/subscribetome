@@ -214,13 +214,17 @@ function policyHelp(): void {
       `  stm policy list                            list every rule (in order)\n` +
       `  stm policy add --then <allow|deny|warn>\n` +
       `       [--when-key <glob>] [--when-command <glob>] [--when-agent <glob>]\n` +
+      `       [--when-project <glob>]\n` +
       `       [--reason "..."] [--order <n>]        add a rule\n` +
       `  stm policy remove <id>                     delete one rule by id\n` +
       `  stm policy test "<bash command>"           dry-run: which rule fires?\n` +
       `\nGlob: \`*\` matches any run of characters. An omitted predicate matches anything.\n` +
       `Default action when no rule matches: allow. To get default-deny, add a final\n` +
       `catch-all rule with high order, e.g.:\n` +
-      `  stm policy add --then deny --order 999 --reason "default deny"\n`,
+      `  stm policy add --then deny --order 999 --reason "default deny"\n` +
+      `\n--when-project matches the registered project NAME (longest-prefix match\n` +
+      `on the session's cwd; see \`stm project list\`). Use it for "this rule only\n` +
+      `applies inside this project".\n`,
   );
 }
 
@@ -235,13 +239,14 @@ function policyListCmd(): void {
       return;
     }
     printTable(
-      ["ID", "ORDER", "KEY", "COMMAND", "AGENT", "ACTION", "REASON"],
+      ["ID", "ORDER", "KEY", "COMMAND", "AGENT", "PROJECT", "ACTION", "REASON"],
       rules.map((r) => [
         String(r.id),
         String(r.ordering),
         r.when_key ?? "*",
         r.when_command ?? "*",
         r.when_agent ?? "*",
+        r.when_project ?? "*",
         r.action,
         r.reason ?? "",
       ]),
@@ -257,7 +262,7 @@ function policyAddCmd(args: string[]): void {
   if (then !== "allow" && then !== "deny" && then !== "warn") {
     process.stderr.write(
       "usage: stm policy add --then <allow|deny|warn> [--when-key g] " +
-        "[--when-command g] [--when-agent g] [--reason \"...\"] [--order n]\n",
+        "[--when-command g] [--when-agent g] [--when-project g] [--reason \"...\"] [--order n]\n",
     );
     process.exit(1);
   }
@@ -273,13 +278,15 @@ function policyAddCmd(args: string[]): void {
       whenKey: flags["when-key"] ?? null,
       whenCommand: flags["when-command"] ?? null,
       whenAgent: flags["when-agent"] ?? null,
+      whenProject: flags["when-project"] ?? null,
       action: then as PolicyAction,
       reason: flags.reason ?? null,
     });
     process.stdout.write(
       `added policy #${rule.id} (order ${rule.ordering}): ` +
         `key=${rule.when_key ?? "*"} command=${rule.when_command ?? "*"} ` +
-        `agent=${rule.when_agent ?? "*"} → ${rule.action}` +
+        `agent=${rule.when_agent ?? "*"} project=${rule.when_project ?? "*"} ` +
+        `→ ${rule.action}` +
         (rule.reason ? ` (${rule.reason})` : "") +
         `\n`,
     );
@@ -324,7 +331,18 @@ function policyTestCmd(args: string[]): void {
   const store = new Store();
   try {
     const rules = store.listPolicies();
-    const decision = evaluateAll(rules, command, "claude-code", keys);
+    // `stm policy test` runs from a shell — `process.cwd()` is the user's
+    // current directory, the same signal Claude Code's PreToolUse uses. Pass
+    // the matched project name so `when.project` predicates fire as they
+    // would at runtime.
+    const project = store.matchProject(process.cwd());
+    const decision = evaluateAll(
+      rules,
+      command,
+      "claude-code",
+      keys,
+      project?.name ?? "",
+    );
     process.stdout.write(`Verdict: ${decision.action.toUpperCase()}`);
     if (decision.rule) {
       process.stdout.write(` (rule #${decision.rule.id})`);
@@ -357,12 +375,15 @@ function projectHelp(): void {
       `  stm project show <path>                          full scope + placeholders\n` +
       `  stm project scope <path> <tool>:<label>          add a (tool,label) to scope\n` +
       `  stm project unscope <path> <tool>:<label>        remove one (tool,label)\n` +
+      `  stm project enforce <path> <on|off>              toggle scope enforcement\n` +
       `  stm project rename <path> <new-name>             change the display name\n` +
       `  stm project remove <path>                        drop the project + scope\n` +
       `\nWhen a Claude Code session opens in a path that matches a registered\n` +
       `project (longest-prefix wins), SessionStart emits scoped guidance — the\n` +
       `model is told about ONLY that project's keys, not the global inventory.\n` +
-      `Default behaviour for unregistered paths is unchanged.\n`,
+      `Default behaviour for unregistered paths is unchanged.\n` +
+      `\nEnforcement (off by default): when ON, PreToolUse refuses to substitute\n` +
+      `any placeholder that isn't in this project's scope. Off = guidance only.\n`,
   );
 }
 
@@ -414,12 +435,13 @@ function projectListCmd(): void {
       return;
     }
     printTable(
-      ["ID", "NAME", "PATH", "IN SCOPE"],
+      ["ID", "NAME", "PATH", "IN SCOPE", "ENFORCE"],
       projects.map((p) => [
         String(p.id),
         p.name,
         p.path,
         String(store.projectScope(p.id).length),
+        p.enforce_scope === 1 ? "on" : "off",
       ]),
     );
   } finally {
@@ -443,7 +465,12 @@ function projectShowCmd(args: string[]): void {
     process.stdout.write(
       `#${p.id}  ${p.name}\n` +
         `    path:    ${p.path}\n` +
-        `    added:   ${p.created_at.slice(0, 10)}\n\n` +
+        `    added:   ${p.created_at.slice(0, 10)}\n` +
+        `    enforce: ${p.enforce_scope === 1 ? "on" : "off"}` +
+        (p.enforce_scope === 1
+          ? "  (out-of-scope placeholders will be denied)"
+          : "  (guidance only)") +
+        `\n\n` +
         `  Scope:\n`,
     );
     const scope = store.projectScope(p.id);
@@ -513,6 +540,40 @@ function projectUnscopeCmd(args: string[]): void {
   }
 }
 
+function projectEnforceCmd(args: string[]): void {
+  const [pathArg, mode] = args;
+  if (!pathArg || (mode !== "on" && mode !== "off")) {
+    process.stderr.write("usage: stm project enforce <path> <on|off>\n");
+    process.exit(1);
+  }
+  const store = new Store();
+  try {
+    const p = store.getProjectByPath(pathArg);
+    if (!p) {
+      process.stderr.write(`no project at "${pathArg}"\n`);
+      process.exit(1);
+    }
+    store.setEnforceScope(p.id, mode === "on");
+    if (mode === "on") {
+      const scope = store.projectScope(p.id);
+      process.stdout.write(
+        `enforcement ON for "${p.name}".\n` +
+          `Out-of-scope placeholders will now be DENIED by PreToolUse.\n` +
+          (scope.length === 0
+            ? `  Scope is currently empty — every placeholder will be denied. Add some\n` +
+              `  with: stm project scope ${p.path} <tool>:<label>\n`
+            : `  ${scope.length} key${scope.length === 1 ? "" : "s"} in scope.\n`),
+      );
+    } else {
+      process.stdout.write(
+        `enforcement OFF for "${p.name}". Scope is now guidance only.\n`,
+      );
+    }
+  } finally {
+    store.close();
+  }
+}
+
 function projectRenameCmd(args: string[]): void {
   const [pathArg, ...rest] = args;
   const newName = rest.join(" ").trim();
@@ -569,6 +630,8 @@ async function projectCmd(args: string[]): Promise<void> {
       return projectScopeCmd(rest);
     case "unscope":
       return projectUnscopeCmd(rest);
+    case "enforce":
+      return projectEnforceCmd(rest);
     case "rename":
       return projectRenameCmd(rest);
     case "remove":
@@ -815,7 +878,7 @@ function helpCmd(): void {
       `  stm revoke <tool> <label>       mark a key revoked\n` +
       `  stm policy <list|add|remove|test>  allow/deny rules at PreToolUse\n` +
       `  stm audit [--tail N] [--event] [--tool] [--since]  PreToolUse decision log\n` +
-      `  stm project <add|list|show|scope|unscope|rename|remove>  per-project key scope\n` +
+      `  stm project <add|list|show|scope|unscope|enforce|rename|remove>  per-project key scope\n` +
       `  stm import [dir...]             scan .env files for importable keys\n` +
       `  stm dashboard                   open the localhost web dashboard\n` +
       `  stm stop                        stop the dashboard daemon\n` +

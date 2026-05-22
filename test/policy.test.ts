@@ -46,6 +46,7 @@ function mkRule(over: Partial<PolicyRule>, id: number, ordering: number): Policy
     when_key: null,
     when_command: null,
     when_agent: null,
+    when_project: null,
     action: "allow",
     reason: null,
     created_at: "2026-05-21T00:00:00Z",
@@ -56,7 +57,7 @@ function mkRule(over: Partial<PolicyRule>, id: number, ordering: number): Policy
 test("evaluateOne: returns default allow when no rule matches", () => {
   const d = evaluateOne(
     [mkRule({ when_key: "stripe:*", action: "deny" }, 1, 100)],
-    { key: "openai:default", command: "echo hi", agent: "claude-code" },
+    { key: "openai:default", command: "echo hi", agent: "claude-code", project: "" },
   );
   expect(d.action).toBe("allow");
   expect(d.rule).toBeNull();
@@ -71,6 +72,7 @@ test("evaluateOne: first matching rule wins (order respected)", () => {
     key: "stripe:secret",
     command: "curl",
     agent: "claude-code",
+    project: "",
   });
   expect(d.action).toBe("warn");
   expect(d.rule?.id).toBe(1);
@@ -90,6 +92,7 @@ test("evaluateOne: predicate AND semantics (all non-null must match)", () => {
       key: "openai:default",
       command: "echo hi",
       agent: "claude-code",
+      project: "",
     }).action,
   ).toBe("allow");
   // correct command — fires
@@ -98,8 +101,67 @@ test("evaluateOne: predicate AND semantics (all non-null must match)", () => {
       key: "openai:default",
       command: "rm -rf /tmp/x",
       agent: "claude-code",
+      project: "",
     }).action,
   ).toBe("deny");
+});
+
+test("evaluateOne: when_project predicate narrows rule to one project", () => {
+  const rules = [
+    mkRule(
+      {
+        when_key: "stripe:*",
+        when_project: "acme",
+        action: "deny",
+        reason: "no stripe in acme",
+      },
+      1,
+      10,
+    ),
+  ];
+  // Inside the matching project — fires
+  expect(
+    evaluateOne(rules, {
+      key: "stripe:live",
+      command: "curl x",
+      agent: "claude-code",
+      project: "acme",
+    }).action,
+  ).toBe("deny");
+  // Different project — does not fire
+  expect(
+    evaluateOne(rules, {
+      key: "stripe:live",
+      command: "curl x",
+      agent: "claude-code",
+      project: "beta",
+    }).action,
+  ).toBe("allow");
+  // No project at all — does not fire (glob "acme" must match a literal)
+  expect(
+    evaluateOne(rules, {
+      key: "stripe:live",
+      command: "curl x",
+      agent: "claude-code",
+      project: "",
+    }).action,
+  ).toBe("allow");
+});
+
+test("evaluateOne: when_project = '*' matches every project including empty", () => {
+  const rules = [
+    mkRule({ when_project: "*", when_key: "stripe:*", action: "deny" }, 1, 10),
+  ];
+  for (const project of ["", "acme", "beta"]) {
+    expect(
+      evaluateOne(rules, {
+        key: "stripe:live",
+        command: "x",
+        agent: "claude-code",
+        project,
+      }).action,
+    ).toBe("deny");
+  }
 });
 
 test("evaluateAll: deny > warn > allow severity", () => {
@@ -182,6 +244,39 @@ test("Store.addPolicy: empty-string predicates coerce to null", () => {
     expect(r.when_command).toBeNull();
   } finally {
     s.close();
+  }
+});
+
+test("Store.addPolicy: whenProject is stored and surfaced on the row", () => {
+  const s = new Store(STORE_DB);
+  try {
+    const r = s.addPolicy({
+      whenProject: "acme",
+      whenKey: "stripe:*",
+      action: "deny",
+    });
+    expect(r.when_project).toBe("acme");
+    // empty-string coerces to null, like the other predicates
+    const empty = s.addPolicy({ whenProject: "", action: "warn" });
+    expect(empty.when_project).toBeNull();
+  } finally {
+    s.close();
+  }
+});
+
+test("Store schema migration is idempotent — opening twice does not error", () => {
+  // Open the same DB twice in a row. The second open re-runs PRAGMA
+  // introspection + ALTER TABLE checks; both columns are already present so
+  // it must be a no-op.
+  const s1 = new Store(STORE_DB);
+  s1.close();
+  const s2 = new Store(STORE_DB);
+  try {
+    // sanity: schema is intact, addPolicy still works
+    const r = s2.addPolicy({ whenProject: "x", action: "warn" });
+    expect(r.when_project).toBe("x");
+  } finally {
+    s2.close();
   }
 });
 
@@ -370,4 +465,170 @@ test("PreToolUse: allow rule below deny short-circuits the deny", () => {
     s2.removePolicy(deny.id);
     s2.close();
   }
+});
+
+// ---- Phase 3: project predicate + enforce_scope end-to-end --------------
+
+test("PreToolUse: when_project predicate fires only inside the matched project", () => {
+  const s = new Store(HOOK_DB);
+  const acme = s.addProject({ path: "/tmp/stm-test-acme", name: "Acme" });
+  const rule = s.addPolicy({
+    whenProject: "Acme",
+    whenKey: "stripe:*",
+    action: "deny",
+    reason: "no stripe inside Acme",
+  });
+  s.close();
+
+  try {
+    // Inside the matched project — denied.
+    const inside = runHook("pretooluse", {
+      tool_name: "Bash",
+      tool_input: { command: "echo {{stm:stripe:live}}" },
+      cwd: "/tmp/stm-test-acme/api",
+    });
+    expect(inside.code).toBe(2);
+    expect(inside.stderr).toContain("no stripe inside Acme");
+
+    // Outside the matched project — allowed.
+    const outside = runHook("pretooluse", {
+      tool_name: "Bash",
+      tool_input: { command: "echo {{stm:stripe:live}}" },
+      cwd: "/tmp/stm-test-unrelated",
+    });
+    expect(outside.code).toBe(0);
+    const out = JSON.parse(outside.stdout);
+    expect(out.hookSpecificOutput.updatedInput.command).toBe(
+      "echo stripelive-test-1234567890",
+    );
+  } finally {
+    const s2 = new Store(HOOK_DB);
+    s2.removePolicy(rule.id);
+    s2.removeProject(acme.id);
+    s2.close();
+  }
+});
+
+test("PreToolUse: enforce_scope=1 denies an out-of-scope placeholder with synthetic audit row", () => {
+  const s = new Store(HOOK_DB);
+  const acme = s.addProject({ path: "/tmp/stm-test-acme-2", name: "AcmeTwo" });
+  // openai:default IS in scope; stripe:live is NOT
+  s.addProjectScope(acme.id, "openai", "default");
+  s.setEnforceScope(acme.id, true);
+  const beforeRows = s.auditCount();
+  s.close();
+
+  try {
+    const r = runHook("pretooluse", {
+      tool_name: "Bash",
+      tool_input: { command: "echo {{stm:stripe:live}}" },
+      cwd: "/tmp/stm-test-acme-2",
+    });
+    expect(r.code).toBe(2);
+    expect(r.stderr).toContain("scope enforcement");
+    expect(r.stderr).toContain("AcmeTwo");
+
+    // Audit row should have policy.deny + policy_id=null + the synthetic reason
+    const s2 = new Store(HOOK_DB);
+    const audit = s2.listAudit({ limit: 50, event: "policy.deny" });
+    s2.close();
+    const synth = audit.find((row) =>
+      (row.reason ?? "").startsWith("scope enforcement: stripe:live"),
+    );
+    expect(synth).toBeTruthy();
+    expect(synth!.policy_id).toBeNull();
+    expect(synth!.tool).toBe("stripe");
+    expect(synth!.label).toBe("live");
+    expect(s2 === undefined).toBe(false);
+  } finally {
+    const s3 = new Store(HOOK_DB);
+    s3.removeProject(acme.id);
+    s3.close();
+  }
+});
+
+test("PreToolUse: enforce_scope=1 still substitutes an IN-scope placeholder", () => {
+  const s = new Store(HOOK_DB);
+  const acme = s.addProject({ path: "/tmp/stm-test-acme-3", name: "AcmeThree" });
+  s.addProjectScope(acme.id, "openai", "default");
+  s.setEnforceScope(acme.id, true);
+  s.close();
+
+  try {
+    const r = runHook("pretooluse", {
+      tool_name: "Bash",
+      tool_input: { command: "echo {{stm:openai:default}}" },
+      cwd: "/tmp/stm-test-acme-3",
+    });
+    expect(r.code).toBe(0);
+    const out = JSON.parse(r.stdout);
+    expect(out.hookSpecificOutput.updatedInput.command).toBe(
+      "echo openai-test-1234567890",
+    );
+  } finally {
+    const s2 = new Store(HOOK_DB);
+    s2.removeProject(acme.id);
+    s2.close();
+  }
+});
+
+test("PreToolUse: enforce_scope=0 (default) behaves identically to today", () => {
+  // Project exists but enforcement is OFF — should not interfere with the
+  // normal substitute path even when the placeholder isn't in scope.
+  const s = new Store(HOOK_DB);
+  const acme = s.addProject({ path: "/tmp/stm-test-acme-4", name: "AcmeFour" });
+  s.addProjectScope(acme.id, "openai", "default");
+  // enforce_scope deliberately left at 0
+  s.close();
+
+  try {
+    const r = runHook("pretooluse", {
+      tool_name: "Bash",
+      tool_input: { command: "echo {{stm:stripe:live}}" },
+      cwd: "/tmp/stm-test-acme-4",
+    });
+    expect(r.code).toBe(0);
+    const out = JSON.parse(r.stdout);
+    expect(out.hookSpecificOutput.updatedInput.command).toBe(
+      "echo stripelive-test-1234567890",
+    );
+  } finally {
+    const s2 = new Store(HOOK_DB);
+    s2.removeProject(acme.id);
+    s2.close();
+  }
+});
+
+test("PreToolUse: audit log never contains a real key value across the scope-enforcement path", () => {
+  // Load-bearing invariant from specs/audit-log.md §5: the audit log
+  // NEVER contains a real key. This test seeds a recognizable secret and
+  // exercises the new scope-enforcement deny branch — then scans every
+  // audit row for the seeded value.
+  const s = new Store(HOOK_DB);
+  const acme = s.addProject({ path: "/tmp/stm-test-acme-5", name: "AcmeFive" });
+  s.setEnforceScope(acme.id, true);
+  s.close();
+
+  // Both stripe and openai keys are already seeded with recognizable values
+  // (see beforeAll). Trigger the synthetic deny.
+  runHook("pretooluse", {
+    tool_name: "Bash",
+    tool_input: { command: "echo {{stm:stripe:live}} {{stm:openai:default}}" },
+    cwd: "/tmp/stm-test-acme-5",
+  });
+
+  const s2 = new Store(HOOK_DB);
+  const rows = s2.listAudit({ limit: 1000 });
+  s2.close();
+
+  const seeded = ["stripelive-test-1234567890", "openai-test-1234567890"];
+  for (const row of rows) {
+    const blob = JSON.stringify(row);
+    for (const value of seeded) {
+      expect(blob.includes(value)).toBe(false);
+    }
+  }
+  const s3 = new Store(HOOK_DB);
+  s3.removeProject(acme.id);
+  s3.close();
 });

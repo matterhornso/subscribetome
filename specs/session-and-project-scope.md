@@ -184,16 +184,21 @@ key. Reasons:
 The dashboard explains this in plain words next to the scope editor: "Scope
 controls what each session is told about. It does not block other keys."
 
-## 7. Future — scope enforcement
+## 7. Scope enforcement (shipped v0.2.5 via `command-policy.md` Phase 3)
 
-When command-policy lands, add a per-project toggle:
+A per-project toggle:
 
 > ☐ Block substitution of out-of-scope keys for this project
 
 When on, `PreToolUse` checks the substitution target's `(tool, label)`
 against the matched project's scope, and refuses to substitute if not
 in scope. The model sees the un-substituted placeholder and surfaces the
-miss; user knows immediately.
+miss; user knows immediately. The deny is logged to the audit table with
+`event = "policy.deny"`, `policy_id = NULL`, and a reason starting with
+`"scope enforcement:"` — distinguishing it from a user-authored rule hit.
+
+UX: `stm project enforce <path> <on|off>` toggles the flag from the CLI;
+`stm project show` displays the current enforcement state.
 
 ## 8. Phasing
 
@@ -202,7 +207,7 @@ miss; user knows immediately.
 | **1.** `projects` + `project_scope` tables. `SessionStart` reads `cwd` and emits scoped guidance. `stm project add/list/show/scope/unscope/rename/remove` CLI. | v0.2.4 (2026-05-22) | **shipped** |
 | **2.** Dashboard Projects view + `?from=<cwd>` integration on `/stm:dashboard`. | After Phase 1 | pending |
 | **3.** Auto-suggest: when `stm import` runs in a project that doesn't have a scope yet, offer to create one from the imported keys. | After Phase 2 | pending |
-| **4** (separate spec). Enforcement toggle via Command policy's `when.project` predicate. | After Phase 1 | tracked in [`command-policy.md`](./command-policy.md) Phase 3 |
+| **4** (separate spec). Enforcement toggle via Command policy's `when.project` predicate. | v0.2.5 (2026-05-22) | **shipped** (in [`command-policy.md`](./command-policy.md) Phase 3) |
 
 ## 9. Open questions
 

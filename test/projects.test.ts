@@ -176,6 +176,55 @@ test("ON DELETE CASCADE: removing a project drops its scope rows", () => {
   }
 });
 
+// ---- Phase 3: enforce_scope ---------------------------------------------
+
+test("addProject defaults enforce_scope to 0 and setEnforceScope toggles it", () => {
+  const s = new Store(DB);
+  try {
+    for (const p of s.listProjects()) s.removeProject(p.id);
+    const p = s.addProject({ path: "/code/enforce-test", name: "EnforceTest" });
+    // Default is OFF (0)
+    expect(p.enforce_scope).toBe(0);
+    expect(s.getProjectByPath("/code/enforce-test")?.enforce_scope).toBe(0);
+    // Flip ON
+    expect(s.setEnforceScope(p.id, true)).toBe(true);
+    expect(s.getProjectByPath("/code/enforce-test")?.enforce_scope).toBe(1);
+    // Flip OFF
+    expect(s.setEnforceScope(p.id, false)).toBe(true);
+    expect(s.getProjectByPath("/code/enforce-test")?.enforce_scope).toBe(0);
+    // Unknown id returns false
+    expect(s.setEnforceScope(99999, true)).toBe(false);
+  } finally {
+    s.close();
+  }
+});
+
+test("isInProjectScope: returns true only for (project, tool, label) triples present", () => {
+  const s = new Store(DB);
+  try {
+    for (const p of s.listProjects()) s.removeProject(p.id);
+    const p = s.addProject({ path: "/code/in-scope", name: "InScope" });
+    // Tools may already exist from earlier tests in this file (the DB is
+    // shared across tests). upsertTool ensures the row, and the key may or
+    // may not be present — wrap addKey in a try so we don't fail on a
+    // pre-existing label.
+    s.upsertTool({ name: "openai" });
+    s.upsertTool({ name: "stripe" });
+    try { s.addKey({ tool: "openai", label: "default", value: "v1" }); } catch {}
+    try { s.addKey({ tool: "stripe", label: "live", value: "v2" }); } catch {}
+    s.addProjectScope(p.id, "openai", "default");
+    expect(s.isInProjectScope(p.id, "openai", "default")).toBe(true);
+    expect(s.isInProjectScope(p.id, "openai", "work")).toBe(false);
+    expect(s.isInProjectScope(p.id, "stripe", "live")).toBe(false);
+    // Unknown tool — false (not a throw)
+    expect(s.isInProjectScope(p.id, "ghost", "default")).toBe(false);
+    // Wrong project id — false
+    expect(s.isInProjectScope(99999, "openai", "default")).toBe(false);
+  } finally {
+    s.close();
+  }
+});
+
 test("ON DELETE CASCADE: removing a tool drops its scope rows", () => {
   const s = new Store(DB);
   try {

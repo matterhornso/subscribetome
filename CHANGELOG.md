@@ -3,6 +3,54 @@
 All notable changes to subscribetome. This project is pre-1.0; minor versions
 may still change behaviour. Format follows [Keep a Changelog](https://keepachangelog.com).
 
+## [0.2.5] — 2026-05-22
+
+### Added
+- **`when.project` policy predicate (Phase 3 of `specs/command-policy.md`)** —
+  policy rules can now narrow to a specific project. The hook resolves the
+  session's `cwd` via `Store.matchProject` (longest-prefix) and passes the
+  project name into the policy engine; a rule's `when_project` glob matches
+  that name. Empty project = no match → only `*` or null fires.
+- **Per-project scope enforcement** — every project now carries a
+  `enforce_scope` flag (0 = guidance-only, default; 1 = enforce). When ON,
+  `PreToolUse` denies any substitution whose `(tool, label)` isn't in the
+  project's `project_scope` rows. The deny is logged with `policy_id = NULL`
+  and a reason starting `"scope enforcement:"` — distinguishable from a
+  user-authored deny rule.
+- New CLI:
+    `stm policy add --when-project <glob>`     attach the new predicate
+    `stm project enforce <path> <on|off>`      toggle scope enforcement
+- `stm policy list` adds a Project column; `stm project list` adds an
+  Enforce column; `stm project show` displays the enforcement state.
+- New daemon endpoint: `POST /api/projects/:id/enforce {on: boolean}`.
+  `POST /api/policies` now accepts an optional `whenProject` field.
+  `POST /api/policies/test` accepts an optional `cwd` to simulate the
+  project predicate firing inside a given directory.
+
+### Changed
+- SQLite schema: `policies.when_project TEXT` and
+  `projects.enforce_scope INTEGER NOT NULL DEFAULT 0`. Both are additive,
+  applied at `Store` construction via PRAGMA-introspected `ALTER TABLE` —
+  idempotent and safe on existing DBs (opening the same DB twice is a
+  no-op).
+- `PolicyRule.when_project: string | null` and `PolicyContext.project:
+  string` are now part of the engine surface. The `project` field defaults
+  to `""` for callers that don't supply one, so existing rules with a null
+  predicate behave identically to before.
+
+### Security
+- Load-bearing invariant from `specs/audit-log.md` §5 re-validated: every
+  branch — including the synthetic scope-enforcement deny — writes the
+  un-substituted command. A new test seeds two recognizable secrets,
+  exercises the scope-enforcement path, and asserts no audit row contains
+  either seeded value.
+
+### Notes
+- This release closes `specs/command-policy.md` end-to-end (all four
+  phases) and fulfils `specs/session-and-project-scope.md` §7
+  (enforcement toggle). Phase 2 of session-and-project-scope (dashboard
+  Projects view + `?from=<cwd>`) is the next remaining piece.
+
 ## [0.2.4] — 2026-05-22
 
 ### Added
@@ -220,6 +268,7 @@ may still change behaviour. Format follows [Keep a Changelog](https://keepachang
   `PostToolUse` (flags a key leaked into output).
 - The `stm` CLI, the localhost dashboard daemon, and `.env` import.
 
+[0.2.5]: https://github.com/matterhornso/subscribetome/releases/tag/v0.2.5
 [0.2.4]: https://github.com/matterhornso/subscribetome/releases/tag/v0.2.4
 [0.2.3]: https://github.com/matterhornso/subscribetome/releases/tag/v0.2.3
 [0.2.2]: https://github.com/matterhornso/subscribetome/releases/tag/v0.2.2

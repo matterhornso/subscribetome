@@ -200,6 +200,7 @@ async function apiRoute(path: string, req: Request, store: Store): Promise<Respo
         whenKey: b.whenKey ?? null,
         whenCommand: b.whenCommand ?? null,
         whenAgent: b.whenAgent ?? null,
+        whenProject: b.whenProject ?? null,
         action: action as PolicyAction,
         reason: b.reason ?? null,
       });
@@ -232,8 +233,35 @@ async function apiRoute(path: string, req: Request, store: Store): Promise<Respo
       });
     }
     const keys = [...new Set(exact.map((p) => `${p.tool}:${p.label}`))];
-    const decision = evaluateAll(store.listPolicies(), command, "claude-code", keys);
+    // Optional `cwd` lets the dashboard simulate "what would PreToolUse do
+    // for this command, running inside this directory?". Falls back to "no
+    // project" so a missing field is the historical behaviour.
+    const cwd: string = typeof b.cwd === "string" && b.cwd ? b.cwd : "";
+    const project = cwd ? store.matchProject(cwd) : null;
+    const decision = evaluateAll(
+      store.listPolicies(),
+      command,
+      "claude-code",
+      keys,
+      project?.name ?? "",
+    );
     return json(decision);
+  }
+
+  // Phase 3: per-project scope-enforcement toggle.
+  {
+    const m = path.match(/^\/api\/projects\/(\d+)\/enforce$/);
+    if (m && req.method === "POST") {
+      const id = Number(m[1]);
+      const b: any = await req.json().catch(() => ({}));
+      if (typeof b?.on !== "boolean") {
+        return json({ error: "body must be { on: boolean }" }, 400);
+      }
+      const ok = store.setEnforceScope(id, b.on);
+      return ok
+        ? json({ ok: true, enforce_scope: b.on ? 1 : 0 })
+        : json({ error: "no such project" }, 404);
+    }
   }
 
   // ---- audit log (spec: specs/audit-log.md, Phase 4) ---------------------

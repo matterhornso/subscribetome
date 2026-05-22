@@ -16,6 +16,12 @@ export interface PolicyRule {
   when_key: string | null;
   when_command: string | null;
   when_agent: string | null;
+  /**
+   * Project predicate — glob match against the matched project's `name`. Null
+   * means "any project (or none)". Added in v0.2.5 (Phase 3); existing DBs gain
+   * the column via additive migration in Store.
+   */
+  when_project: string | null;
   action: PolicyAction;
   reason: string | null;
   created_at: string;
@@ -28,6 +34,12 @@ export interface PolicyContext {
   command: string;
   /** Calling agent. Today this is "claude-code"; future agents will identify themselves. */
   agent: string;
+  /**
+   * The matched project's `name`, or the empty string when no project matches
+   * the session's `cwd`. Glob `*` matches both populated names and the empty
+   * fallback, so a project-agnostic rule (no `when_project`) is unaffected.
+   */
+  project: string;
 }
 
 export interface PolicyDecision {
@@ -71,6 +83,7 @@ export function evaluateOne(
     if (!globMatch(r.when_key, ctx.key)) continue;
     if (!globMatch(r.when_command, ctx.command)) continue;
     if (!globMatch(r.when_agent, ctx.agent)) continue;
+    if (!globMatch(r.when_project, ctx.project)) continue;
     return { action: r.action, rule: r, reason: r.reason };
   }
   return { action: "allow", rule: null, reason: null };
@@ -107,6 +120,7 @@ export function evaluateAll(
   command: string,
   agent: string,
   keys: string[],
+  project: string = "",
 ): BulkPolicyDecision {
   const perKey: { key: string; decision: PolicyDecision }[] = [];
   let chosen: PolicyDecision | null = null;
@@ -114,7 +128,7 @@ export function evaluateAll(
     a === "deny" ? 2 : a === "warn" ? 1 : 0;
 
   for (const k of keys) {
-    const d = evaluateOne(rules, { key: k, command, agent });
+    const d = evaluateOne(rules, { key: k, command, agent, project });
     perKey.push({ key: k, decision: d });
     if (chosen == null || rank(d.action) > rank(chosen.action)) chosen = d;
   }
