@@ -189,10 +189,25 @@ macOS machine as a key inventory, but *automatic injection* requires Claude
 Code. Support for other agentic coding tools (Codex, opencode, ...) depends on
 each exposing an equivalent pre-execution input-rewrite hook — see `TODOS.md`.
 
+## Supported platforms
+
+- **macOS** — keys live in the macOS Keychain via `security(1)`. Tested.
+- **Linux desktop** — keys live in the Linux Secret Service (libsecret,
+  via `secret-tool`). Install `libsecret-tools` (Debian/Ubuntu),
+  `libsecret` (Fedora), or `libsecret` (Arch). Requires a running
+  desktop keyring daemon (`gnome-keyring-daemon` on GNOME; `kwallet`
+  with the secret-service shim on KDE).
+- **Linux headless / SSH / container / WSL** — not yet supported.
+  Headless fallbacks (`pass`-based, `EncryptedFile`) are tracked in
+  [`specs/cross-platform-and-codex.md`](./specs/cross-platform-and-codex.md).
+- **Windows** — not yet supported. Tracked in the same spec.
+
+`stm status` always tells you which backend is active. You can force
+one with `STM_KEYSTORE=<mac|linux-secret-service>` (useful in CI and
+for explicit overrides).
+
 ## Limitations (v1)
 
-- **macOS only** — keys are stored in the macOS Keychain via `security(1)`.
-  Linux/Windows backends are deferred.
 - **Import is `.env`-only** — scanning the broader OS keychain for arbitrary
   third-party keys is deferred (it is intrusive and noisy).
 - `revoke` is a **metadata flag** — it does not call a provider API to rotate

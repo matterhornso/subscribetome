@@ -8,13 +8,13 @@ This index is the source of truth — when a new spec lands, add a row
 to the table below and a short summary in §1, then update statuses
 here as features ship.
 
-Last updated: **2026-05-23** (spend-visibility Phases 1-3 shipped in v0.3.0 — `spend` SQLite table + `SpendProvider` interface + OpenAI & Anthropic providers + `stm sync` CLI + dashboard "Sync spend" button. Network-posture rule visible on every surface: outbound calls only on explicit sync, only to configured providers).
+Last updated: **2026-05-23** (cross-platform Workstream A — Linux Secret Service backend — shipped in v0.3.1. `KeyStore` interface + per-platform backends + resolver; macOS Keychain stays the default on darwin; Linux desktop hosts now get `secret-tool`-backed storage; `stm status` and the dashboard show the active backend).
 
 ## 1. Index of specs
 
 | # | Spec | Target | Status | Lines |
 |---|------|--------|--------|------:|
-| 01 | [`cross-platform-and-codex.md`](./cross-platform-and-codex.md) | v2 | Draft | ~280 |
+| 01 | [`cross-platform-and-codex.md`](./cross-platform-and-codex.md) | v2 | **Workstream A shipped** (Linux Secret Service, v0.3.1) · Workstreams B (Windows) + C (Codex) pending | ~280 |
 | 02 | [`spend-visibility.md`](./spend-visibility.md) | v0.3 | **Phases 1-3 shipped** (v0.3.0 — foundation + OpenAI + Anthropic) · Phase 4 (Stripe) deferred | ~160 |
 | 03 | [`session-and-project-scope.md`](./session-and-project-scope.md) | v0.3 | **All phases shipped** (Phase 1 v0.2.4 · Phase 2 v0.2.7 · Phase 3 v0.2.8) · §7 enforcement via `command-policy` Phase 3 (v0.2.5) | ~230 |
 | 04 | [`command-policy.md`](./command-policy.md) | v0.4 | **All four phases shipped** (v0.2.5) | ~230 |
@@ -155,8 +155,9 @@ Reading the graph:
 6. ~~**`spend-visibility.md`** — the "second product."~~ **Phases 1-3
    shipped v0.3.0** (foundation + OpenAI + Anthropic). Phase 4 (Stripe)
    deferred as a separate "Stripe income" panel.
-7. **`cross-platform-and-codex.md`** — biggest scope; do after the
-   macOS / Claude Code build feels complete.
+7. **`cross-platform-and-codex.md`** — Workstream A (Linux Secret
+   Service) shipped v0.3.1. Workstream B (Windows Credential
+   Manager) and Workstream C (Codex adapter) remain.
 
 ## 5. Authoring conventions
 

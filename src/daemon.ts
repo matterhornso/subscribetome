@@ -12,6 +12,7 @@ import { chmodSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { randomBytes } from "node:crypto";
 import { Store } from "./store.ts";
+import { activeKeyStore } from "./keychain.ts";
 import { DAEMON_FILE, ensureDataDir } from "./paths.ts";
 import { dashboardHTML } from "./dashboard.ts";
 import { importSelected, scanEnv } from "./import.ts";
@@ -117,6 +118,9 @@ function hostOk(req: Request): boolean {
 
 async function apiRoute(path: string, req: Request, store: Store): Promise<Response> {
   if (path === "/api/inventory" && req.method === "GET") {
+    let keystore: string;
+    try { keystore = activeKeyStore().describe(); }
+    catch (e: any) { keystore = `unresolved: ${e?.message ?? e}`; }
     return json({
       tools: store.listTools(),
       keys: store.listKeys(),
@@ -124,6 +128,7 @@ async function apiRoute(path: string, req: Request, store: Store): Promise<Respo
       monthlySpendBreakdown: store.monthlySpendBreakdown(),
       spend: store.listSpend(),
       providers: listProviderIds(),
+      keystore,
     });
   }
   if (path === "/api/keys" && req.method === "POST") {
@@ -583,11 +588,21 @@ export async function printStatus(): Promise<void> {
   const store = new Store();
   try {
     const keys = store.listKeys();
+    // Resolve the active KeyStore so the user always sees where keys
+    // actually live. Specs/cross-platform-and-codex.md §4.1: the spec
+    // mandates this never be hidden.
+    let backend: string;
+    try {
+      backend = activeKeyStore().describe();
+    } catch (e: any) {
+      backend = `error resolving keystore: ${e?.message ?? e}`;
+    }
     process.stdout.write(
-      `daemon : ${info ? `running - http://127.0.0.1:${info.port}` : "not running"}\n` +
-        `keys   : ${keys.length} (${keys.filter((k) => k.status === "active").length} active)\n` +
-        `tools  : ${store.listTools().length}\n` +
-        `spend  : $${store.monthlySpend().toFixed(2)} / month\n`,
+      `daemon   : ${info ? `running - http://127.0.0.1:${info.port}` : "not running"}\n` +
+        `keystore : ${backend}\n` +
+        `keys     : ${keys.length} (${keys.filter((k) => k.status === "active").length} active)\n` +
+        `tools    : ${store.listTools().length}\n` +
+        `spend    : $${store.monthlySpend().toFixed(2)} / month\n`,
     );
   } finally {
     store.close();

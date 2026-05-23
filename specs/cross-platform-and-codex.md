@@ -1,6 +1,6 @@
 # Spec — Cross-platform (Linux, Windows) and Codex support
 
-**Status:** Draft · **Target:** subscribetome v2 · **Last updated:** 2026-05-19
+**Status:** Workstream A (Linux Secret Service) shipped v0.3.1 · Workstream B (Windows) + C (Codex) pending · **Target:** subscribetome v2 · **Last updated:** 2026-05-23
 
 This spec covers expanding subscribetome beyond its v1 footprint (macOS +
 Claude Code) to **Linux**, **Windows**, and the **OpenAI Codex CLI**. It is a

@@ -138,6 +138,14 @@ export function dashboardHTML(): string {
   }
   .card.flash { animation:stm-flash 1.5s ease-out; }
 
+  /* ---- keystore label (v0.3.1) ---- */
+  .keystore-label {
+    margin-right:14px; font-size:11px; font-weight:600; letter-spacing:.4px;
+    text-transform:uppercase; color:var(--text-dim);
+    padding:3px 9px; border-radius:999px;
+    background:rgba(255,255,255,.04); border:1px solid var(--border);
+  }
+
   /* ---- spend visibility (v0.3.0) ---- */
   .spend-source {
     display:inline-block; margin-left:8px;
@@ -439,6 +447,7 @@ export function dashboardHTML(): string {
     <div class="name">subscribe<b>tome</b></div>
   </div>
   <div class="spend">
+    <span id="keystore-label" class="keystore-label"></span>
     monthly spend <b id="spend">$0.00</b>
     <span id="spend-source" class="spend-source"></span>
     <button class="btn-ghost" id="sync-btn" style="margin-left:12px"
@@ -1044,6 +1053,18 @@ function renderVerdict(r){
 function render(inv){
   el("spend").textContent="$"+inv.monthlySpend.toFixed(2);
   renderSpendSource(inv);
+  // v0.3.1: surface where keys actually live — per the cross-platform
+  // spec the active backend must never be hidden from the user.
+  var kl=el("keystore-label");
+  if(kl){
+    if(inv.keystore){
+      kl.textContent=String(inv.keystore);
+      kl.title="Keys live in: "+String(inv.keystore);
+      kl.style.display="";
+    } else {
+      kl.style.display="none";
+    }
+  }
   var kb=el("keys");
   if(!inv.keys.length){
     kb.innerHTML='<tr><td colspan="5" class="empty">No keys yet — add one above.</td></tr>';

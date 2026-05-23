@@ -3,6 +3,65 @@
 All notable changes to subscribetome. This project is pre-1.0; minor versions
 may still change behaviour. Format follows [Keep a Changelog](https://keepachangelog.com).
 
+## [0.3.1] — 2026-05-23
+
+### Added — Linux Secret Service backend (`specs/cross-platform-and-codex.md` Workstream A)
+
+stm is no longer macOS-only. Linux desktop hosts running a libsecret-
+compatible keyring daemon (gnome-keyring, kwallet's secret-service
+shim) now get a Linux-native KeyStore backend.
+
+- **`KeyStore` interface** in `src/keystores/types.ts` — the abstraction
+  seam the spec called for. Every per-OS backend implements `set`,
+  `get`, `delete`, `describe`. Two implementation rules are
+  load-bearing: secrets are passed via stdin (not argv) wherever the
+  underlying tool supports it, and `get` returns null for "not
+  found" rather than throwing.
+- **macOS backend** (`src/keystores/mac.ts`) — extracted from the v1
+  inline `keychain.ts` code, unchanged behavior.
+- **Linux Secret Service backend**
+  (`src/keystores/linux-secret-service.ts`) — uses `secret-tool`
+  (libsecret CLI). The secret is piped via stdin, NOT passed as an
+  argv element — a strict posture improvement over macOS's `security
+  -w <value>` (which the spec calls out as a known v1 limitation).
+- **Resolver** (`src/keystores/index.ts`) with three-tier selection:
+    1. `STM_KEYSTORE` override (`mac` / `macos` / `keychain` /
+       `linux-secret-service` / `libsecret` / `secret-service` / …)
+    2. Platform default — darwin → MacKeychain; linux → LinuxSecretService
+       when `secret-tool` is on PATH AND a D-Bus probe succeeds.
+    3. Friendly `unsupported` store on platforms with no mapping yet
+       (Windows, BSD). The resolver NEVER silently falls back to
+       plaintext — the spec calls out gh CLI as the cautionary tale.
+- **Active-backend visibility**: `stm status` and the dashboard
+  header now show which keystore is live ("macOS Keychain", "Linux
+  Secret Service (libsecret)", or the `unsupported (...)` reason).
+  Per the spec, the active backend is never hidden from the user.
+- `GET /api/inventory` now includes a `keystore` field for the
+  dashboard pill.
+
+### Changed
+- `src/keychain.ts` is now a thin shim that delegates to
+  `getKeyStore()`. The public `keychainSet/Get/Delete` surface is
+  unchanged — store.ts, hooks.ts, daemon.ts, and the existing test
+  suite see no API drift. 170 tests pass, 0 fail (was 149; +21
+  keystore tests).
+- README "Limitations (v1)" → "Supported platforms" section
+  documenting macOS, Linux desktop, and the still-pending headless
+  Linux + Windows roadmap. The v1 "macOS only" claim is retired.
+- Landing-page trust strip: "macOS Keychain" → "macOS Keychain ·
+  Linux Secret Service".
+
+### Notes
+- Headless Linux (SSH, container, WSL) is still unsupported. The
+  resolver emits an explicit "no Secret Service reachable" error
+  so users know exactly what's wrong. The follow-up tiers
+  (`LinuxPass`, `EncryptedFile`) are tracked in
+  `specs/cross-platform-and-codex.md` §5.
+- Windows (`WindowsCredential`) and the Codex adapter (workstreams
+  B and C) are not in this release. The new `KeyStore` interface
+  is the seam they will plug into — when they land, they'll be
+  one file each behind the same resolver.
+
 ## [0.3.0] — 2026-05-23
 
 ### Added — Spend visibility (the second product, `specs/spend-visibility.md` Phases 1-3)
@@ -500,6 +559,7 @@ Concretely:
   `PostToolUse` (flags a key leaked into output).
 - The `stm` CLI, the localhost dashboard daemon, and `.env` import.
 
+[0.3.1]: https://github.com/matterhornso/subscribetome/releases/tag/v0.3.1
 [0.3.0]: https://github.com/matterhornso/subscribetome/releases/tag/v0.3.0
 [0.2.8]: https://github.com/matterhornso/subscribetome/releases/tag/v0.2.8
 [0.2.7]: https://github.com/matterhornso/subscribetome/releases/tag/v0.2.7
