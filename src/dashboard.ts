@@ -1269,13 +1269,93 @@ async function confirmImport(){
         take:el("ic-"+i).checked};
     }).filter(function(s){return s.take;});
     if(!sel.length)throw new Error("Nothing selected.");
-    var r=await api("/api/import/confirm",{method:"POST",body:JSON.stringify({selections:sel})});
-    setMsg("imp-msg","Imported "+r.imported+" key"+(r.imported===1?"":"s")
-      +(r.errors.length?" \\u00b7 "+r.errors.length+" error(s): "+r.errors.join("; "):""),
-      r.errors.length?"err":"ok");
+    // Phase 3 of session-and-project-scope: include the session's cwd
+    // so the server can extend an existing project's scope (or surface
+    // a "create project" suggestion). cwd comes from ?from=<cwd> the
+    // CLI appends; absent for users who opened the dashboard manually.
+    var from=new URLSearchParams(location.search).get("from")||"";
+    var body={selections:sel};
+    if(from)body.cwd=from;
+    var r=await api("/api/import/confirm",{method:"POST",body:JSON.stringify(body)});
+    var msg="Imported "+r.imported+" key"+(r.imported===1?"":"s")
+      +(r.errors.length?" \\u00b7 "+r.errors.length+" error(s): "+r.errors.join("; "):"");
+    setMsg("imp-msg",msg,r.errors.length?"err":"ok");
+    // Phase 3: surface the scope auto-suggest. Two shapes:
+    //  - added-to-existing → toast (silent extension, just confirm).
+    //  - suggest-create    → inline banner with a Create-project button.
+    if(r.scopeUpdate){
+      handleImportScopeUpdate(r.scopeUpdate);
+    }
     refresh();
   }catch(e){setMsg("imp-msg",e.message,"err");}
   finally{btn.disabled=false;}
+}
+
+/**
+ * Render the Phase-3 scope auto-suggest result. For an existing project
+ * we just toast — silent extension is fine because the user clearly
+ * imported keys for the project they're already in. For "suggest-create"
+ * we drop a small banner under the import message with one click to
+ * prefill the Add-a-project form with the cwd + imported keys.
+ */
+function handleImportScopeUpdate(su){
+  if(!su)return;
+  if(su.kind==="added-to-existing"){
+    var n=su.addedToScope.length;
+    toast("Scoped "+n+" key"+(n===1?"":"s")+" to "+su.projectName);
+    return;
+  }
+  if(su.kind==="suggest-create"){
+    // Stash the imported list so prefillProjectFromCwd can pick it up
+    // and auto-scope after the project is created.
+    window.__stmPendingScope={cwd:su.cwd,imported:su.imported};
+    var box=el("imp-msg");
+    var n=su.imported.length;
+    var html=esc(box.textContent||"")
+      +'<div style="margin-top:10px;padding:10px 12px;background:rgba(52,211,154,.05);'
+      +'border:1px solid rgba(52,211,154,.25);border-radius:6px;font-size:13px;color:var(--text)">'
+      +'No project matches <code>'+esc(su.cwd)+'</code>. '
+      +'Create one to scope '+n+' imported key'+(n===1?'':'s')+' to it?'
+      +' <button class="btn-primary" id="imp-create-proj-btn" style="margin-left:8px;padding:4px 10px;font-size:12px">'
+      +'Create project</button></div>';
+    box.innerHTML=html;
+  }
+}
+
+/**
+ * Create-project glue between the import banner and the Projects card.
+ * After the project lands, scope each imported key to it in one batch.
+ */
+async function createProjectFromImport(){
+  var pending=window.__stmPendingScope;
+  if(!pending)return;
+  var name=prompt("Project name?", deriveSuggestedName(pending.cwd));
+  if(!name)return;
+  try{
+    var r=await api("/api/projects",{method:"POST",
+      body:JSON.stringify({path:pending.cwd,name:name})});
+    var pid=r.project.id;
+    for(var i=0;i<pending.imported.length;i++){
+      try{
+        await api("/api/projects/"+pid+"/scope",{method:"POST",
+          body:JSON.stringify(pending.imported[i])});
+      }catch(_){ /* best-effort */ }
+    }
+    window.__stmPendingScope=null;
+    toast('Project "'+name+'" created with '+pending.imported.length+' keys');
+    refreshProjects();
+    var card=el("projects-card");
+    if(card){
+      card.scrollIntoView({behavior:"smooth",block:"start"});
+      flashCard("projects-card");
+    }
+  }catch(e){
+    setMsg("imp-msg","Failed to create project: "+e.message,"err");
+  }
+}
+
+function deriveSuggestedName(cwd){
+  return cwd.replace(/\\/+$/,"").split("/").filter(Boolean).pop() || cwd;
 }
 
 el("add-btn").addEventListener("click",addKeys);
@@ -1397,6 +1477,9 @@ document.addEventListener("click",function(e){
   }
   var cr=e.target.closest("#signal-create-btn");
   if(cr){ prefillProjectFromCwd(cr.getAttribute("data-cwd")); return; }
+  // Phase 3: "Create project" button from the import banner.
+  var ic=e.target.closest("#imp-create-proj-btn");
+  if(ic){ createProjectFromImport(); return; }
 });
 
 refresh()

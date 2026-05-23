@@ -1,6 +1,6 @@
 # Spec — Per-project key scope (multi-session, multi-project)
 
-**Status:** Phases 1 (v0.2.4) + 2 (v0.2.7) + §7 enforcement (v0.2.5 via `command-policy.md`) shipped · Phase 3 (import auto-suggest) pending · **Target:** v0.3 · **Last updated:** 2026-05-22
+**Status:** All phases shipped (Phase 1 v0.2.4 · Phase 2 v0.2.7 · Phase 3 v0.2.8 · §7 enforcement v0.2.5 via `command-policy.md`) · **Target:** v0.3 · **Last updated:** 2026-05-23
 
 A user with a real workflow has **multiple Claude Code sessions open at once,
 each in a different project directory**. With 36 catalog services and custom
@@ -206,7 +206,7 @@ UX: `stm project enforce <path> <on|off>` toggles the flag from the CLI;
 |---|---|---|---|
 | **1.** `projects` + `project_scope` tables. `SessionStart` reads `cwd` and emits scoped guidance. `stm project add/list/show/scope/unscope/rename/remove` CLI. | v0.2.4 (2026-05-22) | **shipped** |
 | **2.** Dashboard Projects view + `?from=<cwd>` integration on `/stm:dashboard`. | v0.2.7 (2026-05-22) | **shipped** |
-| **3.** Auto-suggest: when `stm import` runs in a project that doesn't have a scope yet, offer to create one from the imported keys. | After Phase 2 | pending |
+| **3.** Auto-suggest: when `stm import` runs in a project that doesn't have a scope yet, offer to create one from the imported keys. | v0.2.8 (2026-05-23) | **shipped** |
 | **4** (separate spec). Enforcement toggle via Command policy's `when.project` predicate. | v0.2.5 (2026-05-22) | **shipped** (in [`command-policy.md`](./command-policy.md) Phase 3) |
 
 ## 9. Open questions

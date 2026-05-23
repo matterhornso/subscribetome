@@ -176,7 +176,10 @@ async function apiRoute(path: string, req: Request, store: Store): Promise<Respo
   }
   if (path === "/api/import/confirm" && req.method === "POST") {
     const b: any = await req.json().catch(() => ({}));
-    return json(importSelected(Array.isArray(b.selections) ? b.selections : []));
+    const cwd = typeof b?.cwd === "string" && b.cwd ? b.cwd : undefined;
+    return json(
+      importSelected(Array.isArray(b.selections) ? b.selections : [], { cwd }),
+    );
   }
 
   // ---- command policy (spec: specs/command-policy.md, Phase 2) -----------

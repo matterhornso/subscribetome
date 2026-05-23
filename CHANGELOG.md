@@ -3,6 +3,48 @@
 All notable changes to subscribetome. This project is pre-1.0; minor versions
 may still change behaviour. Format follows [Keep a Changelog](https://keepachangelog.com).
 
+## [0.2.8] — 2026-05-23
+
+### Added
+- **`stm import` scope auto-suggest (`specs/session-and-project-scope.md`
+  Phase 3)** — closes that spec end-to-end. When the dashboard runs an
+  import, the request now carries the session's `cwd` (from the
+  `?from=` query param that `stm dashboard` sets). The server picks the
+  longest-prefix project for that `cwd` and:
+    - **Project matched** → silently adds each newly-imported
+      `(tool, label)` to that project's `project_scope`. A
+      single-line toast on the dashboard confirms ("Scoped N keys to
+      <project>"). Imports are *for* the current project; making the
+      user re-tick every box afterwards was busywork.
+    - **No project matched** → returns a `suggest-create` payload with
+      the `cwd`, a suggested project name (the last path segment), and
+      the imported `(tool, label)` list. The dashboard renders an
+      inline banner under the import message with a **Create project**
+      button — one click creates the project at the cwd and scopes
+      all imported keys to it in one batch.
+- `importSelected(selections, { cwd, dbPath? })` — new option object.
+  `cwd` triggers the Phase 3 logic; `dbPath` is the existing `STM_DB`
+  test seam promoted to the API signature for unit-test ergonomics.
+- New result field `scopeUpdate: ScopeUpdate | undefined` on
+  `importSelected`. Discriminated union: `kind: "added-to-existing"`
+  carries `projectId / projectName / projectPath / addedToScope[]`;
+  `kind: "suggest-create"` carries `cwd / suggestedName / imported[]`.
+
+### Changed
+- `POST /api/import/confirm` body now accepts an optional `cwd` field
+  alongside `selections`. Existing callers that don't send `cwd` get
+  the historical `{imported, errors}` shape — no regression.
+
+### Notes
+- This release closes `specs/session-and-project-scope.md` end-to-end
+  (all three phases + §7 enforcement). The 3 remaining spec items on
+  the public roadmap are `spend-visibility.md`,
+  `cross-platform-and-codex.md`, and the deferred Phase 3 of
+  `service-catalog-browser.md` (search/typeahead).
+- Default behaviour for users without registered projects, or who
+  open the dashboard manually (no `?from=`), is unchanged — the
+  import flow is back-compat.
+
 ## [0.2.7] — 2026-05-22
 
 ### Added
@@ -377,6 +419,7 @@ may still change behaviour. Format follows [Keep a Changelog](https://keepachang
   `PostToolUse` (flags a key leaked into output).
 - The `stm` CLI, the localhost dashboard daemon, and `.env` import.
 
+[0.2.8]: https://github.com/matterhornso/subscribetome/releases/tag/v0.2.8
 [0.2.7]: https://github.com/matterhornso/subscribetome/releases/tag/v0.2.7
 [0.2.6]: https://github.com/matterhornso/subscribetome/releases/tag/v0.2.6
 [0.2.5]: https://github.com/matterhornso/subscribetome/releases/tag/v0.2.5

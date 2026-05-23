@@ -131,14 +131,70 @@ function readCandidateValue(file: string, varName: string): string | null {
   return null;
 }
 
+/**
+ * Phase 3 of session-and-project-scope.md: after a successful import,
+ * either extend the matched project's scope with the freshly-imported
+ * keys, or surface a suggestion to create a project from this cwd.
+ *
+ * - `kind: "added-to-existing"` — the cwd resolved (longest-prefix) to a
+ *   registered project and we silently added each newly-imported
+ *   `(tool, label)` to its scope. The user clearly imports keys *for*
+ *   the project they're in; making them go re-check each one would be
+ *   busywork.
+ * - `kind: "suggest-create"` — no project matched. The dashboard can
+ *   offer a one-click "Create project from this path" prefilled with
+ *   `cwd`, `suggestedName`, and the imported (tool, label) list so the
+ *   new project starts with a sensible scope.
+ *
+ * Returned by `importSelected` whenever a `cwd` is supplied. Absent
+ * when the caller didn't pass a `cwd` (e.g. an automated import that
+ * has no notion of "current project").
+ */
+export type ScopeUpdate =
+  | {
+      kind: "added-to-existing";
+      projectId: number;
+      projectName: string;
+      projectPath: string;
+      addedToScope: { tool: string; label: string }[];
+    }
+  | {
+      kind: "suggest-create";
+      cwd: string;
+      suggestedName: string;
+      imported: { tool: string; label: string }[];
+    };
+
+/** Derive a project name suggestion from the last segment of a path. */
+function deriveProjectName(cwd: string): string {
+  const stripped = cwd.replace(/\/+$/, "");
+  const segs = stripped.split("/").filter(Boolean);
+  return segs[segs.length - 1] || cwd;
+}
+
 /** Import selected candidates. The real value is read server-side here — it
- *  never travels to the browser. */
+ *  never travels to the browser.
+ *
+ *  When `cwd` is supplied (Phase 3), the result includes a `scopeUpdate`
+ *  describing what to do with the freshly-imported keys at the project
+ *  level — either we already extended an existing project's scope, or
+ *  the UI should offer to create one. */
 export function importSelected(
   selections: { file: string; varName: string; tool: string; label: string }[],
-): { imported: number; errors: string[] } {
-  const store = new Store();
+  opts?: {
+    cwd?: string;
+    /**
+     * Override the SQLite DB path — used by the test suite, mirrors the
+     * `STM_DB` env override documented in `paths.ts`. Production callers
+     * leave this undefined and pick up `DB_PATH`.
+     */
+    dbPath?: string;
+  },
+): { imported: number; errors: string[]; scopeUpdate?: ScopeUpdate } {
+  const store = opts?.dbPath ? new Store(opts.dbPath) : new Store();
   let imported = 0;
   const errors: string[] = [];
+  const newlyImported: { tool: string; label: string }[] = [];
   try {
     for (const sel of selections) {
       const value = readCandidateValue(sel.file, sel.varName);
@@ -146,22 +202,68 @@ export function importSelected(
         errors.push(`${sel.varName}: value no longer found in ${sel.file}`);
         continue;
       }
+      const tool = normalizeSegment(sel.tool);
+      const label = normalizeSegment(sel.label || "default") || "default";
       try {
         store.addKey({
-          tool: sel.tool,
-          label: sel.label || "default",
+          tool,
+          label,
           value,
           source: "imported",
         });
         imported++;
+        newlyImported.push({ tool, label });
       } catch (e: any) {
         errors.push(`${sel.varName}: ${e?.message ?? e}`);
       }
     }
+
+    // Phase 3: scope auto-suggest. Only kicks in when at least one key
+    // landed AND the caller supplied a cwd. Failures here are
+    // best-effort — the import itself already succeeded; a scope hiccup
+    // shouldn't bubble.
+    let scopeUpdate: ScopeUpdate | undefined;
+    if (opts?.cwd && newlyImported.length > 0) {
+      try {
+        const project = store.matchProject(opts.cwd);
+        if (project) {
+          const added: { tool: string; label: string }[] = [];
+          for (const { tool, label } of newlyImported) {
+            if (!store.isInProjectScope(project.id, tool, label)) {
+              try {
+                store.addProjectScope(project.id, tool, label);
+                added.push({ tool, label });
+              } catch {
+                /* skip — silent extension is best-effort */
+              }
+            }
+          }
+          if (added.length > 0) {
+            scopeUpdate = {
+              kind: "added-to-existing",
+              projectId: project.id,
+              projectName: project.name,
+              projectPath: project.path,
+              addedToScope: added,
+            };
+          }
+        } else {
+          scopeUpdate = {
+            kind: "suggest-create",
+            cwd: opts.cwd,
+            suggestedName: deriveProjectName(opts.cwd),
+            imported: newlyImported,
+          };
+        }
+      } catch {
+        /* scope lookup failed — leave scopeUpdate undefined */
+      }
+    }
+
+    return { imported, errors, scopeUpdate };
   } finally {
     store.close();
   }
-  return { imported, errors };
 }
 
 /** CLI: `stm import [dir...]` — scan and print candidates for review. */
