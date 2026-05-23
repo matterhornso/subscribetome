@@ -129,9 +129,21 @@ stm list               keys, subscriptions, monthly spend
 stm import [dir]       scan .env files for keys to import
 stm revoke <tool> <l>  mark a key revoked
 stm policy <subcmd>    allow / deny / warn rules at PreToolUse
+stm project <subcmd>   per-project key scope
+stm audit              forensic log of PreToolUse decisions
+stm sync [provider]    fetch real spend from configured providers
 stm status             daemon + inventory summary
 stm stop               stop the dashboard daemon
 ```
+
+### Spend sync — network posture
+
+`stm sync` is the only feature that makes outbound network calls.
+**stm makes outbound network calls only when you click sync, only to the
+providers you've configured. No background activity, no telemetry, no
+phone-home.** Each sync-enabled provider needs a separate admin-scoped
+credential (e.g. `{{stm:openai:admin-key}}` for OpenAI) — add it in the
+dashboard, then run `stm sync` or click "Sync spend" in the header.
 
 ## Placeholder grammar
 

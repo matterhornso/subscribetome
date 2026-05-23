@@ -17,6 +17,8 @@ import { dashboardHTML } from "./dashboard.ts";
 import { importSelected, scanEnv } from "./import.ts";
 import { evaluateAll, type PolicyAction } from "./policy.ts";
 import { findExact } from "./grammar.ts";
+import { syncAll, syncProvider } from "./sync.ts";
+import { listProviderIds } from "./providers/index.ts";
 
 interface DaemonInfo {
   port: number;
@@ -119,6 +121,9 @@ async function apiRoute(path: string, req: Request, store: Store): Promise<Respo
       tools: store.listTools(),
       keys: store.listKeys(),
       monthlySpend: store.monthlySpend(),
+      monthlySpendBreakdown: store.monthlySpendBreakdown(),
+      spend: store.listSpend(),
+      providers: listProviderIds(),
     });
   }
   if (path === "/api/keys" && req.method === "POST") {
@@ -403,6 +408,35 @@ async function apiRoute(path: string, req: Request, store: Store): Promise<Respo
   if (path === "/api/audit/clear" && req.method === "POST") {
     const removed = store.clearAudit();
     return json({ ok: true, removed });
+  }
+
+  // ---- spend visibility (spec: specs/spend-visibility.md) ----------------
+  //
+  // NETWORK POSTURE RULE (§2 of the spec, surfaced verbatim wherever
+  // sync is exposed): stm makes outbound network calls only when the
+  // USER initiates a sync via this endpoint or `stm sync`. No
+  // background activity, no telemetry, no phone-home. The auth token
+  // + Host/Origin allowlist (which already gate every /api/ call)
+  // mean a third party cannot trigger this even on the same host.
+
+  if (path === "/api/spend" && req.method === "GET") {
+    return json({
+      rows: store.listSpend(),
+      breakdown: store.monthlySpendBreakdown(),
+      providers: listProviderIds(),
+    });
+  }
+  if (path === "/api/spend/sync" && req.method === "POST") {
+    const b: any = await req.json().catch(() => ({}));
+    // Pass our long-lived store handle into the orchestrator so the
+    // sync doesn't open a second SQLite connection per request.
+    if (typeof b?.provider === "string" && b.provider) {
+      const r = await syncProvider(b.provider, { store });
+      if (!r) return json({ error: `unknown provider: ${b.provider}` }, 400);
+      return json({ results: [r] });
+    }
+    const results = await syncAll({ store });
+    return json({ results });
   }
 
   return json({ error: "not found" }, 404);

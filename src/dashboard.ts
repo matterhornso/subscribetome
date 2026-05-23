@@ -138,6 +138,36 @@ export function dashboardHTML(): string {
   }
   .card.flash { animation:stm-flash 1.5s ease-out; }
 
+  /* ---- spend visibility (v0.3.0) ---- */
+  .spend-source {
+    display:inline-block; margin-left:8px;
+    font-size:11px; font-weight:600; letter-spacing:.4px; text-transform:uppercase;
+    padding:2px 8px; border-radius:999px;
+    background:rgba(255,255,255,.04); color:var(--text-dim);
+    border:1px solid var(--border);
+  }
+  .spend-source.fetched { color:var(--emerald-300); border-color:rgba(52,211,154,.3); }
+  .spend-source.partial { color:#fbbf24; border-color:rgba(251,191,36,.3); }
+  .spend-source.self    { color:var(--text-dim); }
+  .spend-tag {
+    display:inline-block; font-size:10.5px; padding:1px 6px; border-radius:4px;
+    color:var(--text-dim); background:rgba(255,255,255,.04);
+    border:1px solid var(--border); margin-left:6px;
+  }
+  .spend-tag.fetched { color:var(--emerald-300); border-color:rgba(52,211,154,.3); }
+  .spend-tag.error   { color:var(--danger); border-color:rgba(245,101,101,.3); }
+  .sync-log {
+    margin-top:calc(var(--space)*3);
+    padding:calc(var(--space)*3) calc(var(--space)*4);
+    background:var(--ink-850); border:1px solid var(--border);
+    border-radius:var(--r-md); font-family:var(--font-mono); font-size:12px;
+    color:var(--text); white-space:pre-wrap; line-height:1.55;
+    max-height:200px; overflow-y:auto;
+  }
+  .sync-log .ok { color:var(--emerald-300); }
+  .sync-log .bad { color:var(--danger); }
+  .sync-log .meta { color:var(--text-dim); }
+
   /* ---- session signal (?from=<cwd>) ---- */
   .session-signal {
     margin-bottom:calc(var(--space)*4);
@@ -408,7 +438,14 @@ export function dashboardHTML(): string {
     <div class="mark">s</div>
     <div class="name">subscribe<b>tome</b></div>
   </div>
-  <div class="spend">monthly spend <b id="spend">$0.00</b></div>
+  <div class="spend">
+    monthly spend <b id="spend">$0.00</b>
+    <span id="spend-source" class="spend-source"></span>
+    <button class="btn-ghost" id="sync-btn" style="margin-left:12px"
+      title="Outbound calls only happen when you click this — only to the providers you've configured.">
+      Sync spend
+    </button>
+  </div>
 </header>
 
 <main>
@@ -460,13 +497,19 @@ export function dashboardHTML(): string {
         <tbody id="keys"></tbody>
       </table>
     </div>
-    <div class="sub-head">Subscriptions</div>
+    <div class="sub-head" style="display:flex;align-items:center;justify-content:space-between">
+      <span>Subscriptions</span>
+      <span style="font-weight:400;text-transform:none;letter-spacing:.2px;font-size:12px;color:var(--text-dim)">
+        stm makes outbound calls only when you click Sync spend &middot; only to providers you have configured
+      </span>
+    </div>
     <div class="table-wrap">
       <table>
         <thead><tr><th>Tool</th><th>Plan</th><th>Monthly</th><th>Renews</th><th></th></tr></thead>
         <tbody id="tools"></tbody>
       </table>
     </div>
+    <div id="sync-log" class="sync-log" style="display:none"></div>
   </section>
 
   <section id="projects-card" class="card">
@@ -1000,6 +1043,7 @@ function renderVerdict(r){
 
 function render(inv){
   el("spend").textContent="$"+inv.monthlySpend.toFixed(2);
+  renderSpendSource(inv);
   var kb=el("keys");
   if(!inv.keys.length){
     kb.innerHTML='<tr><td colspan="5" class="empty">No keys yet — add one above.</td></tr>';
@@ -1017,8 +1061,43 @@ function render(inv){
         +'<td style="text-align:right">'+rev+'</td></tr>';
     }).join("");
   }
+  // Stash fetched spend rows (keyed by tool name) so renderTools can
+  // tag each subscription row with its source ("fetched" vs implicit
+  // "self-reported"). Empty object when /api/inventory returns no
+  // spend rows yet — back-compat for users with no sync configured.
+  lastSpend = {};
+  if (Array.isArray(inv.spend)) {
+    for (var i = 0; i < inv.spend.length; i++) {
+      lastSpend[inv.spend[i].tool] = inv.spend[i];
+    }
+  }
   renderTools(inv.tools);
 }
+
+/**
+ * Render the spend-source pill next to the monthly-spend total in the
+ * header. Three states per specs/spend-visibility.md §4:
+ *   - "fetched"      — every tracked tool has a fetched number
+ *   - "partial"      — some fetched, some self-reported
+ *   - "self-reported"— manual ledger only (today's state)
+ *   - "" (hidden)    — no monthly_cost AND no fetched data yet
+ */
+function renderSpendSource(inv){
+  var pill = el("spend-source"); if (!pill) return;
+  var b = inv.monthlySpendBreakdown || { fetched:0, manual:0, fetchedTools:0, manualTools:0 };
+  if (b.fetchedTools > 0 && b.manualTools === 0) {
+    pill.textContent = "fetched"; pill.className = "spend-source fetched";
+  } else if (b.fetchedTools > 0 && b.manualTools > 0) {
+    pill.textContent = "partial"; pill.className = "spend-source partial";
+  } else if (b.manualTools > 0) {
+    pill.textContent = "self-reported"; pill.className = "spend-source self";
+  } else {
+    pill.textContent = ""; pill.className = "spend-source";
+  }
+}
+
+/** Map tool-name → spend row (rebuilt on every /api/inventory refresh). */
+var lastSpend = {};
 
 function renderTools(tools){
   var tb=el("tools");
@@ -1041,14 +1120,79 @@ function renderTools(tools){
         +'<button class="btn-ghost sub-cancel" style="height:30px;padding:0 10px">Cancel</button>'
         +'</td></tr>';
     }
+    // Fetched-spend overlay: when the sync orchestrator has a value
+    // for this tool, show it instead of (or beside) the manual cost,
+    // tagged with its source so the user can see at a glance which
+    // numbers came from a provider.
+    var sp = lastSpend[t.name];
+    var monthlyHTML;
+    if (sp && typeof sp.fetched_usd === "number") {
+      monthlyHTML = '<span class="num">$'+sp.fetched_usd.toFixed(2)+'</span>'
+        +'<span class="spend-tag fetched" title="Fetched '+esc(sp.fetched_at||"")
+        +' from the provider via stm sync">fetched</span>';
+    } else if (sp && sp.source === "error" && t.monthly_cost != null) {
+      monthlyHTML = '<span class="num">$'+t.monthly_cost+'</span>'
+        +'<span class="spend-tag error" title="Last sync failed: '+esc(sp.last_error||"")
+        +'">sync failed</span>';
+    } else if (t.monthly_cost != null) {
+      monthlyHTML = '<span class="num">$'+t.monthly_cost+'</span>';
+    } else {
+      monthlyHTML = '<span style="color:var(--text-dim)">\\u2014</span>';
+    }
     return '<tr>'
       +'<td>'+esc(t.display_name)+'</td>'
       +'<td style="color:var(--text-muted)">'+esc(t.plan||"\\u2014")+'</td>'
-      +'<td class="num">'+(t.monthly_cost!=null?"$"+t.monthly_cost:'<span style="color:var(--text-dim)">\\u2014</span>')+'</td>'
+      +'<td class="num">'+monthlyHTML+'</td>'
       +'<td class="num" style="color:var(--text-muted)">'+esc(t.renews_on||"\\u2014")+'</td>'
       +'<td style="text-align:right"><button class="btn-ghost sub-edit" '
       +'style="height:28px;padding:0 12px" data-tool="'+esc(t.name)+'">Edit</button></td></tr>';
   }).join("");
+}
+
+/**
+ * Spend sync (specs/spend-visibility.md). The button is the ONLY thing
+ * on the page that triggers an outbound network call — the rule from
+ * the spec's §2 is surfaced in the button's title attribute and in a
+ * compact log under the Subscriptions table.
+ */
+async function syncSpend(){
+  var btn=el("sync-btn"); if(!btn)return;
+  var log=el("sync-log");
+  btn.disabled=true; var prev=btn.textContent; btn.textContent="Syncing...";
+  if(log){
+    log.style.display="";
+    log.innerHTML='<span class="meta">'+new Date().toISOString()+' \\u00b7 syncing every configured provider...</span>\\n';
+  }
+  try{
+    var r=await api("/api/spend/sync",{method:"POST",body:"{}"});
+    var rows=r.results||[];
+    if(log){
+      var lines=rows.map(function(x){
+        if(x.ok){
+          return '<span class="ok">[ok]</span>   '+esc(x.tool)+'   $'+(x.usd||0).toFixed(2)
+            +' \\u00b7 <span class="meta">'+esc(x.at)+'</span>';
+        }
+        if(x.missingCredential){
+          return '<span class="meta">[skip]</span> '+esc(x.tool)
+            +' \\u00b7 not configured ('+esc(x.error||"")+')';
+        }
+        return '<span class="bad">[fail]</span> '+esc(x.tool)+' \\u00b7 '+esc(x.error||"unknown");
+      });
+      log.innerHTML+=lines.join("\\n")+"\\n";
+      log.scrollTop=log.scrollHeight;
+    }
+    var ok=rows.filter(function(x){return x.ok;}).length;
+    var fail=rows.filter(function(x){return !x.ok && !x.missingCredential;}).length;
+    toast(ok+" synced, "+fail+" failed");
+    refresh();
+  }catch(e){
+    if(log){
+      log.innerHTML+='<span class="bad">[fail]</span> '+esc(e.message)+"\\n";
+    }
+    toast("Sync failed: "+e.message);
+  }finally{
+    btn.disabled=false; btn.textContent=prev;
+  }
 }
 
 async function saveSubscription(tool){
@@ -1359,6 +1503,7 @@ function deriveSuggestedName(cwd){
 }
 
 el("add-btn").addEventListener("click",addKeys);
+el("sync-btn").addEventListener("click",syncSpend);
 el("add-policy-btn").addEventListener("click",addPolicy);
 el("test-policy-btn").addEventListener("click",testPolicy);
 el("policies").addEventListener("click",function(e){

@@ -55,7 +55,7 @@
       "operatingSystem": "macOS",
       "url": "https://subscribetome.pro/",
       "downloadUrl": "https://github.com/matterhornso/subscribetome",
-      "softwareVersion": "0.2.8",
+      "softwareVersion": "0.3.0",
       "datePublished": "2026-05-18",
       "dateModified": "2026-05-23",
       "license": "https://opensource.org/licenses/MIT",
@@ -568,13 +568,18 @@ claude plugin install <span class="p">stm@subscribetome</span></pre>
         <li><b>Keys out of the chat.</b> Every API key your agent uses, kept out of the transcript.</li>
         <li><b>Pasted-secret guardrail.</b> A secret you paste in chat is blocked before the model sees it.</li>
         <li><b>Leaked-key alert.</b> A command that echoes its own input is flagged so you can rotate.</li>
+        <li><b>Spend visibility.</b> Real usage pulled from provider APIs, on demand.
+          <span style="display:block;color:#9aa1a8;font-size:13px;margin-top:4px">
+            stm makes outbound network calls only when you click sync, only to the providers you've configured. No background activity, no telemetry, no phone-home.
+          </span>
+        </li>
       </ul>
     </div>
     <div class="layer-col next">
       <h3>Security for the rest</h3>
       <ul>
-        <li><b>Spend visibility.</b> Real usage pulled from provider APIs, on demand.</li>
         <li><b>Command policy.</b> Allow / deny rules at the PreToolUse layer.</li>
+        <li><b>Per-project key scope.</b> One session, one set of keys — sized to the project.</li>
         <li><b>Linux, Windows, and other agents</b> (Codex, opencode, Cursor).</li>
       </ul>
     </div>

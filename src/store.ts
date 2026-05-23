@@ -108,6 +108,14 @@ CREATE TABLE IF NOT EXISTS project_scope (
   label       TEXT    NOT NULL,
   PRIMARY KEY (project_id, tool_id, label)
 );
+CREATE TABLE IF NOT EXISTS spend (
+  tool_id     INTEGER PRIMARY KEY REFERENCES tools(id) ON DELETE CASCADE,
+  fetched_usd REAL,
+  fetched_at  TEXT,
+  source      TEXT NOT NULL DEFAULT 'fetched'
+                   CHECK(source IN ('fetched','manual','error')),
+  last_error  TEXT
+);
 `;
 
 /** Default cap on the audit_log rolling buffer. Overridable via STM_AUDIT_MAX. */
@@ -150,6 +158,29 @@ export interface ProjectScopeEntry {
   label: string;
   /** Placeholder rendered convenience: `{{stm:tool:label}}`. */
   placeholder: string;
+}
+
+/**
+ * Spend tracking row — populated by `stm sync` when a provider's billing
+ * API responds. Storage of an `error` source preserves the last-known-good
+ * value (don't silently zero out, per specs/spend-visibility.md §5).
+ */
+export interface SpendRow {
+  tool_id: number;
+  /** Month-to-date USD as the provider reported it. May be 0; never negative. */
+  fetched_usd: number | null;
+  /** ISO timestamp the provider returned (or when we tried, on error). */
+  fetched_at: string | null;
+  /**
+   * `fetched` = the value came from the provider (`last_error` is null).
+   * `error`   = the most recent sync failed; `fetched_usd` is the last
+   *             successful value (or null if no successful sync yet).
+   * `manual`  = reserved for v1.x (CLI-typed override). Today the
+   *             `tools.monthly_cost` ledger is the manual surface; this
+   *             row only carries fetched data.
+   */
+  source: "fetched" | "manual" | "error";
+  last_error: string | null;
 }
 
 export interface AuditRow {
@@ -280,12 +311,138 @@ export class Store {
     return this.db.query(`SELECT * FROM tools ORDER BY name`).all() as Tool[];
   }
 
-  /** Total declared monthly subscription spend across all tools. */
+  /**
+   * Total monthly spend across all tools. Each tool contributes its
+   * fetched `spend.fetched_usd` when present, otherwise its manual
+   * `tools.monthly_cost`. NULL on both sides counts as 0.
+   *
+   * v0.3.0 (specs/spend-visibility.md): existed before; semantics widened
+   * to prefer fetched-when-available. Older callers see no regression —
+   * with zero `spend` rows the result is identical to the previous SUM.
+   */
   monthlySpend(): number {
     const r = this.db
-      .query(`SELECT COALESCE(SUM(monthly_cost), 0) AS total FROM tools`)
+      .query(
+        `SELECT COALESCE(SUM(
+            COALESCE(s.fetched_usd, t.monthly_cost, 0)
+         ), 0) AS total
+            FROM tools t
+            LEFT JOIN spend s ON s.tool_id = t.id`,
+      )
       .get() as { total: number };
     return r.total;
+  }
+
+  /**
+   * Break the monthly spend down into "what came from a provider" vs
+   * "what the user typed manually". Drives the dashboard header badge's
+   * three states (fetched / partial / self-reported). See
+   * specs/spend-visibility.md §4.
+   */
+  monthlySpendBreakdown(): {
+    total: number;
+    fetched: number;
+    manual: number;
+    /** Tools with a fetched_usd value (regardless of source flag). */
+    fetchedTools: number;
+    /** Tools without a fetched value, only their manual cost contributes. */
+    manualTools: number;
+  } {
+    const r = this.db
+      .query(
+        `SELECT
+           COALESCE(SUM(CASE WHEN s.fetched_usd IS NOT NULL
+                             THEN s.fetched_usd ELSE 0 END), 0) AS fetched,
+           COALESCE(SUM(CASE WHEN s.fetched_usd IS NULL
+                             THEN COALESCE(t.monthly_cost, 0) ELSE 0 END), 0) AS manual,
+           SUM(CASE WHEN s.fetched_usd IS NOT NULL THEN 1 ELSE 0 END) AS fetched_tools,
+           SUM(CASE WHEN s.fetched_usd IS NULL
+                          AND t.monthly_cost IS NOT NULL THEN 1 ELSE 0 END) AS manual_tools
+           FROM tools t
+           LEFT JOIN spend s ON s.tool_id = t.id`,
+      )
+      .get() as {
+        fetched: number;
+        manual: number;
+        fetched_tools: number | null;
+        manual_tools: number | null;
+      };
+    return {
+      total: r.fetched + r.manual,
+      fetched: r.fetched,
+      manual: r.manual,
+      fetchedTools: r.fetched_tools ?? 0,
+      manualTools: r.manual_tools ?? 0,
+    };
+  }
+
+  // ---- spend (specs/spend-visibility.md) ---------------------------------
+
+  /**
+   * Record a successful fetch from a provider. Upserts the spend row with
+   * the new USD value, the timestamp the provider returned, and clears any
+   * previous `last_error`.
+   */
+  setSpend(input: {
+    toolId: number;
+    usd: number;
+    asOf: string;
+  }): void {
+    if (!Number.isFinite(input.usd) || input.usd < 0) {
+      throw new Error("spend usd must be a non-negative finite number");
+    }
+    this.db
+      .query(
+        `INSERT INTO spend (tool_id, fetched_usd, fetched_at, source, last_error)
+         VALUES (?, ?, ?, 'fetched', NULL)
+         ON CONFLICT(tool_id) DO UPDATE SET
+           fetched_usd = excluded.fetched_usd,
+           fetched_at  = excluded.fetched_at,
+           source      = 'fetched',
+           last_error  = NULL`,
+      )
+      .run(input.toolId, input.usd, input.asOf);
+  }
+
+  /**
+   * Record a sync failure for this tool. Preserves the previous
+   * `fetched_usd` so the dashboard can show "stale, last good value
+   * was $X · last attempt failed: <reason>" rather than silently zeroing.
+   */
+  markSpendError(toolId: number, error: string): void {
+    // INSERT first time, UPDATE thereafter — without clobbering the
+    // previously-good fetched_usd.
+    this.db
+      .query(
+        `INSERT INTO spend (tool_id, fetched_usd, fetched_at, source, last_error)
+         VALUES (?, NULL, ?, 'error', ?)
+         ON CONFLICT(tool_id) DO UPDATE SET
+           fetched_at  = excluded.fetched_at,
+           source      = 'error',
+           last_error  = excluded.last_error`,
+      )
+      .run(toolId, new Date().toISOString(), error);
+  }
+
+  getSpend(toolId: number): SpendRow | null {
+    return (this.db
+      .query(`SELECT * FROM spend WHERE tool_id = ?`)
+      .get(toolId) as SpendRow | null) ?? null;
+  }
+
+  /**
+   * All spend rows joined with their tool name for display. Most-recent
+   * `fetched_at` first; rows that have never been fetched are excluded
+   * (callers can fall back to `tools.monthly_cost`).
+   */
+  listSpend(): (SpendRow & { tool: string })[] {
+    return this.db
+      .query(
+        `SELECT s.*, t.name AS tool
+           FROM spend s JOIN tools t ON t.id = s.tool_id
+          ORDER BY s.fetched_at DESC NULLS LAST`,
+      )
+      .all() as (SpendRow & { tool: string })[];
   }
 
   /**

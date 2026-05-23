@@ -1,6 +1,6 @@
 # Spec — Spend visibility (the second product)
 
-**Status:** Draft · **Target:** v0.2 (post-cross-platform) · **Last updated:** 2026-05-20
+**Status:** Phases 1-3 shipped (v0.3.0) · Phase 4 (Stripe) deferred · **Target:** v0.3 · **Last updated:** 2026-05-23
 
 stm's first product hides API keys. This spec covers the second: showing the
 user what those keys are actually doing — real spend, pulled on demand from
@@ -131,12 +131,16 @@ behind a stale number.
 
 - **Phase 1 — Foundation.** `spend` table, `SpendProvider` interface, dashboard
   "Sync spend" button, `stm sync` CLI. Button disabled until a provider lands.
+  **Shipped v0.3.0.**
 - **Phase 2 — OpenAI.** First provider. Biggest user base, admin API
   documented. Establishes the "add a separate admin credential" UX.
-- **Phase 3 — Anthropic.** Same pattern.
+  **Shipped v0.3.0.**
+- **Phase 3 — Anthropic.** Same pattern. **Shipped v0.3.0.**
 - **Phase 4 — Stripe.** Different category (your *own* Stripe account spend,
   not API spend) — adapt the UI to make that clear, or ship as a separate
   "Stripe income" panel and keep this feature focused on API spend.
+  **Deferred** — best modeled as a separate "Stripe income" panel; out of
+  scope for the API-spend feature.
 - **Phase 5+** — Other providers via PR. Each must include a contract test
   against a recorded response so changes to the provider's API surface up.
 

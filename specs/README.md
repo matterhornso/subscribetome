@@ -8,14 +8,14 @@ This index is the source of truth — when a new spec lands, add a row
 to the table below and a short summary in §1, then update statuses
 here as features ship.
 
-Last updated: **2026-05-23** (session-and-project-scope Phase 3 shipped in v0.2.8 — `stm import` auto-suggest: imports under a matched project now silently extend its scope; imports under an unmatched path surface a one-click "Create project from this path" with the imported keys pre-scoped).
+Last updated: **2026-05-23** (spend-visibility Phases 1-3 shipped in v0.3.0 — `spend` SQLite table + `SpendProvider` interface + OpenAI & Anthropic providers + `stm sync` CLI + dashboard "Sync spend" button. Network-posture rule visible on every surface: outbound calls only on explicit sync, only to configured providers).
 
 ## 1. Index of specs
 
 | # | Spec | Target | Status | Lines |
 |---|------|--------|--------|------:|
 | 01 | [`cross-platform-and-codex.md`](./cross-platform-and-codex.md) | v2 | Draft | ~280 |
-| 02 | [`spend-visibility.md`](./spend-visibility.md) | v0.2 (post-cross-platform) | Draft | ~160 |
+| 02 | [`spend-visibility.md`](./spend-visibility.md) | v0.3 | **Phases 1-3 shipped** (v0.3.0 — foundation + OpenAI + Anthropic) · Phase 4 (Stripe) deferred | ~160 |
 | 03 | [`session-and-project-scope.md`](./session-and-project-scope.md) | v0.3 | **All phases shipped** (Phase 1 v0.2.4 · Phase 2 v0.2.7 · Phase 3 v0.2.8) · §7 enforcement via `command-policy` Phase 3 (v0.2.5) | ~230 |
 | 04 | [`command-policy.md`](./command-policy.md) | v0.4 | **All four phases shipped** (v0.2.5) | ~230 |
 | 05 | [`audit-log.md`](./audit-log.md) | v0.3 | **All four phases shipped** (v0.2.3) | ~200 |
@@ -152,8 +152,9 @@ Reading the graph:
    dashboard.~~ **Shipped v0.2.6.**
 5. ~~**`session-and-project-scope.md`** Phase 2 — dashboard Projects
    view + `?from=<cwd>` integration.~~ **Shipped v0.2.7.**
-6. **`spend-visibility.md`** — the "second product." Worth its own
-   launch moment; do not bury inside an unrelated release.
+6. ~~**`spend-visibility.md`** — the "second product."~~ **Phases 1-3
+   shipped v0.3.0** (foundation + OpenAI + Anthropic). Phase 4 (Stripe)
+   deferred as a separate "Stripe income" panel.
 7. **`cross-platform-and-codex.md`** — biggest scope; do after the
    macOS / Claude Code build feels complete.
 

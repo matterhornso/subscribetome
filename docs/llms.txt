@@ -72,6 +72,10 @@ on the roadmap.
   How v2 expands beyond macOS and Claude Code.
 - [Spend visibility](https://github.com/matterhornso/subscribetome/blob/main/specs/spend-visibility.md):
   The second product — real spend pulled from provider APIs, on demand.
+  Shipped v0.3.0 (foundation + OpenAI + Anthropic). Network-posture
+  rule: stm makes outbound calls only when you click sync, only to
+  the providers you've configured. No background activity, no
+  telemetry, no phone-home.
 - [Per-project key scope](https://github.com/matterhornso/subscribetome/blob/main/specs/session-and-project-scope.md):
   Multi-session, multi-project key scoping.
 

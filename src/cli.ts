@@ -16,6 +16,8 @@ import { Store, type AuditEvent } from "./store.ts";
 import { preToolUse, postToolUse, userPromptSubmit, sessionStart } from "./hooks.ts";
 import { evaluateAll, type PolicyAction } from "./policy.ts";
 import { findExact } from "./grammar.ts";
+import { syncAll, syncProvider } from "./sync.ts";
+import { listProviderIds } from "./providers/index.ts";
 
 /**
  * Parse a friendly duration like `30s`, `5m`, `2h`, `7d` into milliseconds.
@@ -822,6 +824,87 @@ async function auditCmd(args: string[]): Promise<void> {
   }
 }
 
+// ---- sync (specs/spend-visibility.md) -------------------------------------
+
+function syncHelp(): void {
+  process.stdout.write(
+    `subscribetome — spend sync (specs/spend-visibility.md)\n\n` +
+      `  stm sync                          refresh every sync-enabled provider\n` +
+      `  stm sync <provider>               refresh one provider (e.g. openai)\n` +
+      `  stm sync --list                   list registered providers\n` +
+      `\nstm makes outbound network calls ONLY when you run \`stm sync\`,\n` +
+      `ONLY to the providers you have configured. No background activity,\n` +
+      `no telemetry, no phone-home. Ever.\n` +
+      `\nEach provider needs a separate admin-scoped credential (e.g. for\n` +
+      `OpenAI, label \`admin-key\` against tool \`openai\`). Add one via the\n` +
+      `dashboard's \"Enable sync\" toggle, then run \`stm sync\`.\n`,
+  );
+}
+
+async function syncCmd(args: string[]): Promise<void> {
+  const { flags, positional } = parseFlags(args);
+  if (flags.help || flags.h || positional[0] === "help") {
+    return syncHelp();
+  }
+  if (flags.list) {
+    const ids = listProviderIds();
+    if (!ids.length) {
+      process.stdout.write("No providers registered.\n");
+      return;
+    }
+    process.stdout.write("Registered providers:\n");
+    for (const id of ids) process.stdout.write(`  ${id}\n`);
+    return;
+  }
+
+  const target = positional[0];
+  // Banner — the spec requires the network-posture rule to be visible
+  // every time a sync runs (not just in help). Single line so it
+  // doesn't drown out the results table.
+  process.stdout.write(
+    `stm sync — outbound calls only to the providers you've configured. ` +
+      `No telemetry. No background activity.\n\n`,
+  );
+
+  if (target) {
+    const r = await syncProvider(target);
+    if (r == null) {
+      process.stderr.write(
+        `error: unknown provider "${target}". Known: ${listProviderIds().join(", ")}\n`,
+      );
+      process.exit(1);
+    }
+    printSyncResult(r);
+    process.exit(r.ok ? 0 : 1);
+  }
+  const rows = await syncAll();
+  if (rows.length === 0) {
+    process.stdout.write("No providers registered.\n");
+    return;
+  }
+  for (const r of rows) printSyncResult(r);
+  // Exit non-zero only if EVERY provider failed; partial success is success.
+  const anyOk = rows.some((r) => r.ok);
+  process.exit(anyOk ? 0 : 1);
+}
+
+function printSyncResult(r: { tool: string; ok: boolean; usd?: number; at: string; error?: string; missingCredential?: boolean }): void {
+  if (r.ok) {
+    process.stdout.write(
+      `  ${r.tool.padEnd(12)}  $${(r.usd ?? 0).toFixed(2).padStart(10)}` +
+        `   ${r.at}\n`,
+    );
+  } else if (r.missingCredential) {
+    process.stdout.write(
+      `  ${r.tool.padEnd(12)}  (not configured — ${r.error})\n`,
+    );
+  } else {
+    process.stdout.write(
+      `  ${r.tool.padEnd(12)}  failed: ${r.error}\n`,
+    );
+  }
+}
+
 async function policyCmd(args: string[]): Promise<void> {
   const [sub, ...rest] = args;
   switch (sub) {
@@ -878,6 +961,7 @@ function helpCmd(): void {
       `  stm revoke <tool> <label>       mark a key revoked\n` +
       `  stm policy <list|add|remove|test>  allow/deny rules at PreToolUse\n` +
       `  stm audit [--tail N] [--event] [--tool] [--since]  PreToolUse decision log\n` +
+      `  stm sync [provider]             fetch real spend from configured providers\n` +
       `  stm project <add|list|show|scope|unscope|enforce|rename|remove>  per-project key scope\n` +
       `  stm import [dir...]             scan .env files for importable keys\n` +
       `  stm dashboard                   open the localhost web dashboard\n` +
@@ -916,6 +1000,8 @@ async function main(): Promise<void> {
       return policyCmd(rest);
     case "audit":
       return auditCmd(rest);
+    case "sync":
+      return syncCmd(rest);
     case "project":
       return projectCmd(rest);
     case "import": {

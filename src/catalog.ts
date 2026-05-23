@@ -85,6 +85,19 @@ export interface ServiceDef {
   url: string;
   /** Optional one-line description (≤60 chars). Surfaced via `title` attr. */
   tagline?: string;
+  /**
+   * Spend-visibility (v0.3.0, specs/spend-visibility.md): true when this
+   * provider exposes a usage / billing API stm can sync against. The
+   * dashboard shows an "Enable sync" toggle on these entries; clicking
+   * it prompts for the separate usage credential.
+   */
+  supportsUsage?: boolean;
+  /**
+   * Credential label the sync orchestrator looks up against this tool
+   * to obtain a usage key (e.g. `admin-key`). Always different from
+   * the runtime credential since usage APIs are admin-scoped.
+   */
+  usageCredentialLabel?: string;
 }
 
 export const CATALOG: ServiceDef[] = [
@@ -92,16 +105,20 @@ export const CATALOG: ServiceDef[] = [
   {
     id: "openai",
     name: "OpenAI",
-    credentials: ["api-key"],
+    credentials: ["api-key", "admin-key"],
     category: "ai",
     url: "https://platform.openai.com/api-keys",
+    supportsUsage: true,
+    usageCredentialLabel: "admin-key",
   },
   {
     id: "anthropic",
     name: "Anthropic",
-    credentials: ["api-key"],
+    credentials: ["api-key", "admin-key"],
     category: "ai",
     url: "https://console.anthropic.com/settings/keys",
+    supportsUsage: true,
+    usageCredentialLabel: "admin-key",
   },
   {
     id: "google-gemini",

@@ -3,6 +3,87 @@
 All notable changes to subscribetome. This project is pre-1.0; minor versions
 may still change behaviour. Format follows [Keep a Changelog](https://keepachangelog.com).
 
+## [0.3.0] — 2026-05-23
+
+### Added — Spend visibility (the second product, `specs/spend-visibility.md` Phases 1-3)
+
+The "second product" lands. The dashboard's monthly-spend total is no
+longer just what the user typed — for sync-enabled providers it's a
+real number pulled from the provider's billing API, on demand, with a
+clear "fetched" tag.
+
+**Network-posture rule**, surfaced verbatim on the CLI, the dashboard,
+the README, and the landing page:
+
+> stm makes outbound network calls only when you click sync, only to
+> the providers you've configured. No background activity, no
+> telemetry, no phone-home. Ever.
+
+Concretely:
+- **`spend` SQLite table** keyed by `tool_id`, with `fetched_usd`,
+  `fetched_at`, `source` (`fetched | error | manual`), and `last_error`.
+  Additive migration — opens fine on existing v0.2.x DBs.
+- **`SpendProvider` interface** (`src/providers/types.ts`) — pure
+  functions over a usage credential; one outbound HTTP call each,
+  with injectable `fetch` for testing.
+- **OpenAI provider** (`src/providers/openai.ts`) — calls
+  `GET /v1/organization/costs?start_time=&end_time=&bucket_width=1d`,
+  sums every bucket's `amount.value`. Uses a separate admin key
+  (`{{stm:openai:admin-key}}`); never the runtime API key.
+- **Anthropic provider** (`src/providers/anthropic.ts`) — calls
+  `GET /v1/organizations/cost_report?starting_at=&ending_at=`,
+  defensively parses both direct-`amount` and `results[]`-style
+  responses. Admin-key based; same separation.
+- **Sync orchestrator** (`src/sync.ts`) — resolves the usage
+  credential from the keychain, calls the provider, writes either
+  `setSpend` on success or `markSpendError` on failure. **Never
+  silently zeroes a previous good value on error** (spec §5 invariant
+  — covered by a dedicated test).
+- **`stm sync [provider]` CLI** — runs every registered provider or
+  one named provider. Banner reminds the user of the network-posture
+  rule on every invocation. `stm sync --list` enumerates registered
+  providers.
+- **Dashboard "Sync spend" button** in the header next to the monthly
+  total. Three-state pill next to the number:
+    - `FETCHED` (emerald)    — every tracked tool has a fetched number
+    - `PARTIAL` (amber)      — some fetched, some self-reported
+    - `SELF-REPORTED` (grey) — manual ledger only
+  Each Subscriptions row gets a tag: `fetched` (emerald, with the
+  fetched timestamp in the tooltip), `sync failed` (red, with the
+  error message in the tooltip), or no tag (manual).
+  A compact monospace sync-log appears under the Subscriptions table
+  with one line per provider after a click.
+- **Daemon endpoints** (auth + Host/Origin allowlist applies):
+    - `GET  /api/spend`        — listSpend + breakdown + provider ids
+    - `POST /api/spend/sync`   — `{provider?}` runs one or all
+  The existing `GET /api/inventory` now also returns
+  `monthlySpendBreakdown`, the `spend` rows, and the registered
+  provider ids.
+- **Catalog gains `supportsUsage` + `usageCredentialLabel`** fields.
+  OpenAI and Anthropic now declare a second credential label
+  (`admin-key`) and `supportsUsage: true`. Catalog ↔ providers
+  invariant covered by a test.
+
+### Changed
+- `Store.monthlySpend()` now prefers `spend.fetched_usd` over
+  `tools.monthly_cost` per tool. Users with zero `spend` rows see no
+  behavior change — back-compat by construction.
+- Landing page (`docs/index.html`): "Spend visibility" promoted out
+  of the "next" column into the live "Today" column, with the
+  network-posture sentence rendered next to it.
+- README: new "Spend sync — network posture" section + `stm sync` in
+  the CLI table.
+
+### Notes
+- Phase 4 of `specs/spend-visibility.md` (Stripe) is **deferred** —
+  per the spec's own framing, your *own* Stripe-account revenue/spend
+  is a different category from "AI API spend" and is better modeled
+  as a separate "Stripe income" panel. Not built in this release.
+- 22 new tests in `test/spend.test.ts` covering store CRUD,
+  monthlySpend semantics, provider parsers (both OK and error
+  branches), and the orchestrator's "preserve previous value on
+  error" rule. Suite: 149 pass, 0 fail (was 127).
+
 ## [0.2.8] — 2026-05-23
 
 ### Added
@@ -419,6 +500,7 @@ may still change behaviour. Format follows [Keep a Changelog](https://keepachang
   `PostToolUse` (flags a key leaked into output).
 - The `stm` CLI, the localhost dashboard daemon, and `.env` import.
 
+[0.3.0]: https://github.com/matterhornso/subscribetome/releases/tag/v0.3.0
 [0.2.8]: https://github.com/matterhornso/subscribetome/releases/tag/v0.2.8
 [0.2.7]: https://github.com/matterhornso/subscribetome/releases/tag/v0.2.7
 [0.2.6]: https://github.com/matterhornso/subscribetome/releases/tag/v0.2.6
