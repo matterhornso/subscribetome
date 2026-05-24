@@ -318,8 +318,23 @@ export function launchCodex(opts: {
 
 /** Human banner printed to stderr at launch time. Lists env-var NAMES
  *  only (never values). Surfaces the spec's "weaker than Claude Code"
- *  framing verbatim so the user can never miss it. */
-export function launchBanner(plan: InjectionPlan): string {
+ *  framing verbatim so the user can never miss it.
+ *
+ *  `hooks` is the optional v0.4.1 status from `codexDoctor()` — when
+ *  present, the banner adds a one-liner so users know whether the
+ *  UserPromptSubmit/SessionStart guardrails are wired into Codex.
+ *  Missing guardrails are not a hard error: codex still launches,
+ *  the env injection still works. But the banner says so honestly so
+ *  the user can decide whether to install them. */
+export function launchBanner(
+  plan: InjectionPlan,
+  hooks?: {
+    ok: boolean;
+    blockPresent: boolean;
+    blockUpToDate: boolean;
+    configPresent: boolean;
+  },
+): string {
   const lines: string[] = [];
   lines.push("stm codex — session-env mode (specs/cross-platform-and-codex.md §6)");
   if (plan.project && plan.scoped) {
@@ -339,6 +354,29 @@ export function launchBanner(plan: InjectionPlan): string {
     lines.push(`  keys:     ${plan.entries.length} env var${plan.entries.length === 1 ? "" : "s"} injected:`);
     for (const e of plan.entries) {
       lines.push(`              ${e.envName}   ← ${e.placeholder}`);
+    }
+  }
+  if (hooks) {
+    if (hooks.ok) {
+      lines.push(
+        `  guards:   UserPromptSubmit + SessionStart installed in ~/.codex/config.toml`,
+      );
+    } else if (!hooks.configPresent) {
+      lines.push(
+        `  guards:   ~/.codex/config.toml not found — run \`stm codex install-hooks\` to add the guardrails`,
+      );
+    } else if (!hooks.blockPresent) {
+      lines.push(
+        `  guards:   NOT installed — run \`stm codex install-hooks\` to add the UserPromptSubmit + SessionStart guards`,
+      );
+    } else if (!hooks.blockUpToDate) {
+      lines.push(
+        `  guards:   installed but OUT OF DATE — run \`stm codex install-hooks\` to refresh`,
+      );
+    } else {
+      lines.push(
+        `  guards:   issue with hook scripts on disk — run \`stm codex doctor\``,
+      );
     }
   }
   lines.push(

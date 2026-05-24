@@ -3,6 +3,90 @@
 All notable changes to subscribetome. This project is pre-1.0; minor versions
 may still change behaviour. Format follows [Keep a Changelog](https://keepachangelog.com).
 
+## [0.4.1] — 2026-05-24
+
+### Added — Codex guardrail hooks port (`specs/cross-platform-and-codex.md` §6, follow-up)
+
+The v0.4.0 launcher closed the env-injection half of Codex support; the
+guardrails (UserPromptSubmit, SessionStart) were deferred. This release
+ports them.
+
+- **`hooks/codex/userpromptsubmit.sh`** and
+  **`hooks/codex/sessionstart.sh`** — thin shell wrappers, identical
+  in spirit to the Claude Code versions. The hook code in
+  `src/hooks.ts` works on Codex unchanged: Codex's stdin payload
+  (`prompt`, `cwd`, `hook_event_name`, snake_case) matches the
+  fields we read; the `hookSpecificOutput` reply (camelCase) and
+  the exit-code-2 + stderr blocking semantics are identical
+  to Claude Code's.
+
+- **`src/agents/codex-hooks.ts`** — the installer + doctor.
+  - `installHooks({configPath?, dryRun?})` writes (or refreshes)
+    a marker-delimited managed block in `~/.codex/config.toml`
+    with the array-of-tables schema Codex's hook docs specify:
+    `[[hooks.UserPromptSubmit]]` + `[[hooks.UserPromptSubmit.hooks]]`
+    with `type = "command"` and an absolute `command` path,
+    plus the matching `SessionStart` block. Sets
+    `features.hooks = true` defensively.
+  - Idempotent and surgical: the block sits between
+    `# stm: subscribetome managed-hooks v1` and
+    `# stm: end subscribetome managed-hooks` markers. Reinstalling
+    rewrites just the block; everything above and below the
+    markers is preserved verbatim. A backup of the previous
+    config is written next to the file when a change occurs.
+  - `doctor({configPath?})` reads the file and returns a verdict
+    (config present? block present? block up to date? scripts
+    executable?) — used by the CLI subcommand AND by the
+    launch banner.
+  - `uninstallHooks(...)` is the symmetric remove for users who
+    want the launcher without the guardrails.
+
+- **CLI**:
+  - `stm codex install-hooks [--dry-run]` — adds (or refreshes)
+    the managed block. Backs up the previous config.
+  - `stm codex install-hooks --remove` — uninstalls cleanly.
+  - `stm codex doctor` — read-only health check; exits 0 on OK,
+    1 otherwise. Suitable for CI.
+  - `stm codex` (the launcher) now calls `doctor()` once at
+    launch time so the banner shows
+    `guards: UserPromptSubmit + SessionStart installed` or
+    `guards: NOT installed — run \`stm codex install-hooks\``.
+
+- **Trust gate warning** — surfaced in three places: the
+  install-hooks success message, the doctor summary, and the
+  Codex hooks reference link. Per Codex docs
+  (developers.openai.com/codex/hooks#trust), the FIRST launch
+  after install will prompt the user to approve the hook; until
+  they do, the hook is silently skipped. We never let this fact
+  hide.
+
+### Tests — 207 pass, 0 fail (was 192; +15 codex-hooks tests).
+
+Coverage:
+- `renderManagedBlock` emits the correct array-of-tables shape,
+  both event sections, both `type = "command"` entries, and
+  absolute paths.
+- `installHooks` creates the file on first install, is idempotent
+  on re-run, preserves surrounding user config, replaces a stale
+  managed block in place, and writes with mode 0600.
+- `--dry-run` writes nothing.
+- `uninstallHooks` removes the managed block while preserving
+  other content; no-op on a missing block or missing file.
+- `doctor` reports missing/present/out-of-date/scripts-missing
+  correctly and always surfaces the trust-gate reminder when the
+  block is present.
+
+### Compatibility
+
+- Existing v0.4.0 Codex launches continue to work unchanged. The
+  hook port is purely additive — `stm codex` still launches codex
+  whether or not `install-hooks` has run.
+- No new outbound calls. The hook scripts and the installer
+  touch only the local filesystem.
+- Audit log invariant unchanged (the hook code path that writes
+  audit rows is the same one Claude Code uses; it never carries a
+  real key value).
+
 ## [0.4.0] — 2026-05-24
 
 ### Added — Codex adapter (`specs/cross-platform-and-codex.md` Workstream C, Option 1)

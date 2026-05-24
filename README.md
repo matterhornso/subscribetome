@@ -133,6 +133,8 @@ stm project <subcmd>   per-project key scope
 stm audit              forensic log of PreToolUse decisions
 stm sync [provider]    fetch real spend from configured providers
 stm codex [args...]    launch Codex with stm keys as env vars
+stm codex install-hooks install the UserPromptSubmit + SessionStart guardrails in ~/.codex/config.toml
+stm codex doctor       verify the Codex guardrails are wired up
 stm status             daemon + inventory summary, active agents + backend
 stm stop               stop the dashboard daemon
 ```
@@ -203,6 +205,33 @@ Cursor, opencode, and the MCP-wrapped Codex mode (Option 2 of
 `specs/cross-platform-and-codex.md` §6) are roadmap; the agent surface
 is now plural and they plug into it without breaking either of the
 modes above.
+
+### Codex guardrails — UserPromptSubmit + SessionStart
+
+The env-injection launcher (above) handles "the agent uses keys without
+the model typing them." The guardrails handle the other two pieces v1
+ships on Claude Code: blocking a raw key a user pastes into chat
+(`UserPromptSubmit`), and teaching every session how to use stm-managed
+keys (`SessionStart`). On Codex these wire in through Codex's own hook
+config:
+
+```
+stm codex install-hooks            # writes the block in ~/.codex/config.toml
+stm codex install-hooks --dry-run  # print what it would write, don't touch disk
+stm codex install-hooks --remove   # uninstall the guardrails
+stm codex doctor                   # verify the wiring; exit 0 = healthy
+```
+
+The installer writes a marker-delimited block between
+`# stm: subscribetome managed-hooks v1` and
+`# stm: end subscribetome managed-hooks` — everything above and below the
+markers is preserved. A timestamped backup is left next to the file.
+
+**Trust gate.** On first launch after install, Codex prompts you to
+TRUST each hook (it records trust against the hook command's hash).
+Until you approve, the hook is silently skipped — `stm codex doctor`
+reports "OK" but no guard fires. Press `y` when prompted. See
+[developers.openai.com/codex/hooks#trust](https://developers.openai.com/codex/hooks#trust).
 
 ## Supported platforms
 

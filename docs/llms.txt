@@ -48,7 +48,7 @@ Keychain. The dashboard and `stm status` always show which backend
 is active. Headless Linux (SSH, container, WSL) and Windows are on
 the roadmap.
 
-Two agents are wrapped as of v0.4.0 with different security postures.
+Two agents are wrapped as of v0.4.0 (and v0.4.1 ported the guardrails to Codex too) with different security postures.
 **Claude Code** gets the strong "per-command rewrite" guarantee: the
 real key is substituted into one Bash command at the moment it runs
 via a `PreToolUse` hook returning `updatedInput`, and the transcript
@@ -61,6 +61,16 @@ surface it. Codex's hook system today rejects `updatedInput` (it is
 on Codex is not yet possible; tracking openai/codex#18491. The
 trade-off is shown verbatim in `stm status`, the launcher banner,
 the dashboard header, and the README — never hidden.
+
+The `UserPromptSubmit` and `SessionStart` guardrails ported to
+Codex in v0.4.1 via `stm codex install-hooks`, which writes a
+marker-delimited managed block to `~/.codex/config.toml` using
+Codex's array-of-tables hook schema (`[[hooks.UserPromptSubmit]]`
++ `[[hooks.UserPromptSubmit.hooks]]`). The installer is idempotent
+and surgical — surrounding user config is preserved. `stm codex
+doctor` verifies the wiring. First launch after install prompts
+the user to TRUST each hook; until approved, the hook is silently
+skipped (Codex behaviour, surfaced honestly).
 
 ## Project
 

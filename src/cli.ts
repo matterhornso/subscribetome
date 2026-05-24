@@ -24,6 +24,11 @@ import {
   launchCodex,
   launchBanner,
 } from "./agents/codex.ts";
+import {
+  installHooks as installCodexHooks,
+  uninstallHooks as uninstallCodexHooks,
+  doctor as codexDoctor,
+} from "./agents/codex-hooks.ts";
 
 /**
  * Parse a friendly duration like `30s`, `5m`, `2h`, `7d` into milliseconds.
@@ -921,6 +926,12 @@ function codexHelp(): void {
       `  stm codex --dry-run [codex-args...]  print the injection plan and the\n` +
       `                                       exact argv codex would receive,\n` +
       `                                       then exit without launching\n` +
+      `  stm codex install-hooks [--dry-run]  write the UserPromptSubmit +\n` +
+      `                                       SessionStart guardrail block into\n` +
+      `                                       ~/.codex/config.toml (idempotent)\n` +
+      `  stm codex install-hooks --remove     remove the managed block from\n` +
+      `                                       ~/.codex/config.toml (leaves a backup)\n` +
+      `  stm codex doctor                     verify the guardrails are wired up\n` +
       `\nWhat this does (and why it is weaker than Claude Code):\n` +
       `\n` +
       `  stm resolves your active keys and exposes each as an environment\n` +
@@ -941,12 +952,90 @@ function codexHelp(): void {
   );
 }
 
+function codexInstallHooksCmd(args: string[]): void {
+  const dryRun = args.includes("--dry-run");
+  const remove = args.includes("--remove") || args.includes("--uninstall");
+  const result = remove
+    ? uninstallCodexHooks({ dryRun })
+    : installCodexHooks({ dryRun });
+
+  if (remove) {
+    if (!result.changed) {
+      process.stdout.write(
+        `stm codex install-hooks --remove: no managed block at ${result.configPath} ` +
+          `— nothing to do.\n`,
+      );
+      return;
+    }
+    process.stdout.write(
+      `${dryRun ? "(dry run) would remove" : "removed"} the stm managed block from ${result.configPath}\n` +
+        (result.backupPath
+          ? `  backup written to ${result.backupPath}\n`
+          : ""),
+    );
+    return;
+  }
+
+  if (dryRun) {
+    process.stdout.write(
+      `(dry run) would ${result.changed ? "WRITE" : "leave unchanged"} ${result.configPath}\n\n` +
+        `--- contents after install ---\n${result.contents}\n--- end ---\n`,
+    );
+    return;
+  }
+  if (!result.changed) {
+    process.stdout.write(
+      `stm codex install-hooks: already up to date — ${result.configPath} ` +
+        `contains the current managed block.\n`,
+    );
+    return;
+  }
+  process.stdout.write(
+    `installed the stm hook block in ${result.configPath}` +
+      (result.alreadyInstalled
+        ? `  (refreshed an existing block)\n`
+        : `\n`) +
+      (result.backupPath
+        ? `  previous config backed up to ${result.backupPath}\n`
+        : ``) +
+      `\n` +
+      `Codex will prompt you to TRUST each hook the first time it starts —\n` +
+      `until you approve, the hook is silently skipped. Press y when prompted.\n` +
+      `See: https://developers.openai.com/codex/hooks#trust\n`,
+  );
+}
+
+function codexDoctorCmd(): void {
+  const verdict = codexDoctor();
+  process.stdout.write(
+    `codex hooks: ${verdict.ok ? "OK" : "NEEDS ATTENTION"}\n` +
+      `  config:        ${verdict.configPath} ${verdict.configPresent ? "(present)" : "(missing)"}\n` +
+      `  managed block: ${verdict.blockPresent ? (verdict.blockUpToDate ? "present, up to date" : "present, OUT OF DATE") : "missing"}\n` +
+      `  hook scripts:  ${verdict.scriptsPresent ? "present + executable" : "missing or not executable"}\n`,
+  );
+  if (verdict.summary.length > 0) {
+    process.stdout.write("\n");
+    for (const line of verdict.summary) {
+      // Wrap each summary item with a leading bullet for readability.
+      process.stdout.write(`  • ${line}\n`);
+    }
+  }
+  process.exit(verdict.ok ? 0 : 1);
+}
+
 async function codexCmd(args: string[]): Promise<void> {
   // We deliberately do NOT use parseFlags here — codex has its own CLI
-  // and the user's args go through untouched. The only stm-side flag we
-  // intercept is `--dry-run` (must be the first token) and `--help`.
+  // and the user's args go through untouched. The only stm-side tokens
+  // we intercept come FIRST: `--help`, `install-hooks`, `doctor`, and
+  // `--dry-run`. Anything else is forwarded to codex verbatim.
   if (args[0] === "--help" || args[0] === "-h" || args[0] === "help") {
     return codexHelp();
+  }
+  if (args[0] === "install-hooks") {
+    return codexInstallHooksCmd(args.slice(1));
+  }
+  if (args[0] === "doctor") {
+    return codexDoctorCmd();
   }
   let dryRun = false;
   if (args[0] === "--dry-run") {
@@ -973,7 +1062,11 @@ async function codexCmd(args: string[]): Promise<void> {
       process.exit(1);
     }
 
-    process.stderr.write("\n" + launchBanner(plan) + "\n");
+    // v0.4.1: surface the guardrail-install status in the banner so
+    // users notice when UserPromptSubmit / SessionStart aren't wired
+    // up. Doctor is read-only and fast (one fs read).
+    const hookStatus = codexDoctor();
+    process.stderr.write("\n" + launchBanner(plan, hookStatus) + "\n");
 
     if (dryRun) {
       process.stdout.write(
