@@ -447,6 +447,8 @@ export function dashboardHTML(): string {
     <div class="name">subscribe<b>tome</b></div>
   </div>
   <div class="spend">
+    <span id="agents-label" class="keystore-label agents-label"
+      title="Agents stm wraps today. Different agents have different security guarantees — hover the entry on the spec page for the trade-off."></span>
     <span id="keystore-label" class="keystore-label"></span>
     monthly spend <b id="spend">$0.00</b>
     <span id="spend-source" class="spend-source"></span>
@@ -1063,6 +1065,23 @@ function render(inv){
       kl.style.display="";
     } else {
       kl.style.display="none";
+    }
+  }
+  // v0.4.0: surface which agents stm wraps. Codex (session-env mode) is
+  // weaker than Claude Code (per-command rewrite) and the spec mandates
+  // that trade-off be visible everywhere the active agent is shown.
+  var al=el("agents-label");
+  if(al){
+    if(inv.agents && inv.agents.length){
+      var labels=inv.agents.map(function(a){return a.label;}).join(" · ");
+      al.textContent="agents: "+labels;
+      al.title="Each agent has its own security posture. Claude Code rewrites "+
+        "the command per-call (transcript stays clean). Codex injects keys as "+
+        "session env vars (weaker — the keys live in the agent's process env "+
+        "for the whole session). See specs/cross-platform-and-codex.md §6.";
+      al.style.display="";
+    } else {
+      al.style.display="none";
     }
   }
   var kb=el("keys");

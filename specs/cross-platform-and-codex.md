@@ -1,6 +1,6 @@
 # Spec — Cross-platform (Linux, Windows) and Codex support
 
-**Status:** Workstream A (Linux Secret Service) shipped v0.3.1 · Workstream B (Windows) + C (Codex) pending · **Target:** subscribetome v2 · **Last updated:** 2026-05-23
+**Status:** Workstream A (Linux Secret Service) shipped v0.3.1 · Workstream C Option 1 (Codex session-env mode) shipped v0.4.0 · Workstream B (Windows) + A-tier-2/3 (Linux headless) + C-Option-2 (MCP-wrapped Codex) pending · **Target:** subscribetome v2 · **Last updated:** 2026-05-24
 
 This spec covers expanding subscribetome beyond its v1 footprint (macOS +
 Claude Code) to **Linux**, **Windows**, and the **OpenAI Codex CLI**. It is a
@@ -157,6 +157,10 @@ backend) and do not touch the agent side.
 
 ## 6. Workstream C — Codex support
 
+**Status:** Option 1 (session-env mode) **shipped v0.4.0**. Option 2
+(MCP-wrapped) and the future "per-command rewrite if openai/codex#18491
+lands" are still ahead.
+
 Codex is the architectural decision, not a port. Per §3, per-command
 transcript-clean rewrite is blocked. Two viable models:
 
@@ -230,8 +234,13 @@ Ordered by value-to-effort. Each phase ships independently.
   abstraction exists.
 - **Phase 3 — Linux headless chain.** `LinuxPass` + `EncryptedFile` +
   detection + visible degradation. The deliberate, hard part.
-- **Phase 4 — Codex, session-env mode.** Option 1, plus porting the
-  `UserPromptSubmit` / `SessionStart` guardrails. Clearly labelled.
+- **Phase 4 — Codex, session-env mode.** **Shipped v0.4.0** for the
+  launcher half — `stm codex` resolves keys, injects them as
+  `STM_<TOOL>_<LABEL>` env vars, spawns codex with
+  `shell_environment_policy.include_only=["STM_*"]`. The Codex hook
+  port (`UserPromptSubmit` / `SessionStart` guardrails) is **deferred**
+  to v0.4.x — Codex's hook config surface differs slightly from
+  Claude Code's, so the guardrail port is its own ship.
 - **Phase 5 — Codex, MCP-wrapped mode.** Option 2, opt-in.
 - **Watch:** openai/codex#18491. If `updatedInput` ships, insert a phase for
   the drop-in Codex hook adapter.

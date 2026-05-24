@@ -132,7 +132,8 @@ stm policy <subcmd>    allow / deny / warn rules at PreToolUse
 stm project <subcmd>   per-project key scope
 stm audit              forensic log of PreToolUse decisions
 stm sync [provider]    fetch real spend from configured providers
-stm status             daemon + inventory summary
+stm codex [args...]    launch Codex with stm keys as env vars
+stm status             daemon + inventory summary, active agents + backend
 stm stop               stop the dashboard daemon
 ```
 
@@ -181,13 +182,27 @@ with a did-you-mean suggestion.
   a secret into a shell command inherently requires this; subscribetome keeps
   the key out of the *conversation*, not out of the local process table.
 
-## Compatibility
+## Compatibility — agents
 
-subscribetome v1 is a **Claude Code plugin** — the key-injection mechanism is a
-Claude Code `PreToolUse` hook. The `stm` CLI and dashboard run standalone on any
-macOS machine as a key inventory, but *automatic injection* requires Claude
-Code. Support for other agentic coding tools (Codex, opencode, ...) depends on
-each exposing an equivalent pre-execution input-rewrite hook — see `TODOS.md`.
+stm wraps two agents today, with different security postures. `stm status`
+and the dashboard header always tell you which agent gets which guarantee.
+
+| Agent | Mode | Guarantee | What you run |
+|---|---|---|---|
+| **Claude Code** | per-command rewrite | **Strong** — the real key is substituted into a single Bash command at the instant it runs, via a `PreToolUse` hook returning `updatedInput`. The transcript keeps the placeholder; no value ever appears in chat. | `claude` (the plugin's hooks fire automatically) |
+| **Codex** | session-env mode | **Weaker** — each key becomes a `STM_<TOOL>_<LABEL>` env var in codex's process environment for the whole session. A command that dumps its environment can surface it. Claude Code's mode is strictly stronger. | `stm codex [codex-args…]` |
+
+Why Codex is weaker: Codex CLI's hook system has a `PreToolUse` event but its
+docs state that `updatedInput` is "parsed but not supported yet, so they fail
+open" — the v1 per-command rewrite cannot port. Session-env mode is the
+honest baseline we ship today. Tracking openai/codex#18491: when
+`updatedInput` lands, a third Codex mode (per-command rewrite, drop-in
+replacement for the Claude Code adapter) becomes possible.
+
+Cursor, opencode, and the MCP-wrapped Codex mode (Option 2 of
+`specs/cross-platform-and-codex.md` §6) are roadmap; the agent surface
+is now plural and they plug into it without breaking either of the
+modes above.
 
 ## Supported platforms
 

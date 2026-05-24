@@ -55,9 +55,9 @@
       "operatingSystem": "macOS",
       "url": "https://subscribetome.pro/",
       "downloadUrl": "https://github.com/matterhornso/subscribetome",
-      "softwareVersion": "0.3.1",
+      "softwareVersion": "0.4.0",
       "datePublished": "2026-05-18",
-      "dateModified": "2026-05-23",
+      "dateModified": "2026-05-24",
       "license": "https://opensource.org/licenses/MIT",
       "description": "Open-source Claude Code plugin that keeps every API key in the macOS Keychain. The agent uses your keys without the chat transcript ever holding one. PreToolUse hook substitutes keys into commands the instant before they run. 50 services pre-configured.",
       "image": "https://subscribetome.pro/og.png",
@@ -145,7 +145,7 @@
           "name": "Which platforms and AI agents does subscribetome support?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "v1 is macOS and Claude Code. Linux, Windows, and other coding agents (OpenAI Codex, opencode, Cursor) are on the roadmap."
+            "text": "macOS and Linux desktop are both supported as of v0.3.1 (macOS Keychain on Darwin, Linux Secret Service via libsecret on Linux). Two agents are wrapped: Claude Code with per-command rewrite (strongest guarantee — the key is substituted into one Bash command at the instant it runs, transcript stays clean) and Codex with session-env mode (weaker — each key is exposed as a STM_<TOOL>_<LABEL> env var in codex's process for the whole session). The trade-off is shown everywhere the agent label appears. Headless Linux, Windows, opencode, Cursor, and Codex per-command rewrite (waiting on openai/codex#18491) are on the roadmap."
           }
         }
       ]
@@ -549,8 +549,10 @@ claude plugin install <span class="p">stm@subscribetome</span></pre>
   </div>
   <div class="roadmap">
     <div class="roadmap-in">
-      <span class="now">Available now</span> for <b>macOS</b> and <b>Claude Code</b>.
-      Linux, Windows, and other coding agents — Codex, opencode, Cursor — are on the
+      <span class="now">Available now</span> for <b>macOS</b> &amp; <b>Linux desktop</b>,
+      wrapping both <b>Claude Code</b> (per-command rewrite — strongest) and
+      <b>Codex</b> (session-env mode — weaker, stated honestly).
+      Headless Linux, Windows, and other coding agents — opencode, Cursor — are on the
       roadmap.
     </div>
   </div>
@@ -580,7 +582,7 @@ claude plugin install <span class="p">stm@subscribetome</span></pre>
       <ul>
         <li><b>Command policy.</b> Allow / deny rules at the PreToolUse layer.</li>
         <li><b>Per-project key scope.</b> One session, one set of keys — sized to the project.</li>
-        <li><b>Linux, Windows, and other agents</b> (Codex, opencode, Cursor).</li>
+        <li><b>Headless Linux, Windows, and other agents</b> (opencode, Cursor).</li>
       </ul>
     </div>
   </div>

@@ -20,6 +20,7 @@ import { evaluateAll, type PolicyAction } from "./policy.ts";
 import { findExact } from "./grammar.ts";
 import { syncAll, syncProvider } from "./sync.ts";
 import { listProviderIds } from "./providers/index.ts";
+import { listSupportedAgents } from "./agents/codex.ts";
 
 interface DaemonInfo {
   port: number;
@@ -129,6 +130,7 @@ async function apiRoute(path: string, req: Request, store: Store): Promise<Respo
       spend: store.listSpend(),
       providers: listProviderIds(),
       keystore,
+      agents: listSupportedAgents(),
     });
   }
   if (path === "/api/keys" && req.method === "POST") {
@@ -597,9 +599,18 @@ export async function printStatus(): Promise<void> {
     } catch (e: any) {
       backend = `error resolving keystore: ${e?.message ?? e}`;
     }
+    // Agents row — names every wrapper stm ships today, in stable
+    // order. Specs/cross-platform-and-codex.md §6 calls out that the
+    // active agent label (and security framing) must never be hidden
+    // from the user. We render it here as well as in the dashboard
+    // pill so CLI-only users see the same information.
+    const agents = listSupportedAgents()
+      .map((a) => a.label)
+      .join(" · ");
     process.stdout.write(
       `daemon   : ${info ? `running - http://127.0.0.1:${info.port}` : "not running"}\n` +
         `keystore : ${backend}\n` +
+        `agents   : ${agents}\n` +
         `keys     : ${keys.length} (${keys.filter((k) => k.status === "active").length} active)\n` +
         `tools    : ${store.listTools().length}\n` +
         `spend    : $${store.monthlySpend().toFixed(2)} / month\n`,

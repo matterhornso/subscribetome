@@ -8,13 +8,13 @@ This index is the source of truth — when a new spec lands, add a row
 to the table below and a short summary in §1, then update statuses
 here as features ship.
 
-Last updated: **2026-05-23** (cross-platform Workstream A — Linux Secret Service backend — shipped in v0.3.1. `KeyStore` interface + per-platform backends + resolver; macOS Keychain stays the default on darwin; Linux desktop hosts now get `secret-tool`-backed storage; `stm status` and the dashboard show the active backend).
+Last updated: **2026-05-24** (cross-platform Workstream C Option 1 — Codex session-env mode — shipped in v0.4.0. `stm codex [args...]` resolves keys, exposes each as `STM_<TOOL>_<LABEL>` in codex's env, spawns codex with `shell_environment_policy.include_only=["STM_*"]`; secrets never appear in argv. Banner everywhere states the "weaker than Claude Code" trade-off honestly. `stm status` and the dashboard now show both agents and their postures.).
 
 ## 1. Index of specs
 
 | # | Spec | Target | Status | Lines |
 |---|------|--------|--------|------:|
-| 01 | [`cross-platform-and-codex.md`](./cross-platform-and-codex.md) | v2 | **Workstream A shipped** (Linux Secret Service, v0.3.1) · Workstreams B (Windows) + C (Codex) pending | ~280 |
+| 01 | [`cross-platform-and-codex.md`](./cross-platform-and-codex.md) | v2 | **Workstream A shipped** (Linux Secret Service, v0.3.1) · **Workstream C Option 1 shipped** (Codex session-env mode, v0.4.0) · Workstream B (Windows) + A-tier-2/3 (Linux headless) + C-Option-2 (MCP-wrapped) pending | ~280 |
 | 02 | [`spend-visibility.md`](./spend-visibility.md) | v0.3 | **Phases 1-3 shipped** (v0.3.0 — foundation + OpenAI + Anthropic) · Phase 4 (Stripe) deferred | ~160 |
 | 03 | [`session-and-project-scope.md`](./session-and-project-scope.md) | v0.3 | **All phases shipped** (Phase 1 v0.2.4 · Phase 2 v0.2.7 · Phase 3 v0.2.8) · §7 enforcement via `command-policy` Phase 3 (v0.2.5) | ~230 |
 | 04 | [`command-policy.md`](./command-policy.md) | v0.4 | **All four phases shipped** (v0.2.5) | ~230 |
@@ -155,9 +155,11 @@ Reading the graph:
 6. ~~**`spend-visibility.md`** — the "second product."~~ **Phases 1-3
    shipped v0.3.0** (foundation + OpenAI + Anthropic). Phase 4 (Stripe)
    deferred as a separate "Stripe income" panel.
-7. **`cross-platform-and-codex.md`** — Workstream A (Linux Secret
-   Service) shipped v0.3.1. Workstream B (Windows Credential
-   Manager) and Workstream C (Codex adapter) remain.
+7. ~~**`cross-platform-and-codex.md`** — Workstream A (Linux Secret
+   Service)~~ shipped v0.3.1. **Workstream C Option 1 (Codex session-env
+   mode)** shipped v0.4.0. Workstream B (Windows Credential Manager),
+   Workstream A tiered fallback (LinuxPass + EncryptedFile, for headless
+   Linux), and Workstream C Option 2 (MCP-wrapped Codex) remain.
 
 ## 5. Authoring conventions
 

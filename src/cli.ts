@@ -18,6 +18,12 @@ import { evaluateAll, type PolicyAction } from "./policy.ts";
 import { findExact } from "./grammar.ts";
 import { syncAll, syncProvider } from "./sync.ts";
 import { listProviderIds } from "./providers/index.ts";
+import {
+  buildInjectionPlan,
+  resolveInjectionValues,
+  launchCodex,
+  launchBanner,
+} from "./agents/codex.ts";
 
 /**
  * Parse a friendly duration like `30s`, `5m`, `2h`, `7d` into milliseconds.
@@ -905,6 +911,104 @@ function printSyncResult(r: { tool: string; ok: boolean; usd?: number; at: strin
   }
 }
 
+// ---- codex (specs/cross-platform-and-codex.md §6) -------------------------
+
+function codexHelp(): void {
+  process.stdout.write(
+    `subscribetome — Codex (OpenAI Codex CLI) launcher\n\n` +
+      `  stm codex [codex-args...]            launch codex with stm-managed keys\n` +
+      `                                       injected as env vars\n` +
+      `  stm codex --dry-run [codex-args...]  print the injection plan and the\n` +
+      `                                       exact argv codex would receive,\n` +
+      `                                       then exit without launching\n` +
+      `\nWhat this does (and why it is weaker than Claude Code):\n` +
+      `\n` +
+      `  stm resolves your active keys and exposes each as an environment\n` +
+      `  variable named STM_<TOOL>_<LABEL>. codex inherits those vars and\n` +
+      `  its agent shells can read them (e.g. \`curl ... -H "Authorization:\n` +
+      `  Bearer $STM_OPENAI_DEFAULT"\`). Real values appear nowhere in argv,\n` +
+      `  nowhere in any config file we write.\n` +
+      `\n` +
+      `  The TRADE-OFF (spec §6, Option 1): the value lives in codex's\n` +
+      `  process environment for the whole session, not substituted per\n` +
+      `  command. A command that dumps its environment can surface it.\n` +
+      `  Claude Code's PreToolUse rewrite is strictly stronger; Codex does\n` +
+      `  not yet support that mode (openai/codex#18491).\n` +
+      `\n` +
+      `If the cwd matches a registered project (\`stm project list\`), only\n` +
+      `that project's scoped keys are injected. Otherwise ALL active keys\n` +
+      `are injected.\n`,
+  );
+}
+
+async function codexCmd(args: string[]): Promise<void> {
+  // We deliberately do NOT use parseFlags here — codex has its own CLI
+  // and the user's args go through untouched. The only stm-side flag we
+  // intercept is `--dry-run` (must be the first token) and `--help`.
+  if (args[0] === "--help" || args[0] === "-h" || args[0] === "help") {
+    return codexHelp();
+  }
+  let dryRun = false;
+  if (args[0] === "--dry-run") {
+    dryRun = true;
+    args = args.slice(1);
+  }
+
+  const store = new Store();
+  try {
+    const plan = buildInjectionPlan({ store, cwd: process.cwd() });
+    if (plan.collisions.length > 0) {
+      process.stderr.write(
+        `stm codex: refusing to launch — env var name collisions detected.\n` +
+          `Two or more (tool, label) pairs map to the same STM_* variable, and\n` +
+          `silently overwriting one secret with another is exactly the failure\n` +
+          `mode the spec warns against.\n\n`,
+      );
+      for (const c of plan.collisions) {
+        process.stderr.write(`  ${c.envName} ← ${c.tools.join(", ")}\n`);
+      }
+      process.stderr.write(
+        `\nRename one side via \`stm revoke\` + re-add with a different label.\n`,
+      );
+      process.exit(1);
+    }
+
+    process.stderr.write("\n" + launchBanner(plan) + "\n");
+
+    if (dryRun) {
+      process.stdout.write(
+        `(dry run — codex was NOT launched. Drop --dry-run to launch.)\n`,
+      );
+      return;
+    }
+
+    let values: Record<string, string>;
+    try {
+      values = resolveInjectionValues({ store, plan });
+    } catch (e: any) {
+      process.stderr.write(`stm codex: ${e?.message ?? e}\n`);
+      process.exit(1);
+    }
+
+    let result;
+    try {
+      result = await launchCodex({ values, userArgs: args });
+    } catch (e: any) {
+      process.stderr.write(`stm codex: ${e?.message ?? e}\n`);
+      process.exit(1);
+    }
+    // Propagate codex's exit code so `stm codex` is transparent to shell
+    // pipelines and CI gates. Signal-terminated children exit non-zero.
+    if (result.signal) {
+      process.stderr.write(`codex terminated by signal ${result.signal}\n`);
+      process.exit(1);
+    }
+    process.exit(result.code ?? 0);
+  } finally {
+    store.close();
+  }
+}
+
 async function policyCmd(args: string[]): Promise<void> {
   const [sub, ...rest] = args;
   switch (sub) {
@@ -962,6 +1066,7 @@ function helpCmd(): void {
       `  stm policy <list|add|remove|test>  allow/deny rules at PreToolUse\n` +
       `  stm audit [--tail N] [--event] [--tool] [--since]  PreToolUse decision log\n` +
       `  stm sync [provider]             fetch real spend from configured providers\n` +
+      `  stm codex [codex-args...]       launch Codex with stm-managed keys (session-env mode)\n` +
       `  stm project <add|list|show|scope|unscope|enforce|rename|remove>  per-project key scope\n` +
       `  stm import [dir...]             scan .env files for importable keys\n` +
       `  stm dashboard                   open the localhost web dashboard\n` +
@@ -1002,6 +1107,8 @@ async function main(): Promise<void> {
       return auditCmd(rest);
     case "sync":
       return syncCmd(rest);
+    case "codex":
+      return codexCmd(rest);
     case "project":
       return projectCmd(rest);
     case "import": {

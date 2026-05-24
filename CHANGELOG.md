@@ -3,6 +3,85 @@
 All notable changes to subscribetome. This project is pre-1.0; minor versions
 may still change behaviour. Format follows [Keep a Changelog](https://keepachangelog.com).
 
+## [0.4.0] — 2026-05-24
+
+### Added — Codex adapter (`specs/cross-platform-and-codex.md` Workstream C, Option 1)
+
+stm now wraps a second agent: the OpenAI Codex CLI. Until openai/codex#18491
+lands `updatedInput` support, Codex cannot do per-command rewrite the way
+Claude Code does. The spec's "Option 1: session-env mode" ships now;
+"Option 2: MCP-wrapped tools" remains tracked for a later release.
+
+- **`src/agents/codex.ts`** — the Codex injection model.
+  - `keyEnvName(tool, label)` — deterministic mapping to
+    `STM_<TOOL>_<LABEL>` (uppercased; non-`[A-Z0-9_]` characters
+    become underscores). Same input always produces the same env
+    var name, so the user can prompt codex with `use $STM_OPENAI_DEFAULT`
+    or let the agent discover names via `env`.
+  - `buildInjectionPlan({ store, cwd })` — picks the keys to expose.
+    When `cwd` matches a registered project (longest-prefix), uses
+    ONLY that project's scoped keys; otherwise injects ALL active
+    keys. Empty-scope project falls back to "all active keys" with
+    `scoped: false` so the banner can say so honestly.
+  - **Collision detection** — two `(tool, label)` pairs that map to
+    the same env var name surface a `collisions` list; the launcher
+    REFUSES to start. Silent overwrites are exactly the failure mode
+    the spec warns about.
+  - `resolveInjectionValues` — pulls every entry's value from the
+    keystore; throws (never returns half) if any required key is
+    missing.
+  - `launchCodex({ values, userArgs, spawnFn? })` — spawns the
+    `codex` binary with values in the child's process env and
+    `-c shell_environment_policy.inherit="all"` /
+    `-c shell_environment_policy.include_only=["STM_*"]` in argv,
+    so Codex passes our STM_* vars through to agent shells
+    (overriding Codex's default KEY/SECRET/TOKEN scrubbing). The
+    real values appear nowhere in argv and nowhere on disk.
+  - `launchBanner(plan)` — printed to stderr at every launch.
+    Spells out the security framing verbatim ("the real key sits
+    in codex's process environment for the whole session … WEAKER
+    than Claude Code's per-command injection") and lists every
+    injected env var by NAME (never value).
+
+- **`stm codex [codex-args...]`** — new CLI subcommand. Forwards
+  args to `codex` after the policy overrides. `--dry-run` prints
+  the injection plan without launching, useful for verifying which
+  keys would be exposed.
+
+- **Agent label everywhere** — `stm status` and the dashboard now
+  show the agents stm wraps and each one's security posture:
+  `Claude Code (per-command rewrite) · Codex (session-env mode)`.
+  Per the spec, the active agent's trade-off must never be hidden.
+  `GET /api/inventory` returns the `agents` array.
+
+### Changed
+
+- README "Supported platforms" section grew an "Agents" subsection
+  documenting Claude Code (per-command rewrite, transcript-clean)
+  vs. Codex (session-env mode, weaker — process env, whole session).
+- Landing-page hero / agents row reflects the second agent.
+
+### Notes — what's not shipped
+
+- **Codex hook port** (`UserPromptSubmit` / `SessionStart`
+  guardrails). The spec §6 says these DO port — same event, same
+  `additionalContext` shape — but Codex's hook config surface is
+  slightly different from Claude Code's. Tracked for v0.4.x.
+- **Option 2 (MCP-wrapped tools)** — higher-assurance Codex mode
+  where the agent never sees a key. Bigger build; opt-in. Tracked
+  for a v0.5 milestone.
+- **Cross-platform Workstream A tiered fallback** (LinuxPass +
+  EncryptedFile for headless Linux) and **Workstream B** (Windows
+  Credential Manager) — still pending. The new `KeyStore`
+  interface from v0.3.1 is the seam they'll plug into.
+
+### Tests
+
+- 192 pass, 0 fail (was 170; +22 codex adapter tests).
+- Critical assertion: secret values NEVER appear in the argv passed
+  to codex — only env-var names. Verified directly via the fake
+  spawn in `test/codex.test.ts`.
+
 ## [0.3.1] — 2026-05-23
 
 ### Added — Linux Secret Service backend (`specs/cross-platform-and-codex.md` Workstream A)

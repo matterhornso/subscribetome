@@ -46,8 +46,21 @@ macOS and Linux desktop are both supported as of v0.3.1. Linux uses
 the Secret Service (libsecret via secret-tool); macOS uses the macOS
 Keychain. The dashboard and `stm status` always show which backend
 is active. Headless Linux (SSH, container, WSL) and Windows are on
-the roadmap. Claude Code is the agent today; Codex, opencode, and
-Cursor are tracked in specs/cross-platform-and-codex.md.
+the roadmap.
+
+Two agents are wrapped as of v0.4.0 with different security postures.
+**Claude Code** gets the strong "per-command rewrite" guarantee: the
+real key is substituted into one Bash command at the moment it runs
+via a `PreToolUse` hook returning `updatedInput`, and the transcript
+keeps the placeholder. **Codex** (the OpenAI Codex CLI) is wrapped via
+`stm codex [args...]`, which exposes each key as a `STM_<TOOL>_<LABEL>`
+environment variable in codex's process for the whole session — a
+weaker guarantee, because a command that dumps its environment can
+surface it. Codex's hook system today rejects `updatedInput` (it is
+"parsed but not supported yet, fails open"), so per-command rewrite
+on Codex is not yet possible; tracking openai/codex#18491. The
+trade-off is shown verbatim in `stm status`, the launcher banner,
+the dashboard header, and the README — never hidden.
 
 ## Project
 
