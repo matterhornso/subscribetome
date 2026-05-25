@@ -230,6 +230,18 @@ test("STM_KEYSTORE override accepts the documented aliases", () => {
     });
     expect(ks.describe()).toBe("Linux Secret Service (libsecret)");
   }
+  // v0.5.0 — Windows aliases. Force a non-win32 platform so the
+  // override is what's actually being exercised (not the platform
+  // default). No probe runs on an explicit STM_KEYSTORE override —
+  // the user said "I want this backend", we give it to them.
+  for (const alias of ["windows", "windows-credential", "wincred", "credential-manager"]) {
+    const ks = selectKeyStore({
+      force: true,
+      platform: "darwin",
+      env: { STM_KEYSTORE: alias },
+    });
+    expect(ks.describe()).toBe("Windows Credential Manager (DPAPI)");
+  }
 });
 
 test("STM_KEYSTORE override with an unknown value yields a clear unsupported store", () => {
@@ -242,12 +254,84 @@ test("STM_KEYSTORE override with an unknown value yields a clear unsupported sto
   expect(ks.describe()).toContain("not a known backend");
 });
 
-test("selectKeyStore on an unsupported platform (win32) yields an honest error", () => {
+test("selectKeyStore on win32 with a reachable wincred FFI picks the Windows backend", () => {
+  // v0.5.0 lit up Windows. We inject a fake FFI so the resolver's
+  // probe succeeds and the backend is wired up without touching the
+  // real advapi32.
+  const fakeFFI = makeFakeWincredFFI();
   const ks = selectKeyStore({
     force: true,
     platform: "win32" as any,
     env: {},
+    wincredFFI: fakeFFI,
   });
-  expect(ks.describe()).toContain("win32");
+  expect(ks.describe()).toContain("Windows Credential Manager");
+});
+
+test("selectKeyStore on win32 with an unreachable FFI yields an honest unsupported error", () => {
+  // A "broken" FFI throws on every call. The resolver probes via
+  // credReadW; when that throws, isWincredReachable returns false
+  // and the unsupported keystore is returned with a friendly hint.
+  const brokenFFI = {
+    credReadW: () => { throw new Error("advapi32 not loadable"); },
+    credWriteW: () => { throw new Error("advapi32 not loadable"); },
+    credDeleteW: () => { throw new Error("advapi32 not loadable"); },
+    lastError: () => 0,
+  };
+  const ks = selectKeyStore({
+    force: true,
+    platform: "win32" as any,
+    env: {},
+    wincredFFI: brokenFFI,
+  });
+  expect(ks.describe()).toContain("unreachable");
+  expect(() => ks.set("r", "v")).toThrow(/no usable keystore/);
+});
+
+test("selectKeyStore on a truly unsupported platform (e.g. freebsd) still yields the honest unsupported error", () => {
+  // The "no mapping yet" branch still exists — verify it kicks in
+  // when the platform isn't darwin/linux/win32.
+  const ks = selectKeyStore({
+    force: true,
+    platform: "freebsd" as any,
+    env: {},
+  });
+  expect(ks.describe()).toContain("freebsd");
   expect(() => ks.set("r", "v")).toThrow(/not yet supported/);
 });
+
+// --- helper for win32 tests above -----------------------------------------
+//
+// An in-memory WincredFFI that mirrors Windows API semantics closely
+// enough for resolver-level tests. The full-fidelity matrix lives in
+// test/keystores-windows.test.ts.
+function makeFakeWincredFFI() {
+  let lastErr = 0;
+  const store = new Map<string, Uint8Array>();
+  return {
+    credWriteW(t: string, b: Uint8Array): boolean {
+      store.set(t, new Uint8Array(b));
+      lastErr = 0;
+      return true;
+    },
+    credReadW(t: string): Uint8Array | null {
+      if (!store.has(t)) {
+        lastErr = 1168; // ERROR_NOT_FOUND
+        return null;
+      }
+      lastErr = 0;
+      return store.get(t)!;
+    },
+    credDeleteW(t: string): boolean {
+      if (!store.delete(t)) {
+        lastErr = 1168;
+        return false;
+      }
+      lastErr = 0;
+      return true;
+    },
+    lastError(): number {
+      return lastErr;
+    },
+  };
+}

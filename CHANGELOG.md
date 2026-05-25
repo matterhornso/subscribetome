@@ -3,6 +3,120 @@
 All notable changes to subscribetome. This project is pre-1.0; minor versions
 may still change behaviour. Format follows [Keep a Changelog](https://keepachangelog.com).
 
+## [0.5.0] — 2026-05-25
+
+### Added — Windows Credential Manager backend (`specs/cross-platform-and-codex.md` Workstream B; build plan: `specs/plans/v0.5-windows-backend.md`)
+
+stm now supports the third major desktop OS. macOS, Linux desktop, and
+Windows all reach the same "strong" guarantee on Claude Code (per-command
+rewrite) and the session-env mode on Codex.
+
+- **`src/keystores/windows-credential.ts`** — Windows backend.
+  Talks to advapi32.dll directly via Bun FFI: `CredWriteW`,
+  `CredReadW`, `CredDeleteW`, plus `CredFree` for the OS-allocated
+  CREDENTIALW. `kernel32!GetLastError` exposed for distinguishing
+  ERROR_NOT_FOUND from a real failure.
+
+- **Posture — strict improvement over macOS.** The macOS v1 backend
+  shells out to `security add-generic-password -w <value>`, briefly
+  exposing the secret to a local `ps`. Linux Secret Service (v0.3.1)
+  closed that hole by piping via stdin. Windows closes it more
+  cleanly: the secret bytes live in a Uint8Array we own and pass to
+  CredWriteW by pointer — they go directly into
+  `CREDENTIALW.CredentialBlob`. There is no argv element, no stdin
+  fd, no environment variable in play. Headline test:
+  `test/keystores-windows.test.ts > WindowsCredential.set never
+  passes the secret as the targetName (argv-equivalent)`.
+
+- **`src/keystores/types.ts`** gains the `WincredFFI` interface.
+  Backends call the interface, never the FFI directly — tests
+  inject a recording fake (which is also what lets the suite run
+  on a macOS dev box without an advapi32 to dlopen).
+
+- **Resolver wiring** in `src/keystores/index.ts`:
+  - `process.platform === "win32"` → probe via
+    `isWincredReachable(...)`. If probe throws or returns a non-
+    ERROR_NOT_FOUND error code, hand back an honest `unsupported
+    (...)` keystore with a friendly hint (sandbox? service
+    account? no Credential Manager?). The spec's "never silently
+    fall back to plaintext" invariant continues to hold.
+  - New aliases on `STM_KEYSTORE`: `windows`, `windows-credential`,
+    `wincred`, `credential-manager`.
+
+- **Lazy FFI resolution.** `createWindowsCredentialKeyStore({ffi?})`
+  defers the real `dlopen("advapi32.dll")` call until the first
+  op (`set` / `get` / `delete`). `describe()` is callable from
+  anywhere — useful for the dashboard pill and `stm status`
+  rendering the configured backend even on a misconfigured host.
+
+- **Target-name namespace**: `Subscribetome:<ref>`. Visible in
+  `Credential Manager` (control panel) and `cmdkey /list` under
+  that prefix; mirrors the Linux SS service attribute.
+
+### Tests — 231 pass, 0 fail (was 209; +22 windows-backend tests).
+
+`test/keystores-windows.test.ts` covers:
+- Headline: secret never appears in targetName (the argv-equivalent
+  for the FFI surface).
+- Namespace: target is `Subscribetome:<ref>`.
+- set/get round-trip; UTF-8 byte encoding survives DPAPI.
+- get returns null on ERROR_NOT_FOUND, throws on other failures.
+- delete is idempotent on ERROR_NOT_FOUND, throws otherwise.
+- `isWincredReachable` returns true on a healthy FFI, false on a
+  throwing FFI, false on a non-NOT_FOUND error code.
+- Resolver picks Windows on `win32` with reachable FFI; returns
+  `unsupported (...)` when the FFI throws; honours
+  `STM_KEYSTORE=wincred` from any platform.
+- `describe()` is lazy and doesn't need a working FFI.
+- Multi-key isolation and 2KB value handling (well under the
+  Credential Manager 2560-byte blob limit).
+
+`test/keystores.test.ts` also gained two new tests (win32 picks the
+new backend; win32 with broken FFI is honest) and one was rewritten
+(the old "win32 is unsupported" test became obsolete). The "no mapping"
+branch is still verified via a `freebsd` platform test.
+
+### Surface
+
+- `stm status` now reads `keystore : Windows Credential Manager
+  (DPAPI)` on Windows hosts. No code change — the existing
+  `activeKeyStore().describe()` line renders whatever the resolver
+  selected. Same applies to the dashboard pill (`GET /api/inventory`
+  → `keystore` field).
+- README "Supported platforms" section now lists Windows
+  explicitly with the wincred / Bun FFI explanation. The "Windows
+  — not yet supported" line is gone.
+- Landing-page hero / trust strip / JSON-LD `operatingSystem`
+  ("macOS, Linux, Windows") / FAQ all updated.
+- `docs/llms.txt` paragraph refreshed.
+
+### Compatibility
+
+- No behaviour change for any existing macOS or Linux user.
+- The `STM_KEYSTORE` aliases from v0.3.1 (mac/macos/keychain/
+  linux/libsecret/secret-service/linux-secret-service) still work.
+- The `KeyStore` interface from v0.3.1 was sufficient; no breaking
+  changes. The new `wincredFFI?` field on `SelectOptions` is
+  optional and exists only for test injection.
+
+### Known limitations / v0.5.x follow-ups
+
+- The real Bun FFI binding has NOT been hardware-verified on a
+  Windows host as part of v0.5.0 — the codebase was built on macOS,
+  every test path goes through an injected FFI. Field testing
+  welcome. The bun:ffi calls follow the documented advapi32 ABI
+  (CREDENTIALW layout stable since Windows 2000); the most likely
+  thing to fail in practice is bun:ffi pointer-read semantics on
+  the OS-allocated CREDENTIALW, which is exactly the part the
+  injected tests can't cover.
+- WSL is still its own case — WSL processes see `platform: 'linux'`
+  and will hit the Linux Secret Service branch. WSL→Windows interop
+  via `/mnt/c/...` is tracked separately (spec §5 WSL row).
+- The macOS argv-exposure limitation remains unchanged in this
+  release; Bun-FFI rewrite of the macOS backend is a v0.5.x patch
+  candidate. The Windows backend is a worked example of how to
+  do it.
+
 ## [0.4.1] — 2026-05-24
 
 ### Added — Codex guardrail hooks port (`specs/cross-platform-and-codex.md` §6, follow-up)

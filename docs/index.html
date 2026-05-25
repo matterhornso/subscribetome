@@ -52,12 +52,12 @@
       "alternateName": ["stm", "subscribetome (stm)"],
       "applicationCategory": "DeveloperApplication",
       "applicationSubCategory": "Secret Manager / Claude Code Plugin",
-      "operatingSystem": "macOS",
+      "operatingSystem": "macOS, Linux, Windows",
       "url": "https://subscribetome.pro/",
       "downloadUrl": "https://github.com/matterhornso/subscribetome",
-      "softwareVersion": "0.4.1",
+      "softwareVersion": "0.5.0",
       "datePublished": "2026-05-18",
-      "dateModified": "2026-05-24",
+      "dateModified": "2026-05-25",
       "license": "https://opensource.org/licenses/MIT",
       "description": "Open-source Claude Code plugin that keeps every API key in the macOS Keychain. The agent uses your keys without the chat transcript ever holding one. PreToolUse hook substitutes keys into commands the instant before they run. 50 services pre-configured.",
       "image": "https://subscribetome.pro/og.png",
@@ -145,7 +145,7 @@
           "name": "Which platforms and AI agents does subscribetome support?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "macOS and Linux desktop are both supported as of v0.3.1 (macOS Keychain on Darwin, Linux Secret Service via libsecret on Linux). Two agents are wrapped: Claude Code with per-command rewrite (strongest guarantee — the key is substituted into one Bash command at the instant it runs, transcript stays clean) and Codex with session-env mode (weaker — each key is exposed as a STM_<TOOL>_<LABEL> env var in codex's process for the whole session). The trade-off is shown everywhere the agent label appears. Headless Linux, Windows, opencode, Cursor, and Codex per-command rewrite (waiting on openai/codex#18491) are on the roadmap."
+            "text": "macOS, Linux desktop, and Windows are all supported as of v0.5.0 (macOS Keychain on Darwin, Linux Secret Service via libsecret on Linux, Windows Credential Manager via the Win32 wincred API called through Bun FFI on Windows — secret bytes go into CREDENTIALW.CredentialBlob by pointer, never touch argv). Two agents are wrapped: Claude Code with per-command rewrite (strongest guarantee — the key is substituted into one Bash command at the instant it runs, transcript stays clean) and Codex with session-env mode (weaker — each key is exposed as a STM_<TOOL>_<LABEL> env var in codex's process for the whole session). The trade-off is shown everywhere the agent label appears. Headless Linux, opencode, Cursor, and Codex per-command rewrite (waiting on openai/codex#18491) remain on the roadmap."
           }
         }
       ]
@@ -543,17 +543,18 @@ claude plugin install <span class="p">stm@subscribetome</span></pre>
     <div class="lc">
       <span class="t">Your keychain</span>
       <h3>Keys stay on your disk</h3>
-      <p>Every secret lives in the macOS Keychain on your machine. subscribetome reads
+      <p>Every secret lives in your OS keychain on your machine — macOS Keychain,
+        Linux Secret Service, or Windows Credential Manager. subscribetome reads
         it locally.</p>
     </div>
   </div>
   <div class="roadmap">
     <div class="roadmap-in">
-      <span class="now">Available now</span> for <b>macOS</b> &amp; <b>Linux desktop</b>,
-      wrapping both <b>Claude Code</b> (per-command rewrite — strongest) and
-      <b>Codex</b> (session-env mode — weaker, stated honestly).
-      Headless Linux, Windows, and other coding agents — opencode, Cursor — are on the
-      roadmap.
+      <span class="now">Available now</span> for <b>macOS</b>, <b>Linux desktop</b>,
+      and <b>Windows</b> — wrapping both <b>Claude Code</b> (per-command
+      rewrite — strongest) and <b>Codex</b> (session-env mode — weaker,
+      stated honestly). Headless Linux and other coding agents — opencode,
+      Cursor — are on the roadmap.
     </div>
   </div>
 </div>
@@ -593,7 +594,7 @@ claude plugin install <span class="p">stm@subscribetome</span></pre>
   <div class="strip">
     <span><i>50</i> services pre-configured</span><span class="sep">/</span>
     <span>keys never touch the chat</span><span class="sep">/</span>
-    <span>macOS Keychain &middot; Linux Secret Service</span><span class="sep">/</span>
+    <span>macOS Keychain &middot; Linux Secret Service &middot; Windows Credential Manager</span><span class="sep">/</span>
     <span><i>MIT</i> · open source</span>
   </div>
 </div>

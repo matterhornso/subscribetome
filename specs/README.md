@@ -8,13 +8,13 @@ This index is the source of truth — when a new spec lands, add a row
 to the table below and a short summary in §1, then update statuses
 here as features ship.
 
-Last updated: **2026-05-24** (cross-platform Workstream C guardrail port — UserPromptSubmit + SessionStart on Codex — shipped in v0.4.1. `stm codex install-hooks` writes a marker-delimited managed block to `~/.codex/config.toml` using Codex's array-of-tables hook schema; idempotent; surrounding user config preserved. `stm codex doctor` verifies the wiring. Launch banner surfaces hook status. Trust gate documented everywhere.).
+Last updated: **2026-05-25** (Workstream B — Windows Credential Manager backend — shipped in v0.5.0. `src/keystores/windows-credential.ts` calls advapi32 via Bun FFI; secret bytes go into `CREDENTIALW.CredentialBlob` by pointer, never argv. Resolver picks Windows on `win32` when the FFI probe succeeds; honest `unsupported (...)` otherwise. `STM_KEYSTORE` aliases: `windows / windows-credential / wincred / credential-manager`. 22 new tests, 231 total. README, llms.txt, landing-page JSON-LD `operatingSystem` all updated to "macOS, Linux, Windows".).
 
 ## 1. Index of specs
 
 | # | Spec | Target | Status | Lines |
 |---|------|--------|--------|------:|
-| 01 | [`cross-platform-and-codex.md`](./cross-platform-and-codex.md) | v2 | **Workstream A shipped** (Linux Secret Service, v0.3.1) · **Workstream C Option 1 + guardrails shipped** (Codex session-env mode v0.4.0; UserPromptSubmit + SessionStart on Codex v0.4.1) · Workstream B (Windows) + A-tier-2/3 (Linux headless) + C-Option-2 (MCP-wrapped) pending | ~280 |
+| 01 | [`cross-platform-and-codex.md`](./cross-platform-and-codex.md) | v2 | **Workstream A shipped** (Linux Secret Service, v0.3.1) · **Workstream C Option 1 + guardrails shipped** (Codex session-env mode v0.4.0; UserPromptSubmit + SessionStart on Codex v0.4.1) · **Workstream B shipped** (Windows Credential Manager, v0.5.0) · A-tier-2/3 (Linux headless) + C-Option-2 (MCP-wrapped) pending | ~280 |
 | 02 | [`spend-visibility.md`](./spend-visibility.md) | v0.3 | **Phases 1-3 shipped** (v0.3.0 — foundation + OpenAI + Anthropic) · Phase 4 (Stripe) deferred | ~160 |
 | 03 | [`session-and-project-scope.md`](./session-and-project-scope.md) | v0.3 | **All phases shipped** (Phase 1 v0.2.4 · Phase 2 v0.2.7 · Phase 3 v0.2.8) · §7 enforcement via `command-policy` Phase 3 (v0.2.5) | ~230 |
 | 04 | [`command-policy.md`](./command-policy.md) | v0.4 | **All four phases shipped** (v0.2.5) | ~230 |

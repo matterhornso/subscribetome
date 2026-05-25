@@ -42,11 +42,13 @@ runs entirely on the user's own machine. No backend. No telemetry. No
 phone-home. The dashboard is bound to `127.0.0.1` with a per-run auth token
 and a Host/Origin allowlist (DNS-rebinding defense).
 
-macOS and Linux desktop are both supported as of v0.3.1. Linux uses
-the Secret Service (libsecret via secret-tool); macOS uses the macOS
-Keychain. The dashboard and `stm status` always show which backend
-is active. Headless Linux (SSH, container, WSL) and Windows are on
-the roadmap.
+macOS, Linux desktop, and Windows are all supported (macOS Keychain,
+Linux Secret Service via libsecret/secret-tool, and Windows Credential
+Manager via the Win32 wincred API called directly through Bun FFI —
+not the read-incapable cmdkey CLI). The dashboard and `stm status`
+always show which backend is active. Headless Linux (SSH, container,
+WSL) is the remaining roadmap item, with a tiered fallback chain
+(LinuxPass + EncryptedFile) tracked in specs/plans/v0.6-linux-headless.md.
 
 Two agents are wrapped as of v0.4.0 (and v0.4.1 ported the guardrails to Codex too) with different security postures.
 **Claude Code** gets the strong "per-command rewrite" guarantee: the

@@ -19,12 +19,16 @@
 // calls out gh CLI as the cautionary tale on this point.
 
 import { spawnSync } from "node:child_process";
-import type { KeyStore, SpawnFn, WhichFn } from "./types.ts";
+import type { KeyStore, SpawnFn, WhichFn, WincredFFI } from "./types.ts";
 import { createMacKeyStore } from "./mac.ts";
 import {
   createLinuxSecretServiceKeyStore,
   probeLinuxSecretService,
 } from "./linux-secret-service.ts";
+import {
+  createWindowsCredentialKeyStore,
+  isWincredReachable,
+} from "./windows-credential.ts";
 
 export type { KeyStore } from "./types.ts";
 
@@ -95,6 +99,13 @@ export interface SelectOptions {
    * cheap `--version` shell-out) when omitted.
    */
   which?: WhichFn;
+  /**
+   * Injected Windows credential-API surface. Tests pass a recording
+   * fake so the backend can be exercised on any platform without
+   * dlopen-ing advapi32. Real callers leave this undefined and the
+   * factory builds the bun:ffi binding lazily.
+   */
+  wincredFFI?: WincredFFI;
 }
 
 /**
@@ -120,7 +131,7 @@ export function selectKeyStore(opts: SelectOptions = {}): KeyStore {
     // for.
     cache = createUnsupportedKeyStore(
       `STM_KEYSTORE="${override}" is not a known backend ` +
-        `(try: mac, linux-secret-service)`,
+        `(try: mac, linux-secret-service, windows-credential)`,
     );
     return cache;
   }
@@ -154,7 +165,25 @@ export function selectKeyStore(opts: SelectOptions = {}): KeyStore {
     return cache;
   }
 
-  // 3. No mapping yet (Windows, BSD, …).
+  if (platform === "win32") {
+    // Windows Credential Manager via advapi32. Probe first so a
+    // broken Bun FFI / restricted sandbox returns an honest
+    // `unsupported (...)` rather than failing at the first set/get.
+    if (!isWincredReachable({ ffi: opts.wincredFFI })) {
+      cache = createUnsupportedKeyStore(
+        "Windows Credential Manager is unreachable. This usually means " +
+          "advapi32.dll could not be loaded — are you running stm in a " +
+          "restricted sandbox, container, or service account without " +
+          "Credential Manager access? Set STM_KEYSTORE to override, or " +
+          "run stm from an interactive Windows session.",
+      );
+      return cache;
+    }
+    cache = createWindowsCredentialKeyStore({ ffi: opts.wincredFFI });
+    return cache;
+  }
+
+  // 3. No mapping yet (BSD, sunos, …).
   cache = createUnsupportedKeyStore(
     `platform "${platform}" is not yet supported. ` +
       "Track specs/cross-platform-and-codex.md for the roadmap.",
@@ -173,6 +202,11 @@ function byName(name: string, opts: SelectOptions): KeyStore | null {
     case "libsecret":
     case "secret-service":
       return createLinuxSecretServiceKeyStore({ spawn: opts.spawn });
+    case "windows":
+    case "windows-credential":
+    case "wincred":
+    case "credential-manager":
+      return createWindowsCredentialKeyStore({ ffi: opts.wincredFFI });
     default:
       return null;
   }

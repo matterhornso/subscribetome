@@ -1,6 +1,6 @@
 # Spec — Cross-platform (Linux, Windows) and Codex support
 
-**Status:** Workstream A (Linux Secret Service) shipped v0.3.1 · Workstream C Option 1 (Codex session-env mode) shipped v0.4.0 · Workstream C guardrail port (UserPromptSubmit + SessionStart on Codex) shipped v0.4.1 · Workstream B (Windows) + A-tier-2/3 (Linux headless) + C-Option-2 (MCP-wrapped Codex) pending · **Target:** subscribetome v2 · **Last updated:** 2026-05-24
+**Status:** Workstream A (Linux Secret Service) shipped v0.3.1 · Workstream C Option 1 (Codex session-env mode) shipped v0.4.0 · Workstream C guardrail port shipped v0.4.1 · **Workstream B (Windows Credential Manager) shipped v0.5.0** · A-tier-2/3 (Linux headless) + C-Option-2 (MCP-wrapped Codex) pending · **Target:** subscribetome v2 · **Last updated:** 2026-05-25
 
 This spec covers expanding subscribetome beyond its v1 footprint (macOS +
 Claude Code) to **Linux**, **Windows**, and the **OpenAI Codex CLI**. It is a
@@ -124,11 +124,14 @@ instructions and the security label shown to the user.
 These are tractable engineering. They are the same task (a new `KeyStore`
 backend) and do not touch the agent side.
 
-### Windows — **straightforward**
+### Windows — **shipped v0.5.0**
 
 - Win32 `wincred` API: `CredWriteW` / `CredReadW` / `CredDeleteW`,
-  `CRED_TYPE_GENERIC`. (Do **not** use the `cmdkey` CLI — it cannot read a
-  password back. Do **not** use `keytar` — archived 2026-03.)
+  `CRED_TYPE_GENERIC` — called directly via Bun FFI against
+  advapi32.dll. (We did NOT use the `cmdkey` CLI — it cannot read a
+  password back. We did NOT use `keytar` — archived 2026-03.) The
+  secret bytes go into `CREDENTIALW.CredentialBlob` by pointer,
+  never via argv or stdin. Strict posture improvement over macOS.
 - Blob limit 2560 bytes — irrelevant for API keys.
 - Per-user, DPAPI-encrypted. Namespace target names `subscribetome:<ref>`.
 - **WSL:** WSL sees neither Windows Credential Manager nor a Linux keyring.

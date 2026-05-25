@@ -241,14 +241,23 @@ reports "OK" but no guard fires. Press `y` when prompted. See
   `libsecret` (Fedora), or `libsecret` (Arch). Requires a running
   desktop keyring daemon (`gnome-keyring-daemon` on GNOME; `kwallet`
   with the secret-service shim on KDE).
+- **Windows** — keys live in Windows Credential Manager (DPAPI-
+  encrypted, per-user) via the Win32 `wincred` API. We call
+  `CredWriteW` / `CredReadW` / `CredDeleteW` directly through
+  [Bun FFI](https://bun.com/docs/api/ffi) — not via the
+  read-incapable `cmdkey` CLI, and not via the archived `keytar`
+  package. The secret bytes go into `CREDENTIALW.CredentialBlob`
+  by pointer; they never touch argv, stdin, or any environment
+  variable. Available on Windows 10 / 11 (all SKUs) and Windows
+  Server.
 - **Linux headless / SSH / container / WSL** — not yet supported.
   Headless fallbacks (`pass`-based, `EncryptedFile`) are tracked in
-  [`specs/cross-platform-and-codex.md`](./specs/cross-platform-and-codex.md).
-- **Windows** — not yet supported. Tracked in the same spec.
+  [`specs/plans/v0.6-linux-headless.md`](./specs/plans/v0.6-linux-headless.md).
 
 `stm status` always tells you which backend is active. You can force
-one with `STM_KEYSTORE=<mac|linux-secret-service>` (useful in CI and
-for explicit overrides).
+one with `STM_KEYSTORE=<mac|linux-secret-service|windows-credential>`
+(useful in CI and for explicit overrides; aliases: `keychain`,
+`libsecret`, `secret-service`, `wincred`, `credential-manager`).
 
 ## Limitations (v1)
 
