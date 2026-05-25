@@ -19,7 +19,7 @@
 // calls out gh CLI as the cautionary tale on this point.
 
 import { spawnSync } from "node:child_process";
-import type { KeyStore, SpawnFn, WhichFn, WincredFFI } from "./types.ts";
+import type { KeyStore, MacFFI, SpawnFn, WhichFn, WincredFFI } from "./types.ts";
 import { createMacKeyStore } from "./mac.ts";
 import {
   createLinuxSecretServiceKeyStore,
@@ -113,6 +113,12 @@ export interface SelectOptions {
    */
   wincredFFI?: WincredFFI;
   /**
+   * Injected macOS Security framework surface (v0.6.1). Symmetric
+   * with `wincredFFI` — lets tests exercise the resolver branch
+   * on any host without touching the real Keychain.
+   */
+  macFFI?: MacFFI;
+  /**
    * Injected passphrase provider for the EncryptedFile backend.
    * Tests pin a value, `stm vault unlock` writes to the shared
    * in-memory cache and lets the default provider find it.
@@ -155,7 +161,7 @@ export function selectKeyStore(opts: SelectOptions = {}): KeyStore {
 
   // 2. Platform default.
   if (platform === "darwin") {
-    cache = createMacKeyStore({ spawn: opts.spawn });
+    cache = createMacKeyStore({ ffi: opts.macFFI });
     return cache;
   }
   if (platform === "linux") {
@@ -240,7 +246,7 @@ function byName(name: string, opts: SelectOptions): KeyStore | null {
     case "mac":
     case "macos":
     case "keychain":
-      return createMacKeyStore({ spawn: opts.spawn });
+      return createMacKeyStore({ ffi: opts.macFFI });
     case "linux":
     case "linux-secret-service":
     case "libsecret":

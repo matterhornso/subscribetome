@@ -50,6 +50,49 @@ export interface WhichFn {
 }
 
 /**
+ * The thin surface the macOS backend needs from the Security
+ * framework. Lifted so tests inject a fake — we can exercise the
+ * KeyStore without writing into the real Keychain on a dev machine.
+ *
+ * The real implementation in `src/keystores/mac.ts` dlopens
+ * `/System/Library/Frameworks/Security.framework/Security` and binds
+ * four entry points:
+ *   - SecKeychainAddGenericPassword   (write)
+ *   - SecKeychainFindGenericPassword  (read; out-param + ItemFreeContent)
+ *   - SecKeychainItemDelete           (delete; chained after find)
+ *   - SecKeychainItemFreeContent      (release the read buffer)
+ *
+ * Why FFI instead of `/usr/bin/security`:
+ *   The v1 backend ran `security add-generic-password -w <value>`,
+ *   leaving the secret briefly visible to a local `ps` during the
+ *   write. v0.3.1 closed that hole on Linux (stdin pipe) and v0.5.0
+ *   closed it on Windows (FFI pointer). This release closes it on
+ *   macOS too — the secret bytes live in a Uint8Array we own and
+ *   pass to SecKeychainAddGenericPassword by pointer. No argv, no
+ *   stdin, no env in play.
+ *
+ * Each method's contract:
+ *   - `addGenericPassword(service, account, blob)` writes (or
+ *     replaces, via the "exists → delete then add" idiom we
+ *     implement in mac.ts) a generic-password item. Returns true on
+ *     OSStatus 0.
+ *   - `findGenericPassword(service, account)` returns the password
+ *     bytes, or null on errSecItemNotFound. The implementation must
+ *     call SecKeychainItemFreeContent on the OS-allocated buffer
+ *     before returning.
+ *   - `deleteGenericPassword(service, account)` returns true on
+ *     success; idempotent — errSecItemNotFound returns true too.
+ *   - `lastStatus()` is the most-recent OSStatus, used to
+ *     distinguish "not found" from a real failure during the probe.
+ */
+export interface MacFFI {
+  addGenericPassword(service: string, account: string, blob: Uint8Array): boolean;
+  findGenericPassword(service: string, account: string): Uint8Array | null;
+  deleteGenericPassword(service: string, account: string): boolean;
+  lastStatus(): number;
+}
+
+/**
  * The thin surface a Windows backend needs from the Win32 credential
  * API. Lifted so tests inject a fake — Bun FFI on macOS dev machines
  * has no advapi32 to dlopen, and even on Windows we don't want to

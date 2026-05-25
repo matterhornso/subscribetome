@@ -237,7 +237,13 @@ reports "OK" but no guard fires. Press `y` when prompted. See
 
 ## Supported platforms
 
-- **macOS** — keys live in the macOS Keychain via `security(1)`. Tested.
+- **macOS** — keys live in the macOS Keychain. Since v0.6.1 stm
+  calls the Security framework directly through
+  [Bun FFI](https://bun.com/docs/api/ffi) (`SecKeychainAddGenericPassword`
+  / `SecKeychainFindGenericPassword` / `SecKeychainItemDelete`); the
+  v1 `security -w <value>` shell-out is gone, so the secret bytes
+  never touch argv. Posture parity with the Linux Secret Service
+  and Windows Credential Manager backends.
 - **Linux desktop** — keys live in the Linux Secret Service (libsecret,
   via `secret-tool`). Install `libsecret-tools` (Debian/Ubuntu),
   `libsecret` (Fedora), or `libsecret` (Arch). Requires a running

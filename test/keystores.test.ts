@@ -50,40 +50,50 @@ function recordingSpawn(
 
 // ---- macOS backend ------------------------------------------------------
 
-test("MacKeyStore.set shells out to `security add-generic-password -U -s ... -a ref -w value`", () => {
-  const { spawn, calls } = recordingSpawn([{ status: 0 }]);
-  const ks = createMacKeyStore({ spawn });
-  ks.set("ref-123", "secret-value");
-  expect(calls.length).toBe(1);
-  expect(calls[0].command).toBe("/usr/bin/security");
-  expect(calls[0].args[0]).toBe("add-generic-password");
-  expect(calls[0].args).toContain("-U");
-  expect(calls[0].args).toContain("-a");
-  expect(calls[0].args).toContain("ref-123");
-  expect(calls[0].args).toContain("-w");
-  expect(calls[0].args).toContain("secret-value");
+// v0.6.1 — the macOS backend is now FFI-based, NOT a shell-out to
+// `/usr/bin/security`. The old "argv shape" tests were the right
+// shape for v1; they're obsolete now. The full FFI matrix lives in
+// test/keystores-mac-ffi.test.ts. These two are sanity checks that
+// remain platform-agnostic (describe + lazy construction).
+
+test("MacKeyStore.describe returns the documented label (no FFI needed)", () => {
+  // Lazy FFI: describe() is callable without a working FFI. This
+  // matters for the dashboard pill on a misconfigured host.
+  expect(createMacKeyStore().describe()).toBe("macOS Keychain");
 });
 
-test("MacKeyStore.set throws with the binary's stderr on non-zero exit", () => {
-  const { spawn } = recordingSpawn([{ status: 1, stderr: "could not access default keychain" }]);
-  const ks = createMacKeyStore({ spawn });
-  expect(() => ks.set("r", "v")).toThrow(/could not access default keychain/);
-});
-
-test("MacKeyStore.get strips the trailing newline `security -w` adds", () => {
-  const { spawn } = recordingSpawn([{ status: 0, stdout: "the-secret\n" }]);
-  const ks = createMacKeyStore({ spawn });
-  expect(ks.get("r")).toBe("the-secret");
-});
-
-test("MacKeyStore.get returns null on non-zero exit (item missing)", () => {
-  const { spawn } = recordingSpawn([{ status: 44, stderr: "" }]);
-  const ks = createMacKeyStore({ spawn });
-  expect(ks.get("r")).toBeNull();
-});
-
-test("MacKeyStore.describe returns the documented label", () => {
-  expect(createMacKeyStore({ spawn: recordingSpawn([]).spawn }).describe()).toBe("macOS Keychain");
+test("MacKeyStore round-trips set/get/delete via an injected MacFFI", () => {
+  let lastStatus = 0;
+  const store = new Map<string, Uint8Array>();
+  const fake = {
+    addGenericPassword(svc: string, acc: string, b: Uint8Array): boolean {
+      store.set(`${svc}/${acc}`, new Uint8Array(b));
+      lastStatus = 0;
+      return true;
+    },
+    findGenericPassword(svc: string, acc: string): Uint8Array | null {
+      const v = store.get(`${svc}/${acc}`);
+      if (!v) {
+        lastStatus = -25300; // errSecItemNotFound
+        return null;
+      }
+      lastStatus = 0;
+      return v;
+    },
+    deleteGenericPassword(svc: string, acc: string): boolean {
+      const had = store.delete(`${svc}/${acc}`);
+      lastStatus = had ? 0 : -25300;
+      return had;
+    },
+    lastStatus(): number {
+      return lastStatus;
+    },
+  };
+  const ks = createMacKeyStore({ ffi: fake });
+  ks.set("r1", "secret-1");
+  expect(ks.get("r1")).toBe("secret-1");
+  ks.delete("r1");
+  expect(ks.get("r1")).toBeNull();
 });
 
 // ---- Linux Secret Service backend ---------------------------------------

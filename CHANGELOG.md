@@ -3,6 +3,95 @@
 All notable changes to subscribetome. This project is pre-1.0; minor versions
 may still change behaviour. Format follows [Keep a Changelog](https://keepachangelog.com).
 
+## [0.6.1] — 2026-05-25
+
+### Changed — macOS Keychain backend now FFI-based (closes the v1 argv exposure)
+
+The v1 backend ran `/usr/bin/security add-generic-password -w <value>`,
+which left the secret briefly visible to a local `ps` during the
+write. This was the last "known limitation" remaining from v1's
+posture story — the spec called it out, and v0.3.1 (Linux) + v0.5.0
+(Windows) shipped strictly-better alternatives for those platforms.
+This release closes it on macOS too. Posture parity across all three
+desktop OSes.
+
+- **`src/keystores/mac.ts`** rewritten to call the macOS Security
+  framework directly via Bun FFI against
+  `/System/Library/Frameworks/Security.framework/Security`:
+    - `SecKeychainAddGenericPassword`     (write)
+    - `SecKeychainFindGenericPassword`    (read; out-param + free)
+    - `SecKeychainItemDelete`             (chained after find)
+    - `SecKeychainItemFreeContent`        (release the read buffer)
+  The secret bytes go into the `passwordData` pointer parameter,
+  never as an argv element or stdin fd.
+
+- **`src/keystores/types.ts`** gains `MacFFI` — the four-method
+  injectable surface. Tests pass a recording fake so the suite
+  runs on any host without touching the real Keychain. Mirrors
+  the v0.5.0 `WincredFFI` pattern.
+
+- **Lazy FFI resolution.** `createMacKeyStore({ffi?})` defers the
+  real `dlopen("Security.framework")` call until the first op.
+  `describe()` is callable from anywhere — useful for the dashboard
+  pill and `stm status` rendering the configured backend on a
+  misconfigured host.
+
+- **Upsert semantics preserved.** v1's `security -w -U` upsert flag
+  is matched by a delete-then-retry when the framework reports
+  `errSecDuplicateItem`. Concurrent readers are not affected
+  (the entry is only briefly absent in the duplicate case, never on
+  fresh writes).
+
+- **Resolver wiring.** `SelectOptions` grows `macFFI?` for test
+  injection — symmetric with the v0.5.0 `wincredFFI`.
+
+- **`isMacKeychainReachable({ffi?})`** added for resolver-level
+  probing. Returns false when the framework can't be loaded or the
+  keychain is locked / restricted — the resolver then surfaces
+  `unsupported (...)` rather than silently degrading. Same pattern
+  as `isWincredReachable` from v0.5.0.
+
+### Tests — 292 pass, 0 fail (was 277; +18 mac-ffi tests, –3 obsolete shell-out tests).
+
+`test/keystores-mac-ffi.test.ts` covers:
+- Headline: secret never appears in any string-shaped FFI parameter
+  (service / account). Bytes only live in the `blob` Uint8Array.
+- UTF-8 round-trip survives DPAPI-equivalent encoding.
+- `errSecItemNotFound` (-25300) on read returns null; other codes throw.
+- `errSecDuplicateItem` (-25299) on add triggers delete-then-retry.
+- `isMacKeychainReachable` true on healthy FFI, false on throwing FFI
+  or non-NotFound status code.
+- Resolver picks the new backend on `darwin` with optional `macFFI`
+  injection; `STM_KEYSTORE=keychain` alias forwards the injection too.
+
+Plus a refresh in `test/keystores.test.ts` — the v1 "shells out to
+`security`" tests are replaced with a lazy-describe test and an
+injected-FFI round-trip.
+
+### Compatibility
+
+- Same KeyStore interface as v0.6.0. Every consumer (`store.ts`,
+  `hooks.ts`, the daemon) sees the same `set` / `get` / `delete` /
+  `describe` surface. No API breaks.
+- Label is unchanged — `describe()` still returns `"macOS Keychain"`.
+  The dashboard pill, `stm status`, and any tests that asserted the
+  label continue to pass.
+- Existing keychain entries written by v0.6.0 (via the CLI) ARE
+  readable by the new FFI binding — both wrote a generic-password
+  item under the same service+account namespace, which is what the
+  FFI call also operates on.
+- Zero new outbound calls. The FFI binding is purely local.
+
+### Note
+
+- `/usr/bin/security` is no longer invoked by the backend. The
+  binary is still useful for one-off inspection (e.g. `security
+  find-generic-password -s subscribetome -a <ref> -g`) but stm
+  itself never spawns it.
+- `node:child_process.spawnSync` is no longer imported by
+  `mac.ts`. The `SpawnFn` interface stays in `types.ts` because
+  the Linux SS and Linux Pass backends still use it.
+
 ## [0.6.0] — 2026-05-25
 
 ### Added — Linux headless tiers 2 + 3 (`specs/cross-platform-and-codex.md` §5 Linux row; build plan: `specs/plans/v0.6-linux-headless.md`)
