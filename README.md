@@ -323,6 +323,13 @@ next-stronger tier. You can force one with
 (useful in CI; aliases: `keychain`, `libsecret`, `secret-service`,
 `pass`, `file`, `wincred`, `credential-manager`).
 
+The v0.5 – v0.7 Windows + Linux-headless + Codex builds were done on
+macOS and exercised via injected fakes (FFI for Windows, JSON-RPC
+framing for Codex MCP, passphrase TTY for EncryptedFile). Real-host
+verification is welcome — see
+[`FIELD_VERIFICATION.md`](./FIELD_VERIFICATION.md) for the
+per-surface checklist.
+
 ### Encrypted-file vault (Tier 3) — passphrase UX
 
 ```

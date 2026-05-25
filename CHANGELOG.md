@@ -3,6 +3,50 @@
 All notable changes to subscribetome. This project is pre-1.0; minor versions
 may still change behaviour. Format follows [Keep a Changelog](https://keepachangelog.com).
 
+## [0.7.1] — 2026-05-25
+
+### Docs — backlog sweep + field-verification checklist
+
+Closing-out ship after the v0.5 – v0.7 cross-platform/Codex run.
+Documentation-only — no code changes.
+
+- **`TODOS.md` rewritten.** Removed every item that has since shipped
+  (audit log, Linux + Windows keychain backends, the macOS argv
+  exposure fix, non-Claude-Code agents). What remains is the
+  genuinely-pending v1.5+ backlog: managed-manager import (1Password
+  / Doppler / Infisical by pointer), provider-side rotation,
+  retroactive subscription discovery, PostToolUse warn-only mode.
+  Plus cross-references to spec-tracked deferrals (Stripe spend,
+  catalog search, audit-log `leak` event), the one external blocker
+  (openai/codex#18491 for Codex per-command rewrite), and the
+  post-v1 candidates without specs yet (more MCP providers, opencode
+  / Cursor adapters, spend forecasting). Each entry has acceptance
+  criteria for a future build session.
+
+- **`FIELD_VERIFICATION.md` (NEW)**. Per-surface checklist for
+  community users with the hardware to confirm the v0.5 – v0.7
+  builds end-to-end. Covers:
+    * Linux Secret Service (v0.3.1)
+    * Linux Pass tier 2 (v0.6.0) — incl. an `strace`-based posture
+      check that the secret never lands in argv
+    * Linux EncryptedFile tier 3 (v0.6.0) — incl. the hook
+      fail-safe contract under non-TTY without `STM_FILE_PASSPHRASE`
+    * Windows Credential Manager backend (v0.5.0) — incl. a
+      PowerShell `Get-Process | Select CommandLine` posture check
+    * Codex Option 1 session-env launcher (v0.4.0)
+    * Codex hooks port (v0.4.1) — incl. trust-gate flow
+    * Codex Option 2 MCP-wrapped (v0.7.0) — incl. agent-supplied
+      Authorization-override stripping check
+  Each section has exact commands, expected output, specific
+  failure modes to file, and what to include in a bug report.
+
+- **README** grows a one-line pointer to `FIELD_VERIFICATION.md`
+  under "Supported platforms".
+
+### Tests
+
+No new tests. The suite is 340 pass, 0 fail (unchanged from v0.7.0).
+
 ## [0.7.0] — 2026-05-25
 
 ### Added — Codex Option 2: MCP-wrapped tools (`specs/cross-platform-and-codex.md` §6 Option 2)
