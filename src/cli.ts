@@ -29,6 +29,12 @@ import {
   uninstallHooks as uninstallCodexHooks,
   doctor as codexDoctor,
 } from "./agents/codex-hooks.ts";
+import {
+  installMcp as installCodexMcp,
+  uninstallMcp as uninstallCodexMcp,
+  doctorMcp as codexMcpDoctor,
+} from "./agents/codex-mcp-install.ts";
+import { runStdioServer as runCodexMcpServer } from "./agents/codex-mcp.ts";
 import { doctorReport, formatDoctorReport } from "./doctor.ts";
 import {
   setCachedPassphrase,
@@ -938,7 +944,14 @@ function codexHelp(): void {
       `                                       ~/.codex/config.toml (idempotent)\n` +
       `  stm codex install-hooks --remove     remove the managed block from\n` +
       `                                       ~/.codex/config.toml (leaves a backup)\n` +
-      `  stm codex doctor                     verify the guardrails are wired up\n` +
+      `  stm codex install-mcp [--dry-run]    register the higher-assurance Option-2\n` +
+      `                                       MCP server (~/.codex/config.toml,\n` +
+      `                                       [mcp_servers.subscribetome])\n` +
+      `  stm codex install-mcp --remove       remove the MCP block\n` +
+      `  stm codex mcp-server                 (internal) Codex spawns this — runs\n` +
+      `                                       the JSON-RPC MCP server on stdio\n` +
+      `  stm codex doctor                     verify both Option-1 hooks and\n` +
+      `                                       Option-2 MCP are wired up\n` +
       `\nWhat this does (and why it is weaker than Claude Code):\n` +
       `\n` +
       `  stm resolves your active keys and exposes each as an environment\n` +
@@ -1013,21 +1026,92 @@ function codexInstallHooksCmd(args: string[]): void {
 }
 
 function codexDoctorCmd(): void {
-  const verdict = codexDoctor();
+  const hookVerdict = codexDoctor();
+  const mcpVerdict = codexMcpDoctor();
   process.stdout.write(
-    `codex hooks: ${verdict.ok ? "OK" : "NEEDS ATTENTION"}\n` +
-      `  config:        ${verdict.configPath} ${verdict.configPresent ? "(present)" : "(missing)"}\n` +
-      `  managed block: ${verdict.blockPresent ? (verdict.blockUpToDate ? "present, up to date" : "present, OUT OF DATE") : "missing"}\n` +
-      `  hook scripts:  ${verdict.scriptsPresent ? "present + executable" : "missing or not executable"}\n`,
+    `codex hooks (Option 1 + guardrails): ${hookVerdict.ok ? "OK" : "NEEDS ATTENTION"}\n` +
+      `  config:        ${hookVerdict.configPath} ${hookVerdict.configPresent ? "(present)" : "(missing)"}\n` +
+      `  managed block: ${hookVerdict.blockPresent ? (hookVerdict.blockUpToDate ? "present, up to date" : "present, OUT OF DATE") : "missing"}\n` +
+      `  hook scripts:  ${hookVerdict.scriptsPresent ? "present + executable" : "missing or not executable"}\n` +
+      `\n` +
+      `codex mcp (Option 2 — higher assurance): ${mcpVerdict.ok ? "OK" : "NEEDS ATTENTION"}\n` +
+      `  config:        ${mcpVerdict.configPath} ${mcpVerdict.configPresent ? "(present)" : "(missing)"}\n` +
+      `  managed block: ${mcpVerdict.blockPresent ? (mcpVerdict.blockUpToDate ? "present, up to date" : "present, OUT OF DATE") : "missing"}\n`,
   );
-  if (verdict.summary.length > 0) {
+  const summary = [...hookVerdict.summary, ...mcpVerdict.summary];
+  if (summary.length > 0) {
     process.stdout.write("\n");
-    for (const line of verdict.summary) {
-      // Wrap each summary item with a leading bullet for readability.
+    for (const line of summary) {
       process.stdout.write(`  • ${line}\n`);
     }
   }
-  process.exit(verdict.ok ? 0 : 1);
+  // Exit non-zero when EITHER track has an issue — CI-friendly.
+  process.exit(hookVerdict.ok && mcpVerdict.ok ? 0 : 1);
+}
+
+function codexInstallMcpCmd(args: string[]): void {
+  const dryRun = args.includes("--dry-run");
+  const remove = args.includes("--remove") || args.includes("--uninstall");
+  const result = remove
+    ? uninstallCodexMcp({ dryRun })
+    : installCodexMcp({ dryRun });
+
+  if (remove) {
+    if (!result.changed) {
+      process.stdout.write(
+        `stm codex install-mcp --remove: no MCP block at ${result.configPath} ` +
+          `— nothing to do.\n`,
+      );
+      return;
+    }
+    process.stdout.write(
+      `${dryRun ? "(dry run) would remove" : "removed"} the stm MCP block from ${result.configPath}\n` +
+        (result.backupPath ? `  backup written to ${result.backupPath}\n` : ""),
+    );
+    return;
+  }
+
+  if (dryRun) {
+    process.stdout.write(
+      `(dry run) would ${result.changed ? "WRITE" : "leave unchanged"} ${result.configPath}\n\n` +
+        `--- contents after install ---\n${result.contents}\n--- end ---\n`,
+    );
+    return;
+  }
+  if (!result.changed) {
+    process.stdout.write(
+      `stm codex install-mcp: already up to date — ${result.configPath} ` +
+        `contains the current MCP block.\n`,
+    );
+    return;
+  }
+  process.stdout.write(
+    `installed the stm MCP block in ${result.configPath}` +
+      (result.alreadyInstalled ? `  (refreshed an existing block)\n` : `\n`) +
+      (result.backupPath ? `  previous config backed up to ${result.backupPath}\n` : ``) +
+      `\n` +
+      `Restart codex (or run a fresh \`codex\` command) and the agent\n` +
+      `will see a new MCP tool: \`stm_http_request\`. Prompt codex with\n` +
+      `something like "Use the stm_http_request tool to call OpenAI's\n` +
+      `chat completions endpoint" and the API key never leaves stm's\n` +
+      `process — strictly higher assurance than the v0.4.0 session-env\n` +
+      `mode. See README "Codex Option 2 — MCP-wrapped" for prompting tips.\n`,
+  );
+}
+
+async function codexMcpServerCmd(): Promise<void> {
+  // The Codex MCP server runs as a long-lived child process spawned by
+  // codex itself via the `mcp_servers.subscribetome` block. It speaks
+  // JSON-RPC 2.0 over stdio. We resolve credentials through the same
+  // Store that backs every other surface; nothing fancy required.
+  const store = new Store();
+  try {
+    await runCodexMcpServer({
+      resolveCredential: (tool, label) => store.resolve(tool, label),
+    });
+  } finally {
+    store.close();
+  }
 }
 
 async function codexCmd(args: string[]): Promise<void> {
@@ -1040,6 +1124,12 @@ async function codexCmd(args: string[]): Promise<void> {
   }
   if (args[0] === "install-hooks") {
     return codexInstallHooksCmd(args.slice(1));
+  }
+  if (args[0] === "install-mcp") {
+    return codexInstallMcpCmd(args.slice(1));
+  }
+  if (args[0] === "mcp-server") {
+    return codexMcpServerCmd();
   }
   if (args[0] === "doctor") {
     return codexDoctorCmd();

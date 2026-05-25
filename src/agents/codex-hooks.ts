@@ -145,7 +145,12 @@ export function installHooks(opts: {
     current = readFileSync(configPath, "utf8");
   }
 
-  const updated = rewriteOrAppendBlock(current, block);
+  const updated = rewriteOrAppendBlock(
+    current,
+    block,
+    STM_MARKER_PREFIX,
+    STM_END_MARKER,
+  );
   const alreadyInstalled = current.includes(block);
   const changed = updated !== current;
 
@@ -172,23 +177,31 @@ export function installHooks(opts: {
 
 /**
  * Splice the new block in. The strategy is conservative:
- *   1. If a `STM_MARKER_PREFIX` line + `STM_END_MARKER` pair is
- *      present, replace everything between them (inclusive).
+ *   1. If a `prefixMarker` line + `endMarker` pair is present in the
+ *      file, replace everything between them (inclusive).
  *   2. Otherwise, append the block to the file, ensuring exactly one
  *      blank line of separation.
  *
- * No TOML parsing: marker-based splice is the whole point.
+ * No TOML parsing: marker-based splice is the whole point. The
+ * marker pair is passed in so the same helper handles both the
+ * hooks block (v0.4.1) and the MCP block (v0.7.0) without
+ * cross-contaminating each other's content.
  */
-function rewriteOrAppendBlock(current: string, block: string): string {
+export function rewriteOrAppendBlock(
+  current: string,
+  block: string,
+  prefixMarker: string,
+  endMarker: string,
+): string {
   const lines = current.split("\n");
   let start = -1;
   let end = -1;
   for (let i = 0; i < lines.length; i++) {
-    if (start === -1 && lines[i].startsWith(STM_MARKER_PREFIX)) {
+    if (start === -1 && lines[i].startsWith(prefixMarker)) {
       start = i;
       continue;
     }
-    if (start !== -1 && lines[i] === STM_END_MARKER) {
+    if (start !== -1 && lines[i] === endMarker) {
       end = i;
       break;
     }
@@ -323,7 +336,7 @@ export function uninstallHooks(opts: {
     };
   }
   const current = readFileSync(configPath, "utf8");
-  const updated = removeBlock(current);
+  const updated = removeBlock(current, STM_MARKER_PREFIX, STM_END_MARKER);
   const changed = updated !== current;
   let backupPath: string | null = null;
   if (changed && !opts.dryRun) {
@@ -341,16 +354,20 @@ export function uninstallHooks(opts: {
   };
 }
 
-function removeBlock(current: string): string {
+export function removeBlock(
+  current: string,
+  prefixMarker: string,
+  endMarker: string,
+): string {
   const lines = current.split("\n");
   let start = -1;
   let end = -1;
   for (let i = 0; i < lines.length; i++) {
-    if (start === -1 && lines[i].startsWith(STM_MARKER_PREFIX)) {
+    if (start === -1 && lines[i].startsWith(prefixMarker)) {
       start = i;
       continue;
     }
-    if (start !== -1 && lines[i] === STM_END_MARKER) {
+    if (start !== -1 && lines[i] === endMarker) {
       end = i;
       break;
     }

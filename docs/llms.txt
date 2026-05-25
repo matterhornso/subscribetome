@@ -55,7 +55,7 @@ which backend is active. Encrypted-file passphrase UX:
 works in CI, non-TTY without either makes the hook fail safe (returns
 null instead of leaking).
 
-Two agents are wrapped as of v0.4.0 (and v0.4.1 ported the guardrails to Codex too) with different security postures.
+Two agents are wrapped (Claude Code and OpenAI Codex), and as of v0.7.0 Codex now has both a session-env mode (Option 1) and a higher-assurance MCP-wrapped mode (Option 2) where the key never enters the agent's process at all.
 **Claude Code** gets the strong "per-command rewrite" guarantee: the
 real key is substituted into one Bash command at the moment it runs
 via a `PreToolUse` hook returning `updatedInput`, and the transcript
@@ -78,6 +78,19 @@ and surgical — surrounding user config is preserved. `stm codex
 doctor` verifies the wiring. First launch after install prompts
 the user to TRUST each hook; until approved, the hook is silently
 skipped (Codex behaviour, surfaced honestly).
+
+Codex Option 2 (MCP-wrapped) shipped in v0.7.0 via `stm codex
+install-mcp`, which writes an `[mcp_servers.subscribetome]` block
+to the same `~/.codex/config.toml` (separate marker pair from the
+hooks block, so the two installers are independent). Codex spawns
+`stm codex mcp-server` over stdio; the agent gets a discoverable
+tool `stm_http_request(provider, path, method?, query?, headers?,
+body?)`. The credential value never enters the agent's address
+space — it is read from the local stm KeyStore at the moment of
+each call and used to populate the auth header on the outbound
+HTTPS request. v0.7.0 launch set: OpenAI, Anthropic, Stripe,
+GitHub, Resend. Adding a provider is one entry in
+`src/agents/codex-mcp-providers.ts`.
 
 ## Project
 

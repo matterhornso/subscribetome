@@ -134,7 +134,8 @@ stm audit              forensic log of PreToolUse decisions
 stm sync [provider]    fetch real spend from configured providers
 stm codex [args...]    launch Codex with stm keys as env vars
 stm codex install-hooks install the UserPromptSubmit + SessionStart guardrails in ~/.codex/config.toml
-stm codex doctor       verify the Codex guardrails are wired up
+stm codex install-mcp  register Codex Option 2 (MCP-wrapped, higher assurance — key never in agent process)
+stm codex doctor       verify both Codex hooks AND MCP are wired up
 stm doctor             diagnose which keystore tier is active and how to upgrade
 stm vault <subcmd>     manage the encrypted-file Tier 3 vault (unlock / rotate-passphrase / info)
 stm status             daemon + inventory summary, active agents + backend
@@ -194,7 +195,8 @@ and the dashboard header always tell you which agent gets which guarantee.
 | Agent | Mode | Guarantee | What you run |
 |---|---|---|---|
 | **Claude Code** | per-command rewrite | **Strong** — the real key is substituted into a single Bash command at the instant it runs, via a `PreToolUse` hook returning `updatedInput`. The transcript keeps the placeholder; no value ever appears in chat. | `claude` (the plugin's hooks fire automatically) |
-| **Codex** | session-env mode | **Weaker** — each key becomes a `STM_<TOOL>_<LABEL>` env var in codex's process environment for the whole session. A command that dumps its environment can surface it. Claude Code's mode is strictly stronger. | `stm codex [codex-args…]` |
+| **Codex (Option 1)** | session-env mode | **Medium** — each key becomes a `STM_<TOOL>_<LABEL>` env var in codex's process environment for the whole session. A command that dumps its environment can surface it. | `stm codex [codex-args…]` |
+| **Codex (Option 2)** | MCP-wrapped (v0.7.0) | **Strong** — the key never enters the agent's address space at all. Codex invokes a named MCP tool; stm's MCP server makes the HTTPS request and returns the response. Structurally closest equivalent to Claude Code's guarantee. | `stm codex install-mcp` once, then prompt codex to use the `stm_http_request` tool |
 
 Why Codex is weaker: Codex CLI's hook system has a `PreToolUse` event but its
 docs state that `updatedInput` is "parsed but not supported yet, so they fail
@@ -234,6 +236,44 @@ TRUST each hook (it records trust against the hook command's hash).
 Until you approve, the hook is silently skipped — `stm codex doctor`
 reports "OK" but no guard fires. Press `y` when prompted. See
 [developers.openai.com/codex/hooks#trust](https://developers.openai.com/codex/hooks#trust).
+
+### Codex Option 2 — MCP-wrapped (higher assurance, v0.7.0)
+
+Option 1 (above) leaves the key in codex's process environment for
+the whole session — a command that dumps its env can surface it.
+Option 2 keeps the key **entirely inside stm's MCP-server process**;
+codex's agent invokes a named tool and never handles the secret. This
+is the structurally closest equivalent to Claude Code's per-command
+rewrite that Codex can host today.
+
+```
+stm codex install-mcp              # add the [mcp_servers.subscribetome] block
+stm codex install-mcp --dry-run    # print what it would write
+stm codex install-mcp --remove     # uninstall
+```
+
+The block registers `bun src/cli.ts codex mcp-server` as a Codex
+MCP server. When the agent starts, Codex spawns the server over
+stdio and discovers a new tool:
+
+- **`stm_http_request(provider, path, method?, query?, headers?, body?)`** —
+  the server resolves the provider's credential from the local stm
+  KeyStore, injects the auth header on the outbound HTTPS request,
+  and returns the response (status, headers, body) to the agent.
+  The credential never enters the agent's address space.
+
+**Launch set of providers (v0.7.0):** OpenAI, Anthropic, Stripe,
+GitHub, Resend. Adding a provider is one PR — see
+`src/agents/codex-mcp-providers.ts`.
+
+**Prompting tip:** "Use the stm_http_request MCP tool to call
+OpenAI's chat completions endpoint with these messages…" — codex
+will invoke the tool by name; the key never lands in any prompt or
+command argument.
+
+**Hooks + MCP coexist.** The two installers manage SEPARATE marker
+pairs in `~/.codex/config.toml`. You can run either independently
+or both. `stm codex doctor` reports both tracks.
 
 ## Supported platforms
 

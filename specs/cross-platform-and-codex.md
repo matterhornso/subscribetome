@@ -1,6 +1,6 @@
 # Spec — Cross-platform (Linux, Windows) and Codex support
 
-**Status:** Workstream A (Linux Secret Service) shipped v0.3.1 · Workstream C Option 1 (Codex session-env mode) shipped v0.4.0 · Workstream C guardrail port shipped v0.4.1 · Workstream B (Windows Credential Manager) shipped v0.5.0 · **Workstream A tiers 2 + 3 (LinuxPass + EncryptedFile) shipped v0.6.0** · C-Option-2 (MCP-wrapped Codex) pending · **Target:** subscribetome v2 · **Last updated:** 2026-05-25
+**Status:** ALL WORKSTREAMS SHIPPED. Workstream A (Linux SS + Pass + EncryptedFile) v0.3.1 + v0.6.0 · Workstream B (Windows Credential Manager) v0.5.0 · Workstream C Option 1 (Codex session-env) v0.4.0 · Workstream C guardrail port v0.4.1 · **Workstream C Option 2 (Codex MCP-wrapped) v0.7.0**. macOS argv-exposure hole closed in v0.6.1. **Target:** subscribetome v2 — **achieved.** **Last updated:** 2026-05-25
 
 This spec covers expanding subscribetome beyond its v1 footprint (macOS +
 Claude Code) to **Linux**, **Windows**, and the **OpenAI Codex CLI**. It is a
@@ -163,8 +163,10 @@ backend) and do not touch the agent side.
 
 **Status:** Option 1 (session-env mode) **shipped v0.4.0**.
 Guardrail port (UserPromptSubmit + SessionStart on Codex) **shipped
-v0.4.1**. Option 2 (MCP-wrapped) and the future "per-command rewrite
-if openai/codex#18491 lands" are still ahead.
+v0.4.1**. **Option 2 (MCP-wrapped) shipped v0.7.0** — the agent
+invokes a named `stm_http_request` tool, the key never enters the
+agent's address space. The future "per-command rewrite if
+openai/codex#18491 lands" remains the only outstanding Codex path.
 
 Codex is the architectural decision, not a port. Per §3, per-command
 transcript-clean rewrite is blocked. Two viable models:

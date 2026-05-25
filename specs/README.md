@@ -8,13 +8,13 @@ This index is the source of truth — when a new spec lands, add a row
 to the table below and a short summary in §1, then update statuses
 here as features ship.
 
-Last updated: **2026-05-25** (Workstream A tiers 2 + 3 — Linux headless fallback — shipped in v0.6.0. `src/keystores/linux-pass.ts` adds the pass + GPG tier; `src/keystores/encrypted-file.ts` adds the opt-in PBKDF2-SHA512 600k + AES-256-GCM tier with mode-0600 file. Resolver tries Tier 1 → 2 → 3 in order; never silent on degradation. New CLIs: `stm doctor` (tiered diagnosis), `stm vault unlock/rotate-passphrase/info`. Headless hook fail-safe: when no passphrase can be sourced, `get()` returns null and PreToolUse exits 0 without rewriting. 45 new tests, 277 total. All major desktop platforms now first-class supported.).
+Last updated: **2026-05-25** (Cross-platform-and-codex.md spec FULLY SHIPPED. v0.6.1 closed the v1 macOS argv-exposure hole — `src/keystores/mac.ts` now calls Security framework via Bun FFI, posture parity with Linux SS + Windows wincred. v0.7.0 shipped Codex Option 2 — `src/agents/codex-mcp.ts` is a zero-dep JSON-RPC MCP server that exposes one `stm_http_request` tool; the credential value lives only inside the MCP server's process, never enters Codex's agent. v0.7.0 launch set: OpenAI, Anthropic, Stripe, GitHub, Resend. 340 tests pass, 0 fail. Every major desktop OS + both major agents now have either strong (per-command rewrite / MCP-wrapped) or honest-medium (session-env) coverage.).
 
 ## 1. Index of specs
 
 | # | Spec | Target | Status | Lines |
 |---|------|--------|--------|------:|
-| 01 | [`cross-platform-and-codex.md`](./cross-platform-and-codex.md) | v2 | **Workstream A shipped, all three tiers** (Linux Secret Service v0.3.1; LinuxPass + EncryptedFile v0.6.0) · **Workstream B shipped** (Windows Credential Manager, v0.5.0) · **Workstream C Option 1 + guardrails shipped** (Codex session-env mode v0.4.0; UserPromptSubmit + SessionStart on Codex v0.4.1) · C-Option-2 (MCP-wrapped) pending | ~280 |
+| 01 | [`cross-platform-and-codex.md`](./cross-platform-and-codex.md) | v2 | **FULLY SHIPPED.** Workstream A (Linux Secret Service v0.3.1 + LinuxPass + EncryptedFile v0.6.0) · Workstream B (Windows Credential Manager v0.5.0; macOS argv hole closed v0.6.1) · Workstream C Option 1 (Codex session-env v0.4.0; guardrails v0.4.1) · **Workstream C Option 2 (Codex MCP-wrapped) v0.7.0** | ~280 |
 | 02 | [`spend-visibility.md`](./spend-visibility.md) | v0.3 | **Phases 1-3 shipped** (v0.3.0 — foundation + OpenAI + Anthropic) · Phase 4 (Stripe) deferred | ~160 |
 | 03 | [`session-and-project-scope.md`](./session-and-project-scope.md) | v0.3 | **All phases shipped** (Phase 1 v0.2.4 · Phase 2 v0.2.7 · Phase 3 v0.2.8) · §7 enforcement via `command-policy` Phase 3 (v0.2.5) | ~230 |
 | 04 | [`command-policy.md`](./command-policy.md) | v0.4 | **All four phases shipped** (v0.2.5) | ~230 |

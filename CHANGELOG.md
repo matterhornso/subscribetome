@@ -3,6 +3,122 @@
 All notable changes to subscribetome. This project is pre-1.0; minor versions
 may still change behaviour. Format follows [Keep a Changelog](https://keepachangelog.com).
 
+## [0.7.0] — 2026-05-25
+
+### Added — Codex Option 2: MCP-wrapped tools (`specs/cross-platform-and-codex.md` §6 Option 2)
+
+The strongest Codex mode stm can host today. Option 1 (v0.4.0,
+session-env) put the key in codex's process environment for the
+whole session — a weaker guarantee than Claude Code's per-command
+rewrite. Option 2 keeps the key entirely inside stm's MCP-server
+process; the agent invokes a named tool and never handles the
+secret. This is the structurally closest equivalent to Claude Code's
+guarantee that Codex can host without `updatedInput`.
+
+- **`src/agents/codex-mcp.ts`** (NEW) — JSON-RPC 2.0 MCP server
+  over stdio. Implements the three methods Codex needs:
+  `initialize`, `tools/list`, `tools/call`. One tool exposed:
+  `stm_http_request(provider, path, method?, query?, headers?, body?)`.
+  Server resolves the credential through the existing KeyStore at
+  the moment of each call (so a rotated key takes effect on the
+  next request) and injects the auth header on the outbound HTTPS
+  request. The credential is never:
+    * placed in the JSON-RPC RESPONSE to the agent,
+    * logged to stderr,
+    * passed in any tool-call argument.
+
+- **`src/agents/codex-mcp-providers.ts`** (NEW) — v0.7.0 launch
+  set: OpenAI (Bearer), Anthropic (x-api-key + anthropic-version
+  pin), Stripe (Basic, Stripe-style key-as-username), GitHub
+  (Bearer + accept header), Resend (Bearer). Adding a provider is
+  one entry — the pattern generalizes. Auth-header builder is a
+  centralized switch (bearer / x-api-key / basic-user) so a future
+  scheme is one new arm.
+
+- **Defense-in-depth on agent-supplied headers.** The tool schema
+  description tells the agent NOT to provide an `Authorization`
+  header. The server ALSO strips `Authorization` / `authorization`
+  / `x-api-key` / `X-API-Key` from the agent-supplied headers
+  before injecting its own — so a misbehaving (or compromised)
+  agent can never override stm's auth header with its own value.
+
+- **`src/agents/codex-mcp-install.ts`** (NEW) — installer + doctor
+  for the `[mcp_servers.subscribetome]` block in
+  `~/.codex/config.toml`. Symmetric with the v0.4.1 hooks installer
+  but uses a DIFFERENT marker pair (`# stm: subscribetome managed-
+  mcp v1` / `# stm: end subscribetome managed-mcp`) so the two
+  installers are independent — users can run hooks-only, MCP-only,
+  both, or neither. The block points Codex at
+  `bun src/cli.ts codex mcp-server`, resolved to absolute paths at
+  install time (Codex spawns child processes in its own
+  environment, which may differ from the user's shell PATH).
+
+- **Refactor**: `rewriteOrAppendBlock` + `removeBlock` in
+  `codex-hooks.ts` lifted to take marker-pair parameters. The
+  install/uninstall logic for both blocks now shares one
+  battle-tested splice helper.
+
+- **New CLI subcommands:**
+  - `stm codex install-mcp [--dry-run] [--remove]` — write,
+    refresh, or remove the MCP block. Backs up the previous config.
+  - `stm codex mcp-server` — the entrypoint Codex spawns. Speaks
+    JSON-RPC 2.0 over stdio. Not for direct human use.
+
+- **`stm codex doctor` extended** — now reports both Option 1
+  (hooks) and Option 2 (MCP) tracks. Exits 1 if either has an
+  issue; CI-friendly.
+
+### Tests — 340 pass, 0 fail (was 292; +48 v0.7.0 tests across 3 files).
+
+- `test/codex-mcp.test.ts` (24 tests). **HEADLINE TESTS:**
+  (a) credential value never appears in the JSON-RPC response;
+  (b) credential value IS placed in the upstream Authorization
+      header; (c) an agent that tries to override Authorization
+      has its header stripped before the server injects its own.
+  Also: per-scheme auth (Bearer / x-api-key / Basic), URL
+  building with query params, JSON vs form-encoded body shaping,
+  provider default headers (anthropic-version etc.), unknown
+  provider / missing credential / bad path / oversize response /
+  upstream 429, JSON-RPC framing (unknown method, malformed
+  envelope, notification with no id).
+- `test/codex-mcp-providers.test.ts` (10 tests). Registry shape,
+  buildAuthHeader scheme matrix, tool schema integrity.
+- `test/codex-mcp-install.test.ts` (14 tests). Idempotent install,
+  preserves user content, replaces stale blocks, coexists with
+  the v0.4.1 hooks block without stomping each other, uninstall
+  keeps the hooks block alive, doctorMcp verdict matrix.
+
+### Compatibility
+
+- v0.4.x Codex Option 1 (session-env) continues to work unchanged
+  for users who haven't installed Option 2. Both modes can coexist
+  — the MCP block uses a separate marker pair from the hooks
+  block.
+- No new outbound calls at stm-startup time. The MCP server only
+  makes outbound calls when the agent invokes the tool — same
+  user-initiated posture as `stm sync`.
+- Zero runtime deps. The JSON-RPC server is hand-rolled (not
+  `@modelcontextprotocol/sdk`) to preserve the project's
+  zero-deps invariant.
+
+### Notes
+
+- Real-host verification: the MCP server's JSON-RPC handshake +
+  tools/list pass a synthetic smoke test (echo two requests on
+  stdin, parse the replies). The full agent loop under a real
+  Codex CLI session has not been exercised on this build host —
+  install the block via `stm codex install-mcp`, restart Codex,
+  and the agent will see `stm_http_request` as a discoverable
+  tool. Codex may prompt to TRUST the MCP server on first
+  launch (same trust gate as the hooks installer; surfaced in
+  the install-mcp success message).
+- Future: more providers (the v0.7.0 launch set is OpenAI /
+  Anthropic / Stripe / GitHub / Resend — five tested, with the
+  pattern documented for others to PR). Per-provider tools
+  (e.g. `openai_chat_completion`) above the generic
+  `stm_http_request` if usage shows the generic surface is too
+  raw.
+
 ## [0.6.1] — 2026-05-25
 
 ### Changed — macOS Keychain backend now FFI-based (closes the v1 argv exposure)
