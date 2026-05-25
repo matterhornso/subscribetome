@@ -3,6 +3,149 @@
 All notable changes to subscribetome. This project is pre-1.0; minor versions
 may still change behaviour. Format follows [Keep a Changelog](https://keepachangelog.com).
 
+## [0.6.0] — 2026-05-25
+
+### Added — Linux headless tiers 2 + 3 (`specs/cross-platform-and-codex.md` §5 Linux row; build plan: `specs/plans/v0.6-linux-headless.md`)
+
+The resolver now ships a three-tier fallback chain on Linux. macOS,
+Linux desktop, Linux headless (SSH / container / WSL / CI), and
+Windows are now all first-class supported environments — no Linux
+host is "platform unsupported" anymore.
+
+- **`src/keystores/linux-pass.ts` (NEW) — Tier 2.**
+  Uses `pass(1)` + GPG. Each secret is one file under
+  `~/.password-store/subscribetome/<ref>`, encrypted to the user's
+  GPG key. `set` writes via stdin (`pass insert --multiline -f`),
+  so the secret never appears as an argv element — same posture as
+  the Linux Secret Service backend, same strict improvement over
+  macOS v1.
+  - `probeLinuxPass` verifies BOTH `pass version` and `pass ls`
+    exit 0, catching the common "pass installed but no GPG store
+    initialised" failure mode.
+
+- **`src/keystores/encrypted-file.ts` (NEW) — Tier 3, opt-in.**
+  Last-resort backend for headless hosts without Secret Service
+  AND without `pass`. One file at
+  `$XDG_DATA_HOME/subscribetome/keys.enc` (default
+  `~/.local/share/subscribetome/keys.enc`), mode 0600. Crypto:
+    - **KDF**: PBKDF2-SHA512, 600 000 iterations (OWASP-2025
+      current). KDF ID byte = 1; reserved 2 for Argon2id in v0.6.1.
+    - **Cipher**: AES-256-GCM. Per-file 16-byte random salt;
+      fresh 12-byte IV per write. The GCM tag is the last 16
+      bytes — a wrong passphrase yields a clear "decryption
+      failed" error, never silent corruption.
+    - **File layout (53-byte overhead)**: `magic (8) | kdf_id (1)
+      | salt (16) | iv (12) | ciphertext+tag`.
+  - Atomic writes via `tmp + rename`.
+  - Implementation note: uses `node:crypto` (`pbkdf2Sync`,
+    `createCipheriv`) for genuinely synchronous primitives. The
+    KeyStore interface is sync — calling WebCrypto's async API
+    would have meant churning every existing caller.
+
+- **Passphrase UX (spec §7 #3 — fiddliest piece in the roadmap).**
+  Three sources, in order:
+    1. In-process cache pre-warmed by `stm vault unlock`.
+    2. `$STM_FILE_PASSPHRASE` env var (CI / devcontainers).
+    3. Interactive prompt on stderr — ONLY when stdin AND stderr
+       are TTYs.
+  **Critical fail-safe**: when none of the three yield a passphrase,
+  `get()` returns null instead of throwing. The PreToolUse hook
+  exits 0 without rewriting, so the command runs with the
+  placeholder intact and fails harmlessly. We never block a hook
+  on a missing passphrase, and we never leak which key we
+  couldn't resolve into the audit log.
+
+- **Tiered resolver** in `src/keystores/index.ts`:
+  - Linux branch tries Tier 1 → Tier 2 → Tier 3 in order. The
+    first reachable tier wins; never a silent downgrade (the
+    gh-CLI cautionary tale from §5 still binds).
+  - Tier 3 is gated by `STM_ALLOW_FILE_BACKEND=1` on first touch.
+    Once the vault exists, the file's existence IS the consent
+    for subsequent runs.
+  - New `STM_KEYSTORE` aliases: `linux-pass`, `pass`,
+    `encrypted-file`, `file`, `encrypted`.
+
+- **`stm doctor` (NEW CLI subcommand).** Pure structured report of
+  every tier: which is active, which is unreachable + why, exact
+  fix commands (e.g. `apt install pass; pass init <your-gpg-id>`).
+  Exits 0 on healthy, 1 otherwise — CI-friendly.
+
+- **`stm vault` (NEW CLI subgroup).**
+  - `stm vault unlock` — reads a passphrase from stdin, pins it in
+    the in-process cache so subsequent set/get/delete don't prompt
+    again. Long-lived consumers (daemon, Claude Code session) need
+    their own unlock if they restart.
+  - `stm vault rotate-passphrase` — decrypts the vault under the
+    old passphrase, re-encrypts under a new one, atomically
+    replaces the file, and leaves a timestamped `.bak.<ts>` for
+    rollback. Wrong old passphrase aborts before touching the
+    file.
+  - `stm vault info` — file path / mode / size / magic / KDF
+    diagnostics.
+
+### Tests — 277 pass, 0 fail (was 232; +45 v0.6 tests).
+
+Three new test files:
+- `test/keystores-linux-pass.test.ts` (~10 tests). Headline:
+  secret NEVER in argv on `pass insert` — value lives in stdin.
+- `test/keystores-encrypted-file.test.ts` (~21 tests). Crypto
+  round-trip, wrong-passphrase rejection, magic / KDF-id checks,
+  file mode 0600, rotatePassphrase (success, missing-file,
+  wrong-old-passphrase), inspectEncryptedFile, XDG path
+  resolution.
+- `test/keystores-tier-resolver.test.ts` (~10 tests). The cross-
+  tier matrix: Tier 1 picked when reachable, Tier 2 falls through
+  correctly, Tier 3 ONLY with opt-in or pre-existing file (never
+  silent), `STM_KEYSTORE` alias matrix, `doctorReport` for
+  darwin / linux-no-tiers / linux-with-vault.
+
+Plus three updated tests in `test/keystores.test.ts` (the old
+single-tier Linux unsupported tests were obsolete — replaced with
+"all-tier-failure" + "Tier 1 → Tier 2 fall-through" + "Tier 2 →
+Tier 3 opt-in" tests).
+
+### Surface
+
+- README "Supported platforms" grows a tiered description for the
+  Linux headless story and a new "Encrypted-file vault (Tier 3) —
+  passphrase UX" subsection.
+- `stm doctor` is the canonical way for users to understand their
+  tier situation; the launch banner / dashboard pill defer to
+  `activeKeyStore().describe()` as before — they automatically
+  render the new labels (`Linux Pass (pass + GPG)`,
+  `EncryptedFile (0600, PBKDF2-SHA512)`).
+- Landing page: roadmap row + trust strip + FAQ + JSON-LD all
+  reflect the v0.6.0 coverage. "All major desktop OSes" is now
+  literally true.
+- `docs/llms.txt` updated.
+
+### Compatibility
+
+- No behaviour change for any existing macOS / Linux desktop /
+  Windows user. Tier 1 (Secret Service) is still the default on
+  desktops; if it's reachable, the resolver picks it before
+  even trying Tier 2 or 3.
+- No new outbound calls. The tier 2 + 3 backends are purely local
+  (pass uses GPG, encrypted-file uses node:crypto).
+- The hook fail-safe contract holds: when the encrypted-file
+  backend can't unlock, `get()` returns null and PreToolUse exits
+  0 without rewriting — same behaviour as a missing key on
+  Tier 1.
+
+### Notes
+
+- Argon2id (KDF ID 0x02) is reserved in the file format for
+  v0.6.1. PBKDF2-SHA512 at 600 000 iterations is OWASP-2025-current
+  and was the right "ship without vendored implementation risk"
+  choice.
+- WSL routing remains its own case (WSL processes see `platform:
+  'linux'` and now reach Tier 3 if the user opts in; native
+  Windows Credential Manager via interop is tracked for a future
+  ship).
+- The macOS argv-exposure limitation is still open. Bun-FFI
+  rewrite of the macOS backend (template = the v0.5.0 Windows
+  backend) is the natural follow-up.
+
 ## [0.5.0] — 2026-05-25
 
 ### Added — Windows Credential Manager backend (`specs/cross-platform-and-codex.md` Workstream B; build plan: `specs/plans/v0.5-windows-backend.md`)

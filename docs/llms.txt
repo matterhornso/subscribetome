@@ -42,13 +42,18 @@ runs entirely on the user's own machine. No backend. No telemetry. No
 phone-home. The dashboard is bound to `127.0.0.1` with a per-run auth token
 and a Host/Origin allowlist (DNS-rebinding defense).
 
-macOS, Linux desktop, and Windows are all supported (macOS Keychain,
-Linux Secret Service via libsecret/secret-tool, and Windows Credential
-Manager via the Win32 wincred API called directly through Bun FFI —
-not the read-incapable cmdkey CLI). The dashboard and `stm status`
-always show which backend is active. Headless Linux (SSH, container,
-WSL) is the remaining roadmap item, with a tiered fallback chain
-(LinuxPass + EncryptedFile) tracked in specs/plans/v0.6-linux-headless.md.
+All major desktop platforms are supported: macOS (Keychain via
+security CLI), Linux desktop (Secret Service via libsecret/secret-tool),
+Windows (Credential Manager via the Win32 wincred API called through
+Bun FFI), and as of v0.6.0 Linux headless (tiered fallback: `pass`
++ GPG → encrypted-file with PBKDF2-SHA512 600k + AES-256-GCM, mode
+0600, opt-in via STM_ALLOW_FILE_BACKEND=1). `stm doctor` reports
+which tier is active and exactly what would need to change to reach
+the next-stronger tier. The dashboard and `stm status` always show
+which backend is active. Encrypted-file passphrase UX:
+`stm vault unlock` caches it for the process, `STM_FILE_PASSPHRASE`
+works in CI, non-TTY without either makes the hook fail safe (returns
+null instead of leaking).
 
 Two agents are wrapped as of v0.4.0 (and v0.4.1 ported the guardrails to Codex too) with different security postures.
 **Claude Code** gets the strong "per-command rewrite" guarantee: the

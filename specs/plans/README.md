@@ -17,10 +17,16 @@ mark the phase done, and the plan can be deleted or archived.
 | Version | Plan | Spec parent | Status |
 |---|---|---|---|
 | ~~v0.5.0~~ | [`v0.5-windows-backend.md`](./v0.5-windows-backend.md) — Windows Credential Manager backend via Bun FFI | [cross-platform-and-codex.md](../cross-platform-and-codex.md) §5 (Windows row) | **Shipped 2026-05-25** |
-| **v0.6.0** | [`v0.6-linux-headless.md`](./v0.6-linux-headless.md) — Linux headless tiers 2 + 3 (LinuxPass + EncryptedFile) | [cross-platform-and-codex.md](../cross-platform-and-codex.md) §5 (Linux row, tiered fallback) | Planned |
+| ~~v0.6.0~~ | [`v0.6-linux-headless.md`](./v0.6-linux-headless.md) — Linux headless tiers 2 + 3 (LinuxPass + EncryptedFile) | [cross-platform-and-codex.md](../cross-platform-and-codex.md) §5 (Linux row, tiered fallback) | **Shipped 2026-05-25** |
 
-v0.5.0 plan is kept in this folder as a reference for the
-implementation pattern (KeyStore backend + injected FFI surface +
-resolver wiring + scripted tests against a recording fake) — the
-next platform backend (or anyone curious about the v0.5 approach)
-can use it as a worked example. v0.6.0 is the next active build.
+Both plans are kept in this folder as references for the
+implementation pattern. The two remaining roadmap candidates with no
+hand-off plan yet:
+
+- **macOS argv-exposure fix** (v0.5.x patch) — rewrite the macOS
+  Keychain backend to call the Security framework via Bun FFI so
+  `security -w <value>` no longer leaves the secret briefly visible
+  to `ps`. The v0.5.0 Windows backend is the worked example.
+- **Codex Option 2 — MCP-wrapped tools** (v0.7+) — higher-assurance
+  Codex mode where the agent never sees a key at all. Larger build
+  (per-integration MCP wrappers); opt-in.

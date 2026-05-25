@@ -29,6 +29,13 @@ import {
   uninstallHooks as uninstallCodexHooks,
   doctor as codexDoctor,
 } from "./agents/codex-hooks.ts";
+import { doctorReport, formatDoctorReport } from "./doctor.ts";
+import {
+  setCachedPassphrase,
+  rotatePassphrase,
+  defaultEncryptedFilePath,
+  inspectEncryptedFile,
+} from "./keystores/encrypted-file.ts";
 
 /**
  * Parse a friendly duration like `30s`, `5m`, `2h`, `7d` into milliseconds.
@@ -1102,6 +1109,151 @@ async function codexCmd(args: string[]): Promise<void> {
   }
 }
 
+// ---- doctor + vault (specs/plans/v0.6-linux-headless.md) ------------------
+
+function doctorCmd(): void {
+  const r = doctorReport();
+  process.stdout.write(formatDoctorReport(r));
+  process.exit(r.ok ? 0 : 1);
+}
+
+function vaultHelp(): void {
+  process.stdout.write(
+    `subscribetome — encrypted-file vault (Tier 3 Linux fallback)\n\n` +
+      `  stm vault unlock                   pre-warm the passphrase cache for this\n` +
+      `                                     process. Reads from stdin (won't echo).\n` +
+      `  stm vault rotate-passphrase        decrypt under the old passphrase, re-encrypt\n` +
+      `                                     under a new one. Leaves a .bak.<ts> next to\n` +
+      `                                     the vault for rollback.\n` +
+      `  stm vault info                     show file path, mode, size, magic check\n` +
+      `\n` +
+      `The encrypted-file backend is opt-in. Enable it by setting\n` +
+      `STM_ALLOW_FILE_BACKEND=1 the first time you run stm on a host without\n` +
+      `Secret Service / pass. Crypto: PBKDF2-SHA512 600k iterations + AES-256-GCM.\n` +
+      `File at $XDG_DATA_HOME/subscribetome/keys.enc (default ~/.local/share/...).\n`,
+  );
+}
+
+function readPassphraseFromStdin(prompt: string): string {
+  if (process.stdin.isTTY) {
+    process.stderr.write(prompt);
+  }
+  // Bun supports synchronous readSync via prompt(); for non-TTY we
+  // read all of stdin and strip the trailing newline.
+  if (process.stdin.isTTY) {
+    const v = (globalThis as any).prompt?.("");
+    process.stderr.write("\n");
+    if (typeof v !== "string") return "";
+    return v;
+  }
+  // Non-TTY: read all of stdin synchronously.
+  try {
+    const fd = (process.stdin as any).fd ?? 0;
+    const { readFileSync } = require("node:fs") as typeof import("node:fs");
+    const buf = readFileSync(fd, "utf8");
+    return String(buf).replace(/\r?\n$/, "");
+  } catch {
+    return "";
+  }
+}
+
+function vaultUnlockCmd(): void {
+  const pp = readPassphraseFromStdin(
+    "Enter vault passphrase (won't echo, EOF to finish): ",
+  );
+  if (!pp) {
+    process.stderr.write("no passphrase provided — aborting\n");
+    process.exit(1);
+  }
+  setCachedPassphrase(pp);
+  process.stdout.write(
+    `vault unlocked for this process. Subsequent set/get/delete on the\n` +
+      `encrypted-file backend will use the cached passphrase.\n` +
+      `\n` +
+      `NOTE: the cache lives only in THIS process. Long-lived consumers\n` +
+      `(the dashboard daemon, Claude Code session) need their own\n` +
+      `\`stm vault unlock\` if they restart.\n`,
+  );
+}
+
+function vaultRotateCmd(args: string[]): void {
+  const dryRun = args.includes("--dry-run");
+  const oldPP = readPassphraseFromStdin("Current passphrase: ");
+  const newPP = readPassphraseFromStdin("New passphrase (enter again on stdin): ");
+  if (!oldPP || !newPP) {
+    process.stderr.write(
+      "both old and new passphrases are required (provide on stdin separated by lines)\n",
+    );
+    process.exit(1);
+  }
+  if (dryRun) {
+    process.stdout.write(
+      `(dry run) would rotate the vault at ${defaultEncryptedFilePath()}\n`,
+    );
+    return;
+  }
+  let backupPath: string | null;
+  try {
+    backupPath = rotatePassphrase({
+      oldPassphrase: oldPP,
+      newPassphrase: newPP,
+    });
+  } catch (e: any) {
+    process.stderr.write(`vault rotate failed: ${e?.message ?? e}\n`);
+    process.exit(1);
+  }
+  // Update the in-memory cache so the rest of the process sees the
+  // new passphrase without a fresh `unlock` call.
+  setCachedPassphrase(newPP);
+  if (backupPath) {
+    process.stdout.write(
+      `rotated. Previous vault backed up to: ${backupPath}\n` +
+        `(roll back with: mv "${backupPath}" "${defaultEncryptedFilePath()}")\n`,
+    );
+  } else {
+    process.stdout.write(
+      `created a fresh empty vault at ${defaultEncryptedFilePath()} under the new passphrase.\n`,
+    );
+  }
+}
+
+function vaultInfoCmd(): void {
+  const insp = inspectEncryptedFile();
+  process.stdout.write(
+    `path:   ${insp.path}\n` +
+      `exists: ${insp.exists ? "yes" : "no"}\n` +
+      (insp.exists
+        ? `size:   ${insp.size} bytes\n` +
+          `mode:   ${insp.modeOK ? "0600 (OK)" : "LOOSE — run chmod 0600"}\n` +
+          `magic:  ${insp.magicOK ? "OK (stmenc01)" : "MISMATCH — not an stm vault"}\n` +
+          `kdf:    ${insp.kdfId === 1 ? "PBKDF2-SHA512 (v1)" : insp.kdfId == null ? "?" : `id=${insp.kdfId}`}\n`
+        : ""),
+  );
+}
+
+function vaultCmd(args: string[]): void {
+  const [sub, ...rest] = args;
+  switch (sub) {
+    case "unlock":
+      return vaultUnlockCmd();
+    case "rotate":
+    case "rotate-passphrase":
+      return vaultRotateCmd(rest);
+    case "info":
+    case "inspect":
+      return vaultInfoCmd();
+    case undefined:
+    case "help":
+    case "--help":
+    case "-h":
+      return vaultHelp();
+    default:
+      process.stderr.write(`stm vault: unknown subcommand "${sub}"\n\n`);
+      vaultHelp();
+      process.exit(1);
+  }
+}
+
 async function policyCmd(args: string[]): Promise<void> {
   const [sub, ...rest] = args;
   switch (sub) {
@@ -1160,6 +1312,8 @@ function helpCmd(): void {
       `  stm audit [--tail N] [--event] [--tool] [--since]  PreToolUse decision log\n` +
       `  stm sync [provider]             fetch real spend from configured providers\n` +
       `  stm codex [codex-args...]       launch Codex with stm-managed keys (session-env mode)\n` +
+      `  stm doctor                      diagnose which keystore tier is active and how to upgrade\n` +
+      `  stm vault <unlock|rotate|info>  manage the encrypted-file Tier 3 vault\n` +
       `  stm project <add|list|show|scope|unscope|enforce|rename|remove>  per-project key scope\n` +
       `  stm import [dir...]             scan .env files for importable keys\n` +
       `  stm dashboard                   open the localhost web dashboard\n` +
@@ -1202,6 +1356,10 @@ async function main(): Promise<void> {
       return syncCmd(rest);
     case "codex":
       return codexCmd(rest);
+    case "doctor":
+      return doctorCmd();
+    case "vault":
+      return vaultCmd(rest);
     case "project":
       return projectCmd(rest);
     case "import": {

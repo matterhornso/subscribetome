@@ -55,7 +55,7 @@
       "operatingSystem": "macOS, Linux, Windows",
       "url": "https://subscribetome.pro/",
       "downloadUrl": "https://github.com/matterhornso/subscribetome",
-      "softwareVersion": "0.5.0",
+      "softwareVersion": "0.6.0",
       "datePublished": "2026-05-18",
       "dateModified": "2026-05-25",
       "license": "https://opensource.org/licenses/MIT",
@@ -145,7 +145,7 @@
           "name": "Which platforms and AI agents does subscribetome support?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "macOS, Linux desktop, and Windows are all supported as of v0.5.0 (macOS Keychain on Darwin, Linux Secret Service via libsecret on Linux, Windows Credential Manager via the Win32 wincred API called through Bun FFI on Windows — secret bytes go into CREDENTIALW.CredentialBlob by pointer, never touch argv). Two agents are wrapped: Claude Code with per-command rewrite (strongest guarantee — the key is substituted into one Bash command at the instant it runs, transcript stays clean) and Codex with session-env mode (weaker — each key is exposed as a STM_<TOOL>_<LABEL> env var in codex's process for the whole session). The trade-off is shown everywhere the agent label appears. Headless Linux, opencode, Cursor, and Codex per-command rewrite (waiting on openai/codex#18491) remain on the roadmap."
+            "text": "Every major desktop OS is supported as of v0.6.0: macOS Keychain on Darwin, Linux Secret Service via libsecret on Linux desktops, Windows Credential Manager via the Win32 wincred API called through Bun FFI on Windows, and on headless Linux a tiered fallback (pass + GPG, or an opt-in encrypted file using PBKDF2-SHA512 600k + AES-256-GCM at mode 0600). `stm doctor` reports which tier is active and exactly what would need to change to reach the next-stronger tier. Two agents are wrapped: Claude Code with per-command rewrite (strongest guarantee — the key is substituted into one Bash command at the instant it runs, transcript stays clean) and Codex with session-env mode (weaker — each key is exposed as a STM_<TOOL>_<LABEL> env var in codex's process for the whole session). The trade-off is shown everywhere the agent label appears. opencode, Cursor, and Codex per-command rewrite (waiting on openai/codex#18491) remain on the roadmap."
           }
         }
       ]
@@ -551,10 +551,11 @@ claude plugin install <span class="p">stm@subscribetome</span></pre>
   <div class="roadmap">
     <div class="roadmap-in">
       <span class="now">Available now</span> for <b>macOS</b>, <b>Linux desktop</b>,
+      <b>Linux headless</b> (pass + GPG, or an opt-in encrypted file),
       and <b>Windows</b> — wrapping both <b>Claude Code</b> (per-command
       rewrite — strongest) and <b>Codex</b> (session-env mode — weaker,
-      stated honestly). Headless Linux and other coding agents — opencode,
-      Cursor — are on the roadmap.
+      stated honestly). Other coding agents — opencode, Cursor — are on
+      the roadmap.
     </div>
   </div>
 </div>
@@ -594,7 +595,7 @@ claude plugin install <span class="p">stm@subscribetome</span></pre>
   <div class="strip">
     <span><i>50</i> services pre-configured</span><span class="sep">/</span>
     <span>keys never touch the chat</span><span class="sep">/</span>
-    <span>macOS Keychain &middot; Linux Secret Service &middot; Windows Credential Manager</span><span class="sep">/</span>
+    <span>macOS Keychain &middot; Linux Secret Service / pass / EncryptedFile &middot; Windows Credential Manager</span><span class="sep">/</span>
     <span><i>MIT</i> · open source</span>
   </div>
 </div>

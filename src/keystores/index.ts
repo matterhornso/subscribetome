@@ -29,6 +29,12 @@ import {
   createWindowsCredentialKeyStore,
   isWincredReachable,
 } from "./windows-credential.ts";
+import { createLinuxPassKeyStore, probeLinuxPass } from "./linux-pass.ts";
+import {
+  createEncryptedFileKeyStore,
+  encryptedFileExists,
+  type PassphraseProvider,
+} from "./encrypted-file.ts";
 
 export type { KeyStore } from "./types.ts";
 
@@ -106,6 +112,17 @@ export interface SelectOptions {
    * factory builds the bun:ffi binding lazily.
    */
   wincredFFI?: WincredFFI;
+  /**
+   * Injected passphrase provider for the EncryptedFile backend.
+   * Tests pin a value, `stm vault unlock` writes to the shared
+   * in-memory cache and lets the default provider find it.
+   */
+  passphraseProvider?: PassphraseProvider;
+  /**
+   * Override the EncryptedFile path. Tests use a tmpdir; real
+   * callers use the default XDG-conformant location.
+   */
+  encryptedFilePath?: string;
 }
 
 /**
@@ -131,7 +148,7 @@ export function selectKeyStore(opts: SelectOptions = {}): KeyStore {
     // for.
     cache = createUnsupportedKeyStore(
       `STM_KEYSTORE="${override}" is not a known backend ` +
-        `(try: mac, linux-secret-service, windows-credential)`,
+        `(try: mac, linux-secret-service, linux-pass, encrypted-file, windows-credential)`,
     );
     return cache;
   }
@@ -142,26 +159,53 @@ export function selectKeyStore(opts: SelectOptions = {}): KeyStore {
     return cache;
   }
   if (platform === "linux") {
-    if (!which("secret-tool")) {
-      cache = createUnsupportedKeyStore(
-        "secret-tool not found. Install libsecret " +
-          "(Debian/Ubuntu: `apt install libsecret-tools`, " +
-          "Fedora: `dnf install libsecret`, " +
-          "Arch: `pacman -S libsecret`) and run `stm status` again.",
-      );
+    // Three-tier chain per spec §5:
+    //   1. LinuxSecretService (desktop standard, libsecret + D-Bus)
+    //   2. LinuxPass           (pass + GPG, works over SSH)
+    //   3. EncryptedFile       (last resort; opt-in via STM_ALLOW_FILE_BACKEND=1
+    //                            on first touch — auto if the file exists)
+    //
+    // The resolver picks the HIGHEST tier that works and ANNOUNCES it
+    // honestly (no silent downgrade — the gh-cli cautionary tale).
+    if (which("secret-tool") && probeLinuxSecretService({ spawn: opts.spawn })) {
+      cache = createLinuxSecretServiceKeyStore({ spawn: opts.spawn });
       return cache;
     }
-    if (!probeLinuxSecretService({ spawn: opts.spawn })) {
-      cache = createUnsupportedKeyStore(
-        "libsecret is installed but no Secret Service is reachable " +
-          "on the D-Bus session bus. This usually means a headless or " +
-          "SSH session with no desktop keyring daemon running. " +
-          "Set STM_KEYSTORE to override, or run stm from a desktop " +
-          "session.",
-      );
+    if (which("pass") && probeLinuxPass({ spawn: opts.spawn })) {
+      cache = createLinuxPassKeyStore({ spawn: opts.spawn });
       return cache;
     }
-    cache = createLinuxSecretServiceKeyStore({ spawn: opts.spawn });
+    // Tier 3 is gated. The file existing IS the consent (the user
+    // opted in once via STM_ALLOW_FILE_BACKEND=1, or by explicit
+    // STM_KEYSTORE=encrypted-file). For a fresh install we never
+    // auto-create the file silently.
+    const fileExists = encryptedFileExists(opts.encryptedFilePath);
+    const allowedByEnv = env.STM_ALLOW_FILE_BACKEND === "1";
+    if (fileExists || allowedByEnv) {
+      cache = createEncryptedFileKeyStore({
+        filePath: opts.encryptedFilePath,
+        passphraseProvider: opts.passphraseProvider,
+      });
+      return cache;
+    }
+    // No tier reachable — produce a diagnostic that names ALL THREE
+    // tiers + what's needed. `stm doctor` parses similar signals and
+    // formats them more nicely.
+    cache = createUnsupportedKeyStore(
+      "No Linux keystore is reachable on this host:\n" +
+        "  · Tier 1 (Secret Service): " +
+        (which("secret-tool")
+          ? "secret-tool present but no D-Bus session bus / keyring daemon"
+          : "secret-tool not installed (`apt install libsecret-tools` etc.)") +
+        "\n" +
+        "  · Tier 2 (pass):           " +
+        (which("pass")
+          ? "pass present but no usable GPG store (run `pass init <your-gpg-id>`)"
+          : "pass not installed (`apt install pass` etc.)") +
+        "\n" +
+        "  · Tier 3 (EncryptedFile):  opt-in via STM_ALLOW_FILE_BACKEND=1 " +
+        "(passphrase-derived AES-256-GCM, 0600). Run `stm doctor` for the full diagnosis.",
+    );
     return cache;
   }
 
@@ -202,6 +246,16 @@ function byName(name: string, opts: SelectOptions): KeyStore | null {
     case "libsecret":
     case "secret-service":
       return createLinuxSecretServiceKeyStore({ spawn: opts.spawn });
+    case "linux-pass":
+    case "pass":
+      return createLinuxPassKeyStore({ spawn: opts.spawn });
+    case "encrypted-file":
+    case "file":
+    case "encrypted":
+      return createEncryptedFileKeyStore({
+        filePath: opts.encryptedFilePath,
+        passphraseProvider: opts.passphraseProvider,
+      });
     case "windows":
     case "windows-credential":
     case "wincred":

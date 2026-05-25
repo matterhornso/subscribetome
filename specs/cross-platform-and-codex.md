@@ -1,6 +1,6 @@
 # Spec — Cross-platform (Linux, Windows) and Codex support
 
-**Status:** Workstream A (Linux Secret Service) shipped v0.3.1 · Workstream C Option 1 (Codex session-env mode) shipped v0.4.0 · Workstream C guardrail port shipped v0.4.1 · **Workstream B (Windows Credential Manager) shipped v0.5.0** · A-tier-2/3 (Linux headless) + C-Option-2 (MCP-wrapped Codex) pending · **Target:** subscribetome v2 · **Last updated:** 2026-05-25
+**Status:** Workstream A (Linux Secret Service) shipped v0.3.1 · Workstream C Option 1 (Codex session-env mode) shipped v0.4.0 · Workstream C guardrail port shipped v0.4.1 · Workstream B (Windows Credential Manager) shipped v0.5.0 · **Workstream A tiers 2 + 3 (LinuxPass + EncryptedFile) shipped v0.6.0** · C-Option-2 (MCP-wrapped Codex) pending · **Target:** subscribetome v2 · **Last updated:** 2026-05-25
 
 This spec covers expanding subscribetome beyond its v1 footprint (macOS +
 Claude Code) to **Linux**, **Windows**, and the **OpenAI Codex CLI**. It is a
@@ -139,22 +139,23 @@ backend) and do not touch the agent side.
   `/mnt/c/...` (the Git Credential Manager pattern), or let WSL fall to the
   `EncryptedFile` backend. Phase WSL after the core Windows backend.
 
-### Linux — **straightforward on desktop, the real work is headless**
+### Linux — **shipped v0.3.1 + v0.6.0 (all three tiers)**
 
-- Desktop: `secret-tool` / `libsecret`. Present on GNOME desktop installs;
-  needs explicit install on KDE/minimal/server.
-- **Headless / SSH / container / WSL is the hard part.** `secret-tool` needs a
-  running D-Bus session bus *and* an unlocked keyring daemon — routinely absent
-  over SSH, in containers, and in WSL.
-- Mitigation — a **tiered chain with visible degradation** (the gh CLI is the
-  cautionary tale: it silently falls back to plaintext):
-  1. `$STM_KEYSTORE` / env override (CI).
+- Desktop (Tier 1): `secret-tool` / `libsecret`. Present on GNOME
+  desktop installs; needs explicit install on KDE/minimal/server.
+  Shipped v0.3.1.
+- Headless / SSH / container / WSL — **shipped v0.6.0** as the tiered
+  chain the spec called for:
+  1. `$STM_KEYSTORE` override (CI / explicit pin).
   2. `LinuxSecretService` when D-Bus + unlocked keyring detected.
   3. `LinuxPass` (`pass`, GPG) — works over SSH with a GPG agent.
-  4. `EncryptedFile` — passphrase-derived key; `0600`.
-- **Detect headless up front** (`$DBUS_SESSION_BUS_ADDRESS` unset, no
-  `$DISPLAY`, WSL via `/proc/version`) and **announce the active backend.** An
-  insecure or weaker backend must never be selected silently.
+  4. `EncryptedFile` — PBKDF2-SHA512 600k + AES-256-GCM, mode 0600.
+     Opt-in via `STM_ALLOW_FILE_BACKEND=1` on first touch; file
+     existence is the consent thereafter.
+- `stm doctor` reports the live tier diagnosis. Active backend is
+  always announced via `stm status`, the dashboard pill, and
+  `describe()`. Visible degradation — the spec's gh-CLI invariant
+  holds.
 
 ---
 

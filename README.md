@@ -135,6 +135,8 @@ stm sync [provider]    fetch real spend from configured providers
 stm codex [args...]    launch Codex with stm keys as env vars
 stm codex install-hooks install the UserPromptSubmit + SessionStart guardrails in ~/.codex/config.toml
 stm codex doctor       verify the Codex guardrails are wired up
+stm doctor             diagnose which keystore tier is active and how to upgrade
+stm vault <subcmd>     manage the encrypted-file Tier 3 vault (unlock / rotate-passphrase / info)
 stm status             daemon + inventory summary, active agents + backend
 stm stop               stop the dashboard daemon
 ```
@@ -250,14 +252,46 @@ reports "OK" but no guard fires. Press `y` when prompted. See
   by pointer; they never touch argv, stdin, or any environment
   variable. Available on Windows 10 / 11 (all SKUs) and Windows
   Server.
-- **Linux headless / SSH / container / WSL** — not yet supported.
-  Headless fallbacks (`pass`-based, `EncryptedFile`) are tracked in
-  [`specs/plans/v0.6-linux-headless.md`](./specs/plans/v0.6-linux-headless.md).
+- **Linux headless / SSH / container / WSL** — tiered fallback chain
+  (since v0.6.0). The resolver tries each tier in order and picks the
+  first that works. **Never silent**: `stm doctor` always reports
+  which tier is active and what would need to change to reach the
+  next-stronger tier.
+  - **Tier 2: `pass` + GPG.** If `pass` is on PATH and `pass ls`
+    succeeds (a GPG-initialised store exists), keys live under
+    `~/.password-store/subscribetome/`. Works over SSH with agent
+    forwarding. Same posture as Linux Secret Service: secret bytes
+    via stdin, never argv.
+  - **Tier 3: EncryptedFile (opt-in).** Last resort for hosts with
+    no keyring daemon AND no `pass`. PBKDF2-SHA512 (600 000
+    iterations) derives an AES-256-GCM key from a user passphrase;
+    the vault is one file at `$XDG_DATA_HOME/subscribetome/keys.enc`
+    (mode 0600). **Opt in once** with `STM_ALLOW_FILE_BACKEND=1`
+    (or `STM_KEYSTORE=encrypted-file`); after that the file's
+    existence is the consent for subsequent runs.
 
-`stm status` always tells you which backend is active. You can force
-one with `STM_KEYSTORE=<mac|linux-secret-service|windows-credential>`
-(useful in CI and for explicit overrides; aliases: `keychain`,
-`libsecret`, `secret-service`, `wincred`, `credential-manager`).
+`stm status` always tells you which backend is active. `stm doctor`
+prints the full tier diagnosis with the exact commands to reach the
+next-stronger tier. You can force one with
+`STM_KEYSTORE=<mac|linux-secret-service|linux-pass|encrypted-file|windows-credential>`
+(useful in CI; aliases: `keychain`, `libsecret`, `secret-service`,
+`pass`, `file`, `wincred`, `credential-manager`).
+
+### Encrypted-file vault (Tier 3) — passphrase UX
+
+```
+stm doctor                       # see which tier is active + how to upgrade
+stm vault info                   # path, mode, magic, KDF id of the local vault
+stm vault unlock                 # cache the passphrase for this process
+stm vault rotate-passphrase      # decrypt under old, re-encrypt under new (.bak left)
+```
+
+For non-interactive use (CI, devcontainers), set
+`STM_FILE_PASSPHRASE=<passphrase>` and the backend reads it directly.
+When neither the cache nor the env var has a passphrase **AND** stdin
+is not a TTY, `get()` returns `null` and the PreToolUse hook fails
+safe — exits 0 without rewriting, so the command runs with the
+placeholder intact and fails harmlessly (never leaks a key).
 
 ## Limitations (v1)
 

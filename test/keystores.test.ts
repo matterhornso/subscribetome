@@ -178,29 +178,60 @@ test("selectKeyStore picks LinuxSecretService on linux when secret-tool + D-Bus 
   expect(ks.describe()).toBe("Linux Secret Service (libsecret)");
 });
 
-test("selectKeyStore returns an unsupported store on linux without secret-tool", () => {
+test("selectKeyStore on linux with NO tier reachable returns a tiered diagnostic", () => {
+  // v0.6.0 — the resolver now tries Tier 1 (Secret Service), Tier 2
+  // (pass), then Tier 3 (EncryptedFile, opt-in). When all three are
+  // unavailable, the unsupported message names every tier + what's
+  // needed.
   const ks = selectKeyStore({
     force: true,
     platform: "linux",
-    env: {},
-    which: () => false,
+    env: {}, // no STM_ALLOW_FILE_BACKEND opt-in
+    which: () => false, // no binaries on PATH
+    encryptedFilePath: "/tmp/stm-test-no-such-vault.enc", // doesn't exist
   });
-  expect(ks.describe()).toContain("secret-tool not found");
-  // Operations surface a friendly error rather than silently doing nothing.
+  expect(ks.describe()).toContain("Tier 1 (Secret Service)");
+  expect(ks.describe()).toContain("Tier 2 (pass)");
+  expect(ks.describe()).toContain("Tier 3 (EncryptedFile)");
+  // Operations still throw a friendly error — never silent.
   expect(() => ks.set("r", "v")).toThrow(/no usable keystore/);
 });
 
-test("selectKeyStore returns an unsupported store when D-Bus probe fails", () => {
-  const { spawn } = recordingSpawn([{ status: 127 }]);
+test("selectKeyStore on linux: Tier 1 falls through to Tier 2 when libsecret probe fails", () => {
+  // Probe sequence:
+  //   - which("secret-tool") returns true → first spawn = SS probe (fails)
+  //   - which("pass") returns true → next 2 spawns = pass probe (succeed)
+  const { spawn } = recordingSpawn([
+    { status: 127 }, // libsecret probe: D-Bus unreachable
+    { status: 0 },   // pass version
+    { status: 0 },   // pass ls
+  ]);
   const ks = selectKeyStore({
     force: true,
     platform: "linux",
     env: {},
     spawn,
-    which: () => true, // secret-tool exists but...
+    which: () => true, // both binaries present
   });
-  expect(ks.describe()).toContain("no Secret Service is reachable");
-  expect(() => ks.get("r")).toThrow(/no usable keystore/);
+  expect(ks.describe()).toBe("Linux Pass (pass + GPG)");
+});
+
+test("selectKeyStore on linux: Tier 2 falls through to Tier 3 when STM_ALLOW_FILE_BACKEND=1", () => {
+  const { spawn } = recordingSpawn([
+    { status: 127 }, // libsecret probe fails
+    { status: 0 },   // pass version OK
+    { status: 1 },   // pass ls fails (no GPG store)
+  ]);
+  const ks = selectKeyStore({
+    force: true,
+    platform: "linux",
+    env: { STM_ALLOW_FILE_BACKEND: "1" },
+    spawn,
+    which: () => true,
+    encryptedFilePath: "/tmp/stm-test-vault-opt-in.enc",
+    passphraseProvider: () => "test-pass",
+  });
+  expect(ks.describe()).toBe("EncryptedFile (0600, PBKDF2-SHA512)");
 });
 
 test("STM_KEYSTORE override wins regardless of platform", () => {
