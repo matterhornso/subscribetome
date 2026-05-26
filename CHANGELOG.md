@@ -3,6 +3,29 @@
 All notable changes to subscribetome. This project is pre-1.0; minor versions
 may still change behaviour. Format follows [Keep a Changelog](https://keepachangelog.com).
 
+## [0.7.3] — 2026-05-26
+
+### `stm --version` — universal CLI version flag
+
+Every CLI is expected to print its version when asked. stm
+didn't, until now.
+
+- **`stm --version` / `stm -v` / `stm version`** all print
+  `stm <version>` to stdout. The version string is imported from
+  `package.json` at module load so the plugin manifest is the
+  single source of truth — no drift between the published version
+  and what the CLI reports.
+- **Exposed as `STM_VERSION`** from `src/cli.ts` for any future
+  caller that wants to read it programmatically (e.g. the
+  dashboard could show it in the footer).
+- **New test file** `test/cli-version.test.ts` asserts that all
+  three spellings emit the same string AND that `package.json`,
+  `.claude-plugin/plugin.json`, and `.claude-plugin/marketplace.json`
+  agree on the version. A missed bump in any of the three fails
+  the suite — drift insurance. 345 → 349 tests.
+- **Top-level `stm --help`** advertises the new flag at the
+  bottom of the command list.
+
 ## [0.7.2] — 2026-05-26
 
 ### QA cleanup — code hygiene from the v0.7.1 audit

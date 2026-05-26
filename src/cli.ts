@@ -12,7 +12,15 @@
 //   stm stop                                    stop the daemon
 //   stm status                                  daemon + inventory summary
 //   stm hook <pretooluse|posttooluse|userpromptsubmit|sessionstart>  (called by hooks)
+import pkg from "../package.json" with { type: "json" };
 import { Store, type AuditEvent } from "./store.ts";
+
+/**
+ * Read version from package.json — single source of truth so we
+ * don't drift between `stm --version` and the published manifest.
+ * Bun resolves JSON imports natively; no loader required.
+ */
+export const STM_VERSION: string = (pkg as { version: string }).version;
 import { preToolUse, postToolUse, userPromptSubmit, sessionStart } from "./hooks.ts";
 import { evaluateAll, type PolicyAction } from "./policy.ts";
 import { findExact } from "./grammar.ts";
@@ -1390,6 +1398,10 @@ function revokeCmd(args: string[]): void {
   }
 }
 
+function versionCmd(): void {
+  process.stdout.write(`stm ${STM_VERSION}\n`);
+}
+
 function helpCmd(): void {
   process.stdout.write(
     `subscribetome — AI API key & subscription manager\n\n` +
@@ -1409,7 +1421,8 @@ function helpCmd(): void {
       `  stm import [dir...]             scan .env files for importable keys\n` +
       `  stm dashboard                   open the localhost web dashboard\n` +
       `  stm stop                        stop the dashboard daemon\n` +
-      `  stm status                      daemon + inventory summary\n`,
+      `  stm status                      daemon + inventory summary\n` +
+      `  stm --version                   print the installed stm version\n`,
   );
 }
 
@@ -1474,6 +1487,10 @@ async function main(): Promise<void> {
       const d = await import("./daemon.ts");
       return d.printStatus();
     }
+    case "version":
+    case "--version":
+    case "-v":
+      return versionCmd();
     case undefined:
     case "help":
     case "--help":
