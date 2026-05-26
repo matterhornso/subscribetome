@@ -3,6 +3,57 @@
 All notable changes to subscribetome. This project is pre-1.0; minor versions
 may still change behaviour. Format follows [Keep a Changelog](https://keepachangelog.com).
 
+## [0.8.0] — 2026-05-26
+
+### Early-customer-readiness ship — vault snapshots, sync hints, clean uninstall
+
+Three features the early-customer cohort would have hit hard
+without: a working backup/restore path, actionable sync errors,
+and a credible exit ramp. Each is independently useful; together
+they close the "what if it goes wrong" gaps the v1 pipeline left
+open.
+
+- **`stm vault export <file>` / `stm vault import <file>`.** A
+  single-file backup of the entire inventory + every active key,
+  encrypted with the user's passphrase under the same PBKDF2-SHA512
+  600k + AES-256-GCM primitive the Tier 3 vault uses. Export
+  bundles the full SQLite database (raw bytes — no schema migration
+  concerns on restore) plus a `keychain_ref → value` map, so the
+  restored inventory rows still resolve. Import is destructive:
+  the current DB is backed up to `<db>.bak.<timestamp>` before
+  being replaced. Aliases: `stm vault backup` / `stm vault
+  restore`. Verified end-to-end with a real macOS Keychain
+  round-trip (`add` → `export` → wipe → `import` → `list` ⇒ key
+  resolves; `keychain_ref` UUID preserved). (`src/vault-snapshot.ts`,
+  10 new tests.)
+
+- **Actionable sync error hints.** Raw provider errors (e.g.
+  `network: ECONNREFUSED 8.8.8.8:443`) get classified and given a
+  next-step hint: DNS failures point at VPN/firewall, 401s at
+  rotating the admin key, 429s at waiting a minute, TLS errors at
+  trust-store / proxy issues, 5xx at the provider's status page.
+  `humanizeSyncError(raw): { summary, hint }` exposed for any
+  future caller (dashboard could surface the same hint). Unknown
+  errors pass through unchanged — better to omit a hint than emit
+  a wrong one. (`src/sync.ts`, 14 new tests.)
+
+- **`stm uninstall`** removes every active key from the OS
+  keystore, the SQLite inventory + WAL/SHM, the encrypted-vault
+  file (if present), the daemon descriptor, and Codex's
+  hook/MCP blocks from `~/.codex/config.toml`. The Claude Code
+  plugin's own hook registration is owned by Claude Code (run
+  `/plugin uninstall stm` to finish). Interactive `YES`
+  confirmation by default; `--yes` skips it, `--dry-run` just
+  prints the plan. (`src/uninstall.ts`, 7 new tests.)
+
+- **`src/version.ts` extracted** as the single source of truth
+  for `STM_VERSION`. `src/cli.ts` re-exports for backward
+  compatibility with the v0.7.3 wiring.
+
+349 → 380 tests. No load-bearing invariant changes — the
+passphrase still controls vault decryption, uninstall is
+explicit-confirmation-by-default, snapshot files chmod 0600.
+
 ## [0.7.3] — 2026-05-26
 
 ### `stm --version` — universal CLI version flag

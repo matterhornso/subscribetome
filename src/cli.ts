@@ -12,19 +12,16 @@
 //   stm stop                                    stop the daemon
 //   stm status                                  daemon + inventory summary
 //   stm hook <pretooluse|posttooluse|userpromptsubmit|sessionstart>  (called by hooks)
-import pkg from "../package.json" with { type: "json" };
+import { STM_VERSION } from "./version.ts";
 import { Store, type AuditEvent } from "./store.ts";
 
-/**
- * Read version from package.json — single source of truth so we
- * don't drift between `stm --version` and the published manifest.
- * Bun resolves JSON imports natively; no loader required.
- */
-export const STM_VERSION: string = (pkg as { version: string }).version;
+// Re-export so external callers that depend on the v0.7.3 wiring
+// keep working without a path change.
+export { STM_VERSION };
 import { preToolUse, postToolUse, userPromptSubmit, sessionStart } from "./hooks.ts";
 import { evaluateAll, type PolicyAction } from "./policy.ts";
 import { findExact } from "./grammar.ts";
-import { syncAll, syncProvider } from "./sync.ts";
+import { syncAll, syncProvider, humanizeSyncError } from "./sync.ts";
 import { listProviderIds } from "./providers/index.ts";
 import {
   buildInjectionPlan,
@@ -50,6 +47,13 @@ import {
   defaultEncryptedFilePath,
   inspectEncryptedFile,
 } from "./keystores/encrypted-file.ts";
+import { exportSnapshot, importSnapshot } from "./vault-snapshot.ts";
+import {
+  planUninstall,
+  executeUninstall,
+  formatPlan as formatUninstallPlan,
+  formatResult as formatUninstallResult,
+} from "./uninstall.ts";
 
 /**
  * Parse a friendly duration like `30s`, `5m`, `2h`, `7d` into milliseconds.
@@ -931,9 +935,14 @@ function printSyncResult(r: { tool: string; ok: boolean; usd?: number; at: strin
       `  ${r.tool.padEnd(12)}  (not configured — ${r.error})\n`,
     );
   } else {
+    const h = humanizeSyncError(r.error ?? "unknown error");
     process.stdout.write(
-      `  ${r.tool.padEnd(12)}  failed: ${r.error}\n`,
+      `  ${r.tool.padEnd(12)}  failed: ${h.summary}\n`,
     );
+    if (h.hint) {
+      // Indent the hint under the row so it's clearly associated.
+      process.stdout.write(`  ${" ".repeat(12)}  → ${h.hint}\n`);
+    }
   }
 }
 
@@ -1217,7 +1226,16 @@ function doctorCmd(): void {
 
 function vaultHelp(): void {
   process.stdout.write(
-    `subscribetome — encrypted-file vault (Tier 3 Linux fallback)\n\n` +
+    `subscribetome — vault commands\n\n` +
+      `Snapshot (any host — backup/restore the entire inventory + keys):\n` +
+      `  stm vault export <file>            write a passphrase-encrypted snapshot of\n` +
+      `                                     the inventory + every active key to <file>.\n` +
+      `                                     Move it somewhere durable.\n` +
+      `  stm vault import <file>            decrypt <file> and restore on this host.\n` +
+      `                                     DESTRUCTIVE: current inventory is backed up\n` +
+      `                                     to <db>.bak.<ts> before being replaced.\n` +
+      `\n` +
+      `Encrypted-file backend (Tier 3 Linux fallback):\n` +
       `  stm vault unlock                   pre-warm the passphrase cache for this\n` +
       `                                     process. Reads from stdin (won't echo).\n` +
       `  stm vault rotate-passphrase        decrypt under the old passphrase, re-encrypt\n` +
@@ -1340,6 +1358,12 @@ function vaultCmd(args: string[]): void {
     case "info":
     case "inspect":
       return vaultInfoCmd();
+    case "export":
+    case "backup":
+      return vaultExportCmd(rest);
+    case "import":
+    case "restore":
+      return vaultImportCmd(rest);
     case undefined:
     case "help":
     case "--help":
@@ -1350,6 +1374,81 @@ function vaultCmd(args: string[]): void {
       vaultHelp();
       process.exit(1);
   }
+}
+
+function vaultExportCmd(args: string[]): void {
+  if (args.length === 0 || args[0]?.startsWith("-")) {
+    process.stderr.write(
+      "usage: stm vault export <file>\n\n" +
+        "Writes a passphrase-encrypted snapshot of the entire inventory\n" +
+        "+ every active key to <file>. Move it somewhere durable (a\n" +
+        "second machine, a USB stick, anywhere outside this host).\n\n" +
+        "Restore with: stm vault import <file>\n",
+    );
+    process.exit(1);
+  }
+  const outPath = args[0];
+  const pp = readPassphraseFromStdin(
+    "Snapshot passphrase (won't echo, EOF to finish): ",
+  );
+  if (!pp) {
+    process.stderr.write("no passphrase provided — aborting\n");
+    process.exit(1);
+  }
+  let result;
+  try {
+    result = exportSnapshot({ outPath, passphrase: pp });
+  } catch (e: any) {
+    process.stderr.write(`stm vault export: ${e?.message ?? e}\n`);
+    process.exit(1);
+  }
+  process.stdout.write(
+    `wrote ${result.bytesWritten} bytes to ${result.path}\n` +
+      `bundled ${result.keysExported} active key(s) + full inventory.\n` +
+      `\n` +
+      `KEEP THE PASSPHRASE — losing it means losing the snapshot.\n` +
+      `Restore with: stm vault import "${result.path}"\n`,
+  );
+}
+
+function vaultImportCmd(args: string[]): void {
+  if (args.length === 0 || args[0]?.startsWith("-")) {
+    process.stderr.write(
+      "usage: stm vault import <file>\n\n" +
+        "Decrypts <file> and restores the inventory + keystore on this\n" +
+        "host. DESTRUCTIVE: the current inventory database is backed up\n" +
+        "to <db>.bak.<timestamp> and replaced. The keystore (Keychain /\n" +
+        "Credential Manager / Secret Service / encrypted file — whichever\n" +
+        "is active on THIS host) receives every secret in the snapshot.\n",
+    );
+    process.exit(1);
+  }
+  const inPath = args[0];
+  const pp = readPassphraseFromStdin(
+    "Snapshot passphrase (won't echo, EOF to finish): ",
+  );
+  if (!pp) {
+    process.stderr.write("no passphrase provided — aborting\n");
+    process.exit(1);
+  }
+  let result;
+  try {
+    result = importSnapshot({ inPath, passphrase: pp });
+  } catch (e: any) {
+    process.stderr.write(`stm vault import: ${e?.message ?? e}\n`);
+    process.exit(1);
+  }
+  process.stdout.write(
+    `restored snapshot from ${result.path}\n` +
+      `  exported: ${result.exportedAt} (host: ${result.exportedFrom}, stm ${result.stmVersion})\n` +
+      `  keys restored: ${result.keysRestored}` +
+      (result.keysSkipped > 0 ? ` (${result.keysSkipped} skipped)` : "") +
+      `\n` +
+      (result.dbBackedUpTo
+        ? `  previous DB backed up to: ${result.dbBackedUpTo}\n` +
+          `  (roll back with: mv "${result.dbBackedUpTo}" "${result.dbBackedUpTo.replace(/\.bak\.\d+$/, "")}")\n`
+        : `  no previous inventory to back up — restored into a clean slot.\n`),
+  );
 }
 
 async function policyCmd(args: string[]): Promise<void> {
@@ -1377,6 +1476,34 @@ async function policyCmd(args: string[]): Promise<void> {
       policyHelp();
       process.exit(1);
   }
+}
+
+function uninstallCmd(args: string[]): void {
+  const yes = args.includes("--yes") || args.includes("-y");
+  const dryRun = args.includes("--dry-run");
+
+  const plan = planUninstall();
+  process.stdout.write(formatUninstallPlan(plan));
+
+  if (dryRun) {
+    process.stdout.write("\n(dry-run) — no changes made.\n");
+    return;
+  }
+
+  if (!yes) {
+    process.stderr.write("\nType 'YES' to continue, anything else to abort: ");
+    const input = (globalThis as any).prompt?.("");
+    process.stderr.write("\n");
+    if (input !== "YES") {
+      process.stdout.write("aborted — nothing removed.\n");
+      process.exit(1);
+    }
+  }
+
+  const result = executeUninstall(plan);
+  process.stdout.write("\n" + formatUninstallResult(result));
+  const partial = result.keysFailed.length + result.pathsFailed.length > 0;
+  process.exit(partial ? 1 : 0);
 }
 
 function revokeCmd(args: string[]): void {
@@ -1422,6 +1549,7 @@ function helpCmd(): void {
       `  stm dashboard                   open the localhost web dashboard\n` +
       `  stm stop                        stop the dashboard daemon\n` +
       `  stm status                      daemon + inventory summary\n` +
+      `  stm uninstall [--yes|--dry-run]  remove all stm data + Codex blocks from this host\n` +
       `  stm --version                   print the installed stm version\n`,
   );
 }
@@ -1470,6 +1598,8 @@ async function main(): Promise<void> {
       const imp = await import("./import.ts");
       return imp.runImport(rest);
     }
+    case "uninstall":
+      return uninstallCmd(rest);
     case "dashboard":
     case "open": {
       const d = await import("./daemon.ts");
