@@ -3,6 +3,54 @@
 All notable changes to subscribetome. This project is pre-1.0; minor versions
 may still change behaviour. Format follows [Keep a Changelog](https://keepachangelog.com).
 
+## [0.7.2] — 2026-05-26
+
+### QA cleanup — code hygiene from the v0.7.1 audit
+
+Minor maintenance ship after the v0.7.1 QA pass surfaced a handful
+of small leftovers. No new features, no behavior changes; the
+externally-visible surface is identical to v0.7.1.
+
+- **macOS FFI: `SecKeychainItemRef` is now `CFRelease`d in
+  `deleteGenericPassword`.** The v0.6.1 FFI rewrite documented the
+  per-call ref leak as acceptable for one-shot CLI invocations
+  (the OS reclaims on process exit), but the long-lived dashboard
+  daemon does deletes too. Bound `CoreFoundation.CFRelease` via a
+  second `dlopen` and call it unconditionally after
+  `SecKeychainItemDelete` — whether or not the delete itself
+  succeeded — so the itemRef returned by find never lingers past
+  one call. (`src/keystores/mac.ts`)
+
+- **Dropped the dead `read` import in `mac.ts`.** The v0.6.1 patch
+  imported `read` from `bun:ffi` "for future helpers" and added a
+  `void read;` line to suppress the linter. Removed both — easier
+  to add when actually needed than to carry as a smell.
+
+- **New real-FFI smoke test for macOS.** The v0.6.1 test file uses
+  an injected `MacFFI`, which left the real `realMacFFI()` delete
+  path with zero coverage. New
+  `test/keystores-mac-real-ffi.test.ts` rounds-trips set → get →
+  delete against the real Security framework on darwin (skipped on
+  every other platform) and covers upsert, repeated delete→re-add,
+  multibyte UTF-8 secrets, and the missing-entry null. Closes the
+  one coverage gap the QA audit found. 340 → 345 tests.
+
+- **Top-level `stm --help` now points at `stm codex --help`** for
+  the install-hooks / install-mcp / doctor sub-commands. The
+  Codex sub-commands were always discoverable via `stm codex
+  --help`, but a user reading just the top help wouldn't know
+  they existed.
+
+- **README "two agents" reconciliation.** The Codex section
+  listed three rows (Claude Code, Codex Option 1, Codex Option 2)
+  under the heading "stm wraps two agents today". Rewrote the
+  intro line to say "Claude Code and Codex, with two Codex
+  integration modes" — same content, no internal inconsistency.
+
+- **`docs/index.html` JSON-LD `dateModified` + `softwareVersion`
+  and `docs/sitemap.xml` `lastmod`** bumped to today. SEO crawler
+  hygiene only; no user impact.
+
 ## [0.7.1] — 2026-05-25
 
 ### Docs — backlog sweep + field-verification checklist

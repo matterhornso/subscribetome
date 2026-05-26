@@ -189,8 +189,9 @@ with a did-you-mean suggestion.
 
 ## Compatibility — agents
 
-stm wraps two agents today, with different security postures. `stm status`
-and the dashboard header always tell you which agent gets which guarantee.
+stm wraps Claude Code and Codex today. Codex ships with two integration
+modes (different security postures); pick one. `stm status` and the
+dashboard header always tell you which agent gets which guarantee.
 
 | Agent | Mode | Guarantee | What you run |
 |---|---|---|---|

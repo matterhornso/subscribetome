@@ -1402,6 +1402,7 @@ function helpCmd(): void {
       `  stm audit [--tail N] [--event] [--tool] [--since]  PreToolUse decision log\n` +
       `  stm sync [provider]             fetch real spend from configured providers\n` +
       `  stm codex [codex-args...]       launch Codex with stm-managed keys (session-env mode)\n` +
+      `                                  see \`stm codex --help\` for install-hooks / install-mcp / doctor\n` +
       `  stm doctor                      diagnose which keystore tier is active and how to upgrade\n` +
       `  stm vault <unlock|rotate|info>  manage the encrypted-file Tier 3 vault\n` +
       `  stm project <add|list|show|scope|unscope|enforce|rename|remove>  per-project key scope\n` +

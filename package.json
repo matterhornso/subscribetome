@@ -1,6 +1,6 @@
 {
   "name": "subscribetome",
-  "version": "0.7.1",
+  "version": "0.7.2",
   "description": "AI API key & subscription manager — a Claude Code plugin. Keys never touch the chat.",
   "type": "module",
   "license": "MIT",

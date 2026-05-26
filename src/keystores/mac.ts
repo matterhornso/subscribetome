@@ -22,7 +22,7 @@
 //   - realMacFFI() builds the bun:ffi binding lazily. Only reachable
 //     on darwin; tests pass opts.ffi to bypass it entirely.
 
-import { dlopen, FFIType, ptr, read, toArrayBuffer, type Pointer } from "bun:ffi";
+import { dlopen, FFIType, ptr, toArrayBuffer, type Pointer } from "bun:ffi";
 import { keychainService } from "../paths.ts";
 import type { KeyStore, MacFFI } from "./types.ts";
 
@@ -166,6 +166,12 @@ export function isMacKeychainReachable(opts?: { ffi?: MacFFI }): boolean {
 const SECURITY_FRAMEWORK =
   "/System/Library/Frameworks/Security.framework/Security";
 
+// CoreFoundation is where CFRelease lives. SecKeychainItemRef is
+// a CFType, so the only correct way to release the +1 retain
+// returned by SecKeychainFindGenericPassword is CFRelease.
+const COREFOUNDATION_FRAMEWORK =
+  "/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation";
+
 let cachedFFI: MacFFI | null = null;
 let cachedStatus = 0;
 
@@ -178,6 +184,10 @@ export function realMacFFI(): MacFFI {
         `code path — please file a bug.`,
     );
   }
+
+  const cfLib = dlopen(COREFOUNDATION_FRAMEWORK, {
+    CFRelease: { args: [FFIType.ptr], returns: FFIType.void },
+  });
 
   const lib = dlopen(SECURITY_FRAMEWORK, {
     SecKeychainAddGenericPassword: {
@@ -298,9 +308,11 @@ export function realMacFFI(): MacFFI {
       if (!itemPtr) return false;
       const delStatus = Number(lib.symbols.SecKeychainItemDelete(itemPtr));
       cachedStatus = delStatus;
-      // ItemFreeContent(NULL, item) doesn't free the item itself —
-      // we'd use CFRelease for that. The OS reclaims the ref when
-      // our process exits; for a single delete this is fine.
+      // Find returned the itemRef with a +1 retain. CFRelease it
+      // whether or not the delete succeeded; otherwise the ref
+      // leaks until process exit (acceptable for one-shot CLI
+      // invocations, sloppy for the long-lived daemon).
+      cfLib.symbols.CFRelease(itemPtr);
       return delStatus === errSecSuccess;
     },
     lastStatus(): number {
@@ -319,7 +331,3 @@ function readPointer(slot: Uint8Array): Pointer | null {
   return Number(raw) as unknown as Pointer;
 }
 
-// `read` is currently unused — kept imported so future helpers
-// can walk OS-owned structs without re-importing. Suppress the
-// linter complaint via a no-op reference.
-void read;
