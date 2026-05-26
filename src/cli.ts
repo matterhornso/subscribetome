@@ -1478,6 +1478,139 @@ async function policyCmd(args: string[]): Promise<void> {
   }
 }
 
+function rotateCmd(args: string[]): void {
+  if (args.length < 2 || args[0]?.startsWith("-")) {
+    process.stderr.write(
+      "usage: stm rotate <tool> <label> [--open|--no-open]\n\n" +
+        "Rotate a key in place: the placeholder {{stm:tool:label}} keeps\n" +
+        "working, but the value behind it is replaced. We open the\n" +
+        "provider's dashboard so you can create a fresh key, then read\n" +
+        "the new value from stdin (out-of-band — never argv, never the\n" +
+        "chat transcript).\n\n" +
+        "Old key bytes are deleted from the keystore after the new ones\n" +
+        "land in inventory. The old (tool, label) is NOT separately\n" +
+        "revoked — it's the same inventory row, repointed.\n",
+    );
+    process.exit(1);
+  }
+  const tool = args[0];
+  const label = args[1];
+  const open =
+    !args.includes("--no-open") && process.env.STM_NO_OPEN !== "1";
+
+  const store = new Store();
+  let existing: ReturnType<Store["viewKey"]>;
+  try {
+    existing = store.viewKey(tool, label);
+  } finally {
+    store.close();
+  }
+  if (!existing) {
+    process.stderr.write(
+      `stm rotate: no such key ${tool}:${label}. Use \`stm add\` first.\n`,
+    );
+    process.exit(1);
+  }
+  if (existing.status === "revoked") {
+    process.stderr.write(
+      `stm rotate: ${tool}:${label} is already marked revoked. Use \`stm add\` to\n` +
+        `create a fresh entry under a new label, or rotate a different key.\n`,
+    );
+    process.exit(1);
+  }
+
+  // Look up the provider's dashboard URL in the catalog. The user
+  // may be rotating a tool we don't have a catalog entry for — that's
+  // fine; we just won't open anything.
+  let url: string | null = null;
+  try {
+    const cat = require("./catalog.ts") as typeof import("./catalog.ts");
+    const def = cat.CATALOG.find((s) => s.id === tool.toLowerCase());
+    if (def) url = def.url;
+  } catch {
+    /* catalog import failed — proceed without it */
+  }
+
+  process.stdout.write(
+    `Rotating ${tool}:${label}.\n` +
+      `Placeholder ${existing.placeholder} stays the same; value behind it changes.\n\n`,
+  );
+
+  if (url) {
+    process.stdout.write(`Open the provider's dashboard: ${url}\n`);
+    if (open) {
+      try {
+        const opener =
+          process.platform === "darwin"
+            ? "open"
+            : process.platform === "win32"
+              ? "start"
+              : "xdg-open";
+        const { spawn } = require("node:child_process") as typeof import("node:child_process");
+        spawn(opener, [url], { stdio: "ignore", detached: true }).unref();
+        process.stdout.write(`(opened in your default browser)\n`);
+      } catch {
+        process.stdout.write(`(couldn't auto-open — copy the URL above)\n`);
+      }
+    }
+  } else {
+    process.stdout.write(
+      `(no catalog URL for "${tool}" — open the provider's dashboard manually)\n`,
+    );
+  }
+
+  process.stdout.write(
+    `\nCreate a fresh key in the dashboard, then paste it on stdin\n` +
+      `(EOF when done — Ctrl+D on macOS/Linux, Ctrl+Z + Enter on Windows):\n`,
+  );
+
+  // Read the new value from stdin — same out-of-band path that `stm add`
+  // uses. Never argv, never echoed to the chat transcript.
+  let newValue: string;
+  try {
+    const { readFileSync } = require("node:fs") as typeof import("node:fs");
+    const fd = (process.stdin as any).fd ?? 0;
+    newValue = String(readFileSync(fd, "utf8")).replace(/\r?\n$/, "");
+  } catch {
+    newValue = "";
+  }
+  if (!newValue) {
+    process.stderr.write("\nstm rotate: no value provided on stdin — aborting\n");
+    process.exit(1);
+  }
+  // Soft sanity check: refuse if the user accidentally pasted the
+  // same placeholder back.
+  if (newValue.startsWith("{{stm:")) {
+    process.stderr.write(
+      `\nstm rotate: that looks like a placeholder, not a real key — aborting.\n`,
+    );
+    process.exit(1);
+  }
+
+  const store2 = new Store();
+  let result: ReturnType<Store["rotateKey"]>;
+  try {
+    result = store2.rotateKey({ tool, label, newValue });
+  } catch (e: any) {
+    process.stderr.write(`\nstm rotate failed: ${e?.message ?? e}\n`);
+    process.exit(1);
+  } finally {
+    store2.close();
+  }
+  // Note: rotations are NOT written to the audit_log table —
+  // that's reserved for hook decisions (substitute/deny/etc.) with
+  // a strict CHECK constraint. A future `key_history` table can
+  // capture this; for now stdout is the trail.
+
+  process.stdout.write(
+    `\nrotated ${tool}:${label}.\n` +
+      (result.oldRefDeleted
+        ? `  old keystore entry deleted.\n`
+        : `  WARN: old keystore entry was already missing (or delete failed).\n`) +
+      `  the placeholder ${existing.placeholder} now resolves to the new value.\n`,
+  );
+}
+
 function uninstallCmd(args: string[]): void {
   const yes = args.includes("--yes") || args.includes("-y");
   const dryRun = args.includes("--dry-run");
@@ -1537,6 +1670,7 @@ function helpCmd(): void {
       `  stm list                        show keys, subscriptions, monthly spend\n` +
       `  stm resolve {{stm:t:l}}          print a key value (local use only)\n` +
       `  stm revoke <tool> <label>       mark a key revoked\n` +
+      `  stm rotate <tool> <label>       open provider dashboard, paste new key, swap in place\n` +
       `  stm policy <list|add|remove|test>  allow/deny rules at PreToolUse\n` +
       `  stm audit [--tail N] [--event] [--tool] [--since]  PreToolUse decision log\n` +
       `  stm sync [provider]             fetch real spend from configured providers\n` +
@@ -1580,6 +1714,8 @@ async function main(): Promise<void> {
       return resolveCmd(rest);
     case "revoke":
       return revokeCmd(rest);
+    case "rotate":
+      return rotateCmd(rest);
     case "policy":
       return policyCmd(rest);
     case "audit":

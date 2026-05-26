@@ -67,16 +67,14 @@ but it's adjacent to the v1 thesis (key safety), not central to it.
 Worth its own spec when the v1 surface has shipped publicly long
 enough to see whether users actually ask for this.
 
-## PostToolUse warn-only mode
+## ~~PostToolUse warn-only mode~~ (shipped in v0.9.0)
 
-PostToolUse currently *blocks* a tool result that contains a key,
-interrupting the model. Whether that's right depends on how often it
-fires in practice. A user-configurable mode (block vs warn-only)
-would let a power user choose interruption-vs-flag.
-
-**Why not built yet:** we have no telemetry by design, so we have no
-data on how often PostToolUse fires. Defer the toggle until a user
-asks (or surfaces a real interruption regression).
+Set `STM_POSTTOOLUSE_MODE=warn` to flip the hook from block-mode
+(default, exit 2, interrupts the agent turn) to warn-mode (exit 0,
+advisory message to stderr, agent continues). Default unchanged
+for users who haven't opted in. Unrecognised values fall back to
+block — safer default. See `src/hooks.ts` and
+`test/hooks.test.ts` warn-mode test rows.
 
 ---
 

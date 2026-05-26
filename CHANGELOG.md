@@ -3,6 +3,42 @@
 All notable changes to subscribetome. This project is pre-1.0; minor versions
 may still change behaviour. Format follows [Keep a Changelog](https://keepachangelog.com).
 
+## [0.9.0] — 2026-05-26
+
+### Rotation flow + PostToolUse mode toggle
+
+The two remaining v1.0-readiness features the audit surfaced: a
+proper key-rotation command and the long-deferred PostToolUse
+warn-only mode.
+
+- **`stm rotate <tool> <label>`.** Opens the provider's catalog
+  dashboard URL (or prints it if `--no-open` / `STM_NO_OPEN=1`),
+  reads the new key value from stdin (never argv, never the
+  transcript), and swaps the value behind the existing
+  placeholder in place. The address `{{stm:tool:label}}` is
+  unchanged — every existing hook flow keeps working; only the
+  value behind it differs. Backed by a new atomic
+  `Store.rotateKey()` method: write new value to keystore under a
+  fresh UUID, repoint the inventory row, then delete the old
+  keystore entry. Inventory write failure rolls back the new
+  keystore write before re-throwing; old-entry-already-missing
+  is non-fatal. (`src/store.ts`, `src/cli.ts`, 6 new tests.)
+
+- **PostToolUse warn-only mode**, gated on
+  `STM_POSTTOOLUSE_MODE=warn`. The hook still detects + reports
+  leaks (same exact-value + key-shape channels as v1), but
+  emits an advisory to stderr and exits 0 instead of blocking
+  the agent turn. Default behavior is unchanged: anything other
+  than `warn` (including unset, or unrecognised values like
+  `yolo`) keeps the v1 block-mode. The TODOS.md entry for this
+  is now closed. (`src/hooks.ts`, 5 new tests in
+  `test/hooks.test.ts`.)
+
+380 → 391 tests. Load-bearing invariants intact: rotation
+preserves the placeholder address so audit history through
+`{{stm:...}}` is uninterrupted; warn-mode is opt-in (default
+stays block); the new value is read out-of-band from stdin.
+
 ## [0.8.0] — 2026-05-26
 
 ### Early-customer-readiness ship — vault snapshots, sync hints, clean uninstall

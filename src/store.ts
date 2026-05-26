@@ -530,6 +530,80 @@ export class Store {
     return keychainGet(row.ref);
   }
 
+  /**
+   * Rotate a key in place: write `newValue` to the keystore under a
+   * fresh UUID, repoint the inventory row at it, then delete the old
+   * keystore entry. The placeholder `{{stm:tool:label}}` is unchanged
+   * — every existing hook flow keeps working, the value behind it is
+   * just different.
+   *
+   * Failure modes:
+   *   - (tool, label) doesn't exist → throws; nothing written.
+   *   - Keystore set fails → throws; nothing written.
+   *   - Inventory UPDATE fails → the new keystore entry is rolled back
+   *     before re-throwing. Old key remains intact.
+   *   - Old keystore delete fails → reported via the return value but
+   *     the rotation is still considered successful (the inventory
+   *     now points at the new ref; the old bytes are orphaned but
+   *     unreferenced).
+   *
+   * Returns the freshly-generated keychain_ref so the caller (CLI)
+   * can show it, and a boolean reporting whether the old keystore
+   * entry was deleted cleanly.
+   */
+  rotateKey(input: {
+    tool: string;
+    label: string;
+    newValue: string;
+  }): { newRef: string; oldRefDeleted: boolean } {
+    const tool = normalizeSegment(input.tool);
+    const label = normalizeSegment(input.label);
+    if (!input.newValue) throw new Error("new key value is empty");
+
+    const row = this.db
+      .query(
+        `SELECT k.id AS id, k.keychain_ref AS oldRef
+           FROM keys k JOIN tools t ON t.id = k.tool_id
+          WHERE t.name = ? AND k.label = ?`,
+      )
+      .get(tool, label) as { id: number; oldRef: string } | null;
+    if (!row) {
+      throw new Error(
+        `no key labelled "${label}" exists for "${tool}" — use \`stm add\` first`,
+      );
+    }
+
+    const newRef = randomUUID();
+    keychainSet(newRef, input.newValue);
+    try {
+      this.db
+        .query(
+          `UPDATE keys SET keychain_ref = ?, status = 'active', created_at = ? WHERE id = ?`,
+        )
+        .run(newRef, new Date().toISOString(), row.id);
+    } catch (e) {
+      // Inventory write failed — undo the keystore write so we don't
+      // leak an orphan value.
+      try {
+        keychainDelete(newRef);
+      } catch {
+        /* best-effort */
+      }
+      throw e;
+    }
+
+    let oldRefDeleted = false;
+    try {
+      keychainDelete(row.oldRef);
+      oldRefDeleted = true;
+    } catch {
+      // Old keystore entry already missing (e.g. user wiped the
+      // keychain by hand) — not fatal. The inventory has been
+      // repointed at newRef already.
+    }
+    return { newRef, oldRefDeleted };
+  }
+
   /** Mark a key revoked (v1: a metadata flag — no provider API call). */
   revokeKey(tool: string, label: string): boolean {
     const r = this.db

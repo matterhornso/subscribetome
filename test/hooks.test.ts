@@ -181,3 +181,96 @@ test("SessionStart injects stm usage guidance", () => {
   expect(ctx).toContain("{{stm:<tool>:<label>}}");
   expect(ctx).toContain("/stm:dashboard");
 });
+
+// ---- PostToolUse mode toggle (v0.9.0) ------------------------------------
+
+function runHookWithEnv(
+  hook: string,
+  payload: object,
+  extraEnv: Record<string, string>,
+): HookResult {
+  // spawnSync (not execFileSync) so we capture stderr on exit 0 too —
+  // execFileSync only surfaces stderr via the thrown error, which
+  // means a successful run with stderr output (warn mode) loses it.
+  const { spawnSync } = require("node:child_process") as typeof import("node:child_process");
+  const r = spawnSync(process.execPath, [CLI, "hook", hook], {
+    input: JSON.stringify(payload),
+    env: { ...ENV, ...extraEnv },
+    encoding: "utf8",
+  });
+  return {
+    code: r.status ?? 1,
+    stdout: r.stdout ?? "",
+    stderr: r.stderr ?? "",
+  };
+}
+
+test("PostToolUse default mode is block (no regression from v1)", () => {
+  // Same payload as the existing leak test — no env override, no
+  // STM_POSTTOOLUSE_MODE set. Must still exit 2.
+  const r = runHook("posttooluse", {
+    tool_name: "Bash",
+    tool_input: { command: "echo {{stm:seedtool:default}}" },
+    tool_response: "SEED-SECRET-12345",
+  });
+  expect(r.code).toBe(2);
+});
+
+test("PostToolUse warn mode reports but exits 0", () => {
+  const r = runHookWithEnv(
+    "posttooluse",
+    {
+      tool_name: "Bash",
+      tool_input: { command: "echo {{stm:seedtool:default}}" },
+      tool_response: "SEED-SECRET-12345",
+    },
+    { STM_POSTTOOLUSE_MODE: "warn" },
+  );
+  expect(r.code).toBe(0);
+  // The alert text MUST still reach stderr — otherwise the user has
+  // no signal at all and the warn mode would be silent.
+  expect(r.stderr).toContain("leaked");
+  expect(r.stderr).toContain("advisory only");
+});
+
+test("PostToolUse mode is case-insensitive (WARN, Warn, warn all work)", () => {
+  for (const mode of ["WARN", "Warn", "warn"]) {
+    const r = runHookWithEnv(
+      "posttooluse",
+      {
+        tool_name: "Bash",
+        tool_input: { command: "echo {{stm:seedtool:default}}" },
+        tool_response: "SEED-SECRET-12345",
+      },
+      { STM_POSTTOOLUSE_MODE: mode },
+    );
+    expect(r.code).toBe(0);
+  }
+});
+
+test("PostToolUse unrecognised mode falls back to block (safer default)", () => {
+  const r = runHookWithEnv(
+    "posttooluse",
+    {
+      tool_name: "Bash",
+      tool_input: { command: "echo {{stm:seedtool:default}}" },
+      tool_response: "SEED-SECRET-12345",
+    },
+    { STM_POSTTOOLUSE_MODE: "yolo" },
+  );
+  expect(r.code).toBe(2);
+});
+
+test("PostToolUse warn mode still passes clean output through (exit 0, no message)", () => {
+  const r = runHookWithEnv(
+    "posttooluse",
+    {
+      tool_name: "Bash",
+      tool_input: { command: "echo hi" },
+      tool_response: "hi",
+    },
+    { STM_POSTTOOLUSE_MODE: "warn" },
+  );
+  expect(r.code).toBe(0);
+  expect(r.stderr).toBe("");
+});

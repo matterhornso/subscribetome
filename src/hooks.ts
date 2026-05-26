@@ -467,6 +467,27 @@ export async function postToolUse(): Promise<void> {
     `revoke it (\`stm revoke\`), issue a fresh one at the provider, and re-add it\n` +
     `via \`stm dashboard\`. Then re-run the command without echoing the key\n` +
     `(avoid \`set -x\` and verbose/error output that prints it).`;
+
+  // Mode toggle (v0.9.0): STM_POSTTOOLUSE_MODE controls whether a
+  // detected leak BLOCKS the agent turn (default — strongest safety,
+  // interrupts the model so it can't continue with a known-compromised
+  // key in context) or just WARNS (advisory message to stderr, exit 0,
+  // agent's flow continues).
+  //
+  // Warn mode is opt-in for power users running long autonomous flows
+  // where an interruption is more costly than a key already leaked
+  // into a buffer that's about to be summarised anyway. The default
+  // stays block so a passive user hits the safer behavior.
+  //
+  // Anything other than "warn" (or unset) means block — same as v1.
+  const mode = (process.env.STM_POSTTOOLUSE_MODE ?? "block").toLowerCase();
+  if (mode === "warn") {
+    process.stderr.write(msg + "\n");
+    process.stderr.write(
+      `(STM_POSTTOOLUSE_MODE=warn — advisory only, not blocking this turn.)\n`,
+    );
+    process.exit(0);
+  }
   block(msg);
 }
 
