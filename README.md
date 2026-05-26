@@ -33,8 +33,9 @@ Do these steps in order. **Never ask the user for an API key. Never run a
 command that contains a real key. Never add a key yourself** — key entry is
 out-of-band by design.
 
-1. **Check the OS.** Run `uname`. If it does not print `Darwin`, stop and tell
-   the user: "subscribetome v1 is macOS-only." Do not continue.
+1. **Check the OS.** Run `uname` (or `ver` on Windows). subscribetome
+   supports macOS, Linux, and Windows from v1.0 onward — see
+   "Supported platforms" below for the active keystore tier per OS.
 2. **Check Bun.** Run `bun --version`. If that fails, install Bun with
    `curl -fsSL https://bun.sh/install | bash` (or `brew install bun` if
    Homebrew is present), then re-check.
@@ -124,22 +125,27 @@ Slash commands (after installing the plugin):
 The `stm` CLI (on `PATH` once installed):
 
 ```
-stm dashboard          open the localhost web UI
-stm list               keys, subscriptions, monthly spend
-stm import [dir]       scan .env files for keys to import
-stm revoke <tool> <l>  mark a key revoked
-stm policy <subcmd>    allow / deny / warn rules at PreToolUse
-stm project <subcmd>   per-project key scope
-stm audit              forensic log of PreToolUse decisions
-stm sync [provider]    fetch real spend from configured providers
-stm codex [args...]    launch Codex with stm keys as env vars
+stm dashboard           open the localhost web UI
+stm list                keys, subscriptions, monthly spend
+stm import [dir]        scan .env files for keys to import
+stm revoke <tool> <l>   mark a key revoked
+stm rotate <tool> <l>   open provider dashboard, paste new key, swap in place
+stm policy <subcmd>     allow / deny / warn rules at PreToolUse
+stm project <subcmd>    per-project key scope
+stm audit               forensic log of PreToolUse decisions
+stm sync [provider]     fetch real spend from configured providers
+stm codex [args...]     launch Codex with stm keys as env vars
 stm codex install-hooks install the UserPromptSubmit + SessionStart guardrails in ~/.codex/config.toml
-stm codex install-mcp  register Codex Option 2 (MCP-wrapped, higher assurance — key never in agent process)
-stm codex doctor       verify both Codex hooks AND MCP are wired up
-stm doctor             diagnose which keystore tier is active and how to upgrade
-stm vault <subcmd>     manage the encrypted-file Tier 3 vault (unlock / rotate-passphrase / info)
-stm status             daemon + inventory summary, active agents + backend
-stm stop               stop the dashboard daemon
+stm codex install-mcp   register Codex Option 2 (MCP-wrapped, higher assurance — key never in agent process)
+stm codex doctor        verify both Codex hooks AND MCP are wired up
+stm doctor              diagnose which keystore tier is active and how to upgrade
+stm vault <subcmd>      backup/restore the entire inventory + keys; manage Tier 3 vault
+stm vault export <file> passphrase-encrypted snapshot of inventory + keys
+stm vault import <file> restore from a snapshot
+stm status              daemon + inventory summary, active agents + backend
+stm stop                stop the dashboard daemon
+stm uninstall           remove all stm data + Codex blocks from this host
+stm --version           print the installed stm version
 ```
 
 ### Spend sync — network posture
@@ -347,14 +353,23 @@ is not a TTY, `get()` returns `null` and the PreToolUse hook fails
 safe — exits 0 without rewriting, so the command runs with the
 placeholder intact and fails harmlessly (never leaks a key).
 
-## Limitations (v1)
+## Limitations (v1.0)
 
-- **Import is `.env`-only** — scanning the broader OS keychain for arbitrary
-  third-party keys is deferred (it is intrusive and noisy).
-- `revoke` is a **metadata flag** — it does not call a provider API to rotate
-  the key.
+- **Import is `.env`-only** — scanning third-party password managers
+  (1Password, Bitwarden, Doppler) for keys is deferred. Specs welcome
+  the contribution.
+- **`revoke` is a metadata flag.** It marks the key inactive in stm's
+  inventory but does not call a provider API. Use `stm rotate` to
+  actually swap a key value in place (opens the provider dashboard, you
+  paste the new value, the placeholder address stays the same).
+- **Spend sync covers OpenAI and Anthropic admin APIs.** Other providers
+  don't expose programmatic usage; their spend is whatever you declared
+  via `stm add --cost`.
 
-See [`TODOS.md`](./TODOS.md) for the deferred v1.5 scope.
+See [`TODOS.md`](./TODOS.md) for the deferred v1.1+ scope and
+[`FIELD_VERIFICATION.md`](./FIELD_VERIFICATION.md) for the per-platform
+verification checklist (Windows + Linux tiers built but pending
+real-hardware confirmation).
 
 ## Development
 
@@ -365,9 +380,12 @@ bun test               run the test suite
 bun src/cli.ts <args>  run the CLI from source
 ```
 
-Runtime state lives in `~/.subscribetome/` (the SQLite inventory and the daemon
-descriptor). Key values are in the macOS Keychain under the service name
-`subscribetome`.
+Runtime state lives in `~/.subscribetome/` (the SQLite inventory and the
+daemon descriptor). Key values are in the OS keystore — macOS Keychain
+(service `subscribetome`), Windows Credential Manager (target prefix
+`Subscribetome:`), Linux Secret Service / `pass` / encrypted-file vault
+depending on which tier is reachable. See `stm doctor` for the active
+backend.
 
 ## Project
 

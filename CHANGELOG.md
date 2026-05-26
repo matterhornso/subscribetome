@@ -3,6 +3,56 @@
 All notable changes to subscribetome. This project is pre-1.0; minor versions
 may still change behaviour. Format follows [Keep a Changelog](https://keepachangelog.com).
 
+## [1.0.0] — 2026-05-26
+
+### Milestone — early-customer release
+
+The v0.4 → v0.9 sprint completes the v1 surface. v1.0.0 carries
+no new code beyond the version bump itself; everything below
+shipped under 0.4-0.9 and is now sealed under the 1.0 milestone.
+
+**What "v1.0" actually means here:**
+
+- Three hardened OS keystore backends — macOS Keychain (FFI,
+  `Security.framework`), Windows Credential Manager (FFI,
+  `advapi32.dll`), and the three-tier Linux resolver (Secret
+  Service / `pass` / encrypted-file). Every secret-write path
+  uses a stdin pipe or an FFI pointer; none touches argv.
+
+- Two agents — Claude Code (per-command rewrite via
+  PreToolUse `updatedInput`) and Codex with two integration
+  modes (session-env launcher, MCP-wrapped HTTP proxy). Each
+  agent's security posture is documented in the README's
+  compatibility table.
+
+- Six load-bearing invariants verified throughout the sprint:
+  audit log never carries a real key value; PreToolUse fails
+  safe; KeyStore resolver never silently falls back to plaintext;
+  zero runtime dependencies (MCP server hand-rolled); spend sync
+  is the only outbound network surface; non-TTY EncryptedFile
+  reads fail safe.
+
+- A complete early-customer toolchain — `stm add` (out-of-band
+  entry), `stm rotate` (in-place value swap behind a stable
+  placeholder), `stm vault export/import` (passphrase-encrypted
+  full backup), `stm uninstall` (clean removal), `stm doctor`
+  (active-backend diagnostics), `stm sync` with actionable
+  error hints, `stm policy` / `stm project` (per-project key
+  scope), `stm audit` (decision log), `stm dashboard` (localhost
+  web UI with token-authed API).
+
+- 391 passing tests across 28 files.
+
+**What's deferred to v1.1+** (see `TODOS.md`): managed-manager
+import (1Password / Bitwarden / Doppler), retroactive
+subscription discovery, Argon2id KDF for Tier 3 vault.
+
+**What remains in field verification** (see `FIELD_VERIFICATION.md`):
+Windows Credential Manager on real hardware, Linux tier 2/3 on
+real headless boxes, Codex with the real `codex` CLI. The build
+host is macOS; these surfaces are unit-tested via injected FFI
+but pending real-environment confirmation.
+
 ## [0.9.0] — 2026-05-26
 
 ### Rotation flow + PostToolUse mode toggle
