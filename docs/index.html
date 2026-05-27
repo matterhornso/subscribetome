@@ -6,9 +6,9 @@
 <meta name="color-scheme" content="dark">
 <meta name="theme-color" content="#0a0b0d">
 
-<title>subscribetome — Secure API key manager for Claude Code (macOS, open source)</title>
-<meta name="description" content="Open-source Claude Code plugin by Matterhorn Labs. Every API key lives in the macOS Keychain; Claude Code uses your keys without the chat transcript ever holding one. 50 services pre-configured. MIT licensed.">
-<meta name="keywords" content="claude code, claude code plugin, api key manager, api key security, macos keychain, secret manager, anthropic claude, ai assisted coding, prompt injection, secret leak prevention, openai key, anthropic key, supabase, stripe, vercel">
+<title>subscribetome — AI API keys for Claude Code, never in the chat</title>
+<meta name="description" content="Open-source Claude Code plugin. Your AI keys live in the OS keychain (macOS / Linux / Windows). The model writes a placeholder; the real key gets swapped in at the moment a command runs. Zero telemetry. MIT licensed.">
+<meta name="keywords" content="claude code, claude code plugin, api key manager, api key security, os keychain, macOS Keychain, Windows Credential Manager, Linux Secret Service, secret manager, anthropic claude, ai assisted coding, prompt injection, secret leak prevention">
 <meta name="author" content="Matterhorn Labs">
 <meta name="application-name" content="subscribetome">
 <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1">
@@ -21,8 +21,8 @@
 
 <!-- Open Graph (Facebook, LinkedIn, Slack, Discord, iMessage…) -->
 <meta property="og:site_name" content="subscribetome">
-<meta property="og:title" content="subscribetome — Secure API key manager for Claude Code">
-<meta property="og:description" content="Open-source Claude Code plugin by Matterhorn Labs. Every API key lives in the macOS Keychain; Claude Code uses your keys without the chat transcript ever holding one.">
+<meta property="og:title" content="subscribetome — AI API keys for Claude Code, never in the chat">
+<meta property="og:description" content="Open-source Claude Code plugin. Your AI keys live in the OS keychain; Claude Code uses them without ever seeing them. macOS, Linux, Windows. MIT.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://subscribetome.pro/">
 <meta property="og:image" content="https://subscribetome.pro/og.png">
@@ -35,12 +35,12 @@
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:site" content="@matterhornso">
 <meta name="twitter:creator" content="@matterhornso">
-<meta name="twitter:title" content="subscribetome — Secure API key manager for Claude Code">
-<meta name="twitter:description" content="Open-source Claude Code plugin. Every API key lives in the macOS Keychain; Claude Code uses your keys without ever seeing them. 50 services pre-configured. MIT.">
+<meta name="twitter:title" content="subscribetome — AI API keys for Claude Code, never in the chat">
+<meta name="twitter:description" content="Open-source Claude Code plugin. Your AI keys live in the OS keychain; Claude Code uses them without ever seeing them. macOS, Linux, Windows. MIT.">
 <meta name="twitter:image" content="https://subscribetome.pro/og.png">
 <meta name="twitter:image:alt" content="subscribetome — Hand Claude Code every API key it needs and never show it one.">
 
-<!-- JSON-LD: SoftwareApplication + WebSite + Organization -->
+<!-- JSON-LD: SoftwareApplication + WebSite + Organization + FAQ -->
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
@@ -57,19 +57,21 @@
       "downloadUrl": "https://github.com/matterhornso/subscribetome",
       "softwareVersion": "1.0.0",
       "datePublished": "2026-05-18",
-      "dateModified": "2026-05-26",
+      "dateModified": "2026-05-27",
       "license": "https://opensource.org/licenses/MIT",
-      "description": "Open-source Claude Code plugin that keeps every API key in the macOS Keychain. The agent uses your keys without the chat transcript ever holding one. PreToolUse hook substitutes keys into commands the instant before they run. 50 services pre-configured.",
+      "description": "Open-source Claude Code plugin that keeps every API key in the OS keychain (macOS Keychain / Windows Credential Manager / Linux Secret Service / pass / encrypted-file). The agent uses your keys without the chat transcript ever holding one. PreToolUse hook substitutes keys into commands the instant before they run. 50 services pre-configured.",
       "image": "https://subscribetome.pro/og.png",
       "featureList": [
-        "macOS Keychain storage for every API key",
-        "PreToolUse hook: keys substituted into commands at runtime",
+        "OS-keychain storage for every API key (macOS, Linux, Windows)",
+        "PreToolUse hook: real key substituted into commands at runtime",
         "Pasted-secret guardrail: raw keys in chat are blocked",
-        "Leaked-key alert via PostToolUse",
+        "Leaked-key alert via PostToolUse (block or warn mode)",
+        "Key rotation: open provider dashboard, swap value behind the placeholder",
+        "Encrypted vault backup/restore (PBKDF2-SHA512 + AES-256-GCM)",
+        "Clean uninstall — full removal in one command",
+        "Codex support (session-env launcher + MCP-wrapped HTTPS proxy)",
         "50 services pre-configured (OpenAI, Anthropic, Supabase, Stripe, …)",
-        "Custom fields for non-catalog credentials",
         "Localhost-only dashboard (no backend, no telemetry)",
-        ".env import for existing keys",
         "Open source under MIT"
       ],
       "offers": {
@@ -113,7 +115,7 @@
           "name": "How does subscribetome keep API keys out of Claude Code conversations?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "Keys live in the macOS Keychain. In the chat, you only ever refer to them by a placeholder like {{stm:openai:default}}. A Claude Code PreToolUse hook substitutes the real key into the shell command the instant before it runs — the model never sees the key, and the conversation transcript never holds one."
+            "text": "Keys live in your OS keychain (macOS Keychain on macOS, Windows Credential Manager on Windows, Linux Secret Service / pass / an opt-in encrypted file on Linux). In the chat, you only ever refer to them by a placeholder like {{stm:openai:default}}. A Claude Code PreToolUse hook substitutes the real key into the shell command the instant before it runs — the model never sees the key, and the conversation transcript never holds one."
           }
         },
         {
@@ -121,7 +123,7 @@
           "name": "Is subscribetome free and open source?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "Yes. subscribetome is MIT licensed and free. Source code, security model, and changelog are all on GitHub at github.com/matterhornso/subscribetome."
+            "text": "Yes. subscribetome is MIT licensed and free. Source, security model, and changelog are on GitHub at github.com/matterhornso/subscribetome."
           }
         },
         {
@@ -129,7 +131,7 @@
           "name": "Does subscribetome have a backend or send my data anywhere?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "No. There is no backend, no cloud, no telemetry, no sign-up. The dashboard is a page your own Mac serves on 127.0.0.1, bound to loopback. Keys live only in the macOS Keychain on your machine."
+            "text": "No. There is no backend, no cloud, no telemetry, no sign-up. The dashboard is a page your own machine serves on 127.0.0.1, bound to loopback. Keys live only in the OS keychain on your machine. The single feature that makes outbound network calls is `stm sync` — outbound only when you click sync, only to the providers you've configured."
           }
         },
         {
@@ -137,7 +139,7 @@
           "name": "How do I install subscribetome?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "Paste 'Set up subscribetome for me using https://github.com/matterhornso/subscribetome' into Claude Code and the agent installs it. Or run two commands yourself: claude plugin marketplace add matterhornso/subscribetome, then claude plugin install stm@subscribetome. Then restart Claude Code and run /stm:dashboard to add your keys."
+            "text": "Paste 'Set up subscribetome for me using https://github.com/matterhornso/subscribetome' into Claude Code and the agent installs it. Then restart Claude Code and run /stm:dashboard to add your keys in the local web page."
           }
         },
         {
@@ -145,7 +147,7 @@
           "name": "Which platforms and AI agents does subscribetome support?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "Every major desktop OS is supported as of v0.6.0: macOS Keychain on Darwin, Linux Secret Service via libsecret on Linux desktops, Windows Credential Manager via the Win32 wincred API called through Bun FFI on Windows, and on headless Linux a tiered fallback (pass + GPG, or an opt-in encrypted file using PBKDF2-SHA512 600k + AES-256-GCM at mode 0600). `stm doctor` reports which tier is active and exactly what would need to change to reach the next-stronger tier. Two agents are wrapped: Claude Code with per-command rewrite (strongest guarantee — the key is substituted into one Bash command at the instant it runs, transcript stays clean) and Codex with session-env mode (weaker — each key is exposed as a STM_<TOOL>_<LABEL> env var in codex's process for the whole session). The trade-off is shown everywhere the agent label appears. opencode, Cursor, and Codex per-command rewrite (waiting on openai/codex#18491) remain on the roadmap."
+            "text": "macOS (Keychain via Bun FFI), Linux desktop (Secret Service via libsecret), Linux headless (a tiered fallback: pass + GPG, then an opt-in encrypted file using PBKDF2-SHA512 600k + AES-256-GCM), and Windows (Credential Manager via Bun FFI). Two agents are wrapped: Claude Code with per-command rewrite (strongest — key is substituted into one Bash command at the instant it runs) and Codex with two modes (session-env launcher, and an MCP-wrapped HTTPS proxy where the key never enters the agent's process at all). `stm doctor` reports the active keystore tier on any host."
           }
         }
       ]
@@ -195,7 +197,7 @@
     opacity:.5;
   }
   .wrap { position:relative; z-index:2; }
-  .bound { max-width:1080px; margin:0 auto; padding:0 32px; }
+  .bound { max-width:980px; margin:0 auto; padding:0 32px; }
 
   /* header */
   header {
@@ -224,57 +226,73 @@
   .d1{animation-delay:.05s} .d2{animation-delay:.13s} .d3{animation-delay:.22s}
   .d4{animation-delay:.32s} .d5{animation-delay:.44s}
 
-  /* ===== hero — two columns ===== */
-  .hero { padding:74px 0 30px; display:grid; grid-template-columns:1.08fr .92fr;
-    gap:54px; align-items:center; }
-  @media (max-width:860px){ .hero { grid-template-columns:1fr; gap:40px; padding-top:54px; } }
-
+  /* ===== hero — single column, tight ===== */
+  .hero { padding:78px 0 14px; text-align:center; }
   .hero h1 {
     font-family:var(--serif); font-weight:400;
-    font-size:clamp(40px,4.7vw,60px); line-height:1.03; letter-spacing:-.2px;
-    margin:24px 0 0;
+    font-size:clamp(40px,5.8vw,68px); line-height:1.02; letter-spacing:-.4px;
+    max-width:18ch; margin:0 auto;
   }
   .hero h1 em { font-style:italic; color:var(--acc); }
-  .hero h1 .ac { letter-spacing:.07em; }   /* give the "API" caps room to breathe */
   .hero-sub {
-    margin:24px 0 0; max-width:46ch; color:var(--ink-dim); font-size:15px; line-height:1.78;
+    margin:26px auto 0; max-width:54ch; color:var(--ink-dim);
+    font-size:16px; line-height:1.7;
   }
   .hero-sub b { color:var(--ink); font-weight:500; }
-  .hero-actions { display:flex; flex-wrap:wrap; gap:13px; margin-top:30px; }
-  .btn {
-    display:inline-flex; align-items:center; justify-content:center; gap:9px;
-    height:46px; padding:0 24px; border-radius:11px; font-size:13.5px; font-weight:500;
-    text-decoration:none; white-space:nowrap; cursor:pointer; border:0; font-family:var(--mono);
-    transition:transform .12s var(--ease),background .2s var(--ease),border-color .2s var(--ease);
-  }
-  .btn:active { transform:translateY(1px); }
-  .btn-primary { background:var(--acc); color:#04130c; }
-  .btn-primary:hover { background:var(--acc-bright); }
-  .btn-ghost { border:1px solid var(--line-2); color:var(--ink); background:transparent; }
-  .btn-ghost:hover { border-color:var(--acc); background:var(--acc-deep); }
-  .btn.full { width:100%; }
 
-  /* hero right: compact instant-action dual CTA */
-  .hero-right { display:flex; flex-direction:column; gap:14px; }
-  .hcard {
-    border:1px solid var(--line-2); border-radius:13px; background:var(--bg-2);
-    padding:16px 18px; display:flex; flex-direction:column; gap:12px;
+  /* ===== three-step section ===== */
+  .steps { padding:60px 0 6px; }
+  .steps-grid {
+    display:grid; grid-template-columns:repeat(3,1fr); gap:18px;
   }
-  .hcard.claude {
-    border-color:rgba(61,220,151,.34);
-    background:linear-gradient(180deg,#0e1a15,var(--bg-2) 60%);
+  @media (max-width:780px){ .steps-grid { grid-template-columns:1fr; } }
+  .step {
+    border:1px solid var(--line-2); border-radius:14px; background:var(--bg-2);
+    padding:24px 24px 26px; display:flex; flex-direction:column; gap:14px;
   }
-  .hcard-tag {
-    display:inline-flex; align-items:center; gap:7px;
-    font-size:11px; letter-spacing:1.6px; text-transform:uppercase; color:var(--ink-dim);
+  .step .n {
+    align-self:flex-start; display:inline-flex; align-items:center; justify-content:center;
+    width:28px; height:28px; border-radius:8px;
+    background:var(--acc-deep); color:var(--acc); font-size:13px; font-weight:600;
+    border:1px solid rgba(61,220,151,.34);
   }
-  .hcard-tag .d { width:6px; height:6px; border-radius:50%; background:currentColor; }
-  .hcard.claude .hcard-tag { color:var(--acc); }
-  .hcard .after { font-size:11.5px; color:var(--ink-faint); line-height:1.55; margin:0; }
-  .hcard .after b { color:var(--ink-dim); font-weight:500; }
+  .step h3 {
+    font-family:var(--serif); font-weight:400; font-size:24px;
+    line-height:1.2; letter-spacing:-.2px;
+  }
+  .step p { color:var(--ink-dim); font-size:13.5px; line-height:1.7; }
+  .step p b { color:var(--ink); font-weight:500; }
 
-  /* ===== transform diagram — full width, clear ===== */
-  .flow-wrap { padding:8px 0 6px; }
+  .copybox { border:1px solid var(--line); border-radius:11px;
+    background:var(--bg); overflow:hidden; }
+  .copybar {
+    display:flex; align-items:center; justify-content:space-between;
+    padding:8px 8px 8px 13px; border-bottom:1px solid var(--line); background:var(--bg-3);
+  }
+  .copybar span { font-size:10.5px; letter-spacing:1.2px; text-transform:uppercase; color:var(--ink-faint); }
+  .copy-btn {
+    font-family:var(--mono); font-size:12px; cursor:pointer;
+    border:1px solid var(--line-2); border-radius:7px; padding:5px 11px;
+    background:transparent; color:var(--ink);
+    transition:border-color .15s var(--ease),background .15s var(--ease),color .15s var(--ease);
+  }
+  .copy-btn:hover { border-color:var(--acc); background:var(--acc-deep); }
+  .copy-btn.ok { border-color:var(--acc); background:var(--acc); color:#04130c; }
+  .copybox pre {
+    margin:0; padding:14px; font-family:var(--mono); font-size:12.5px; line-height:1.7;
+    white-space:pre-wrap; word-break:break-word; color:var(--ink);
+  }
+  .copybox pre .p { color:var(--acc); }
+  .inline-cmd { color:var(--acc); }
+
+  /* ===== transform diagram ===== */
+  .flow-wrap { padding:48px 0 6px; }
+  .flow-head { text-align:center; margin-bottom:26px; }
+  .flow-head h2 {
+    font-family:var(--serif); font-weight:400; font-size:clamp(28px,4vw,42px);
+    line-height:1.05; letter-spacing:-.3px;
+  }
+  .flow-head h2 em { font-style:italic; color:var(--acc); }
   .flow {
     border:1px solid var(--line-2); border-radius:16px;
     background:linear-gradient(180deg,var(--bg-2),var(--bg)); overflow:hidden;
@@ -311,123 +329,23 @@
   }
 
   /* ===== local-only trust ===== */
-  .local { padding:82px 0 10px; border-top:1px solid var(--line); margin-top:62px; }
+  .local { padding:72px 0 10px; border-top:1px solid var(--line); margin-top:62px; }
   .local-head { text-align:center; margin-bottom:42px; }
   .local-head h2 {
-    font-family:var(--serif); font-weight:400; font-size:clamp(32px,4.6vw,50px);
+    font-family:var(--serif); font-weight:400; font-size:clamp(30px,4.4vw,46px);
     line-height:1.05; letter-spacing:-.3px;
   }
   .local-head h2 em { font-style:italic; color:var(--acc); }
-  .local-head p { margin:16px auto 0; max-width:62ch; color:var(--ink-dim);
-    font-size:14px; line-height:1.8; }
+  .local-head p { margin:14px auto 0; max-width:60ch; color:var(--ink-dim);
+    font-size:14px; line-height:1.78; }
   .local-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:18px; }
   @media (max-width:760px){ .local-grid { grid-template-columns:1fr; } }
   .lc { border:1px solid var(--line); border-radius:13px; background:var(--bg-2); padding:24px; }
   .lc .t { font-size:11px; letter-spacing:1.6px; text-transform:uppercase; color:var(--acc); }
   .lc h3 { font-size:14.5px; font-weight:600; margin:12px 0 8px; }
   .lc p { font-size:13px; color:var(--ink-dim); line-height:1.72; }
-  .lc code { color:var(--acc); font-size:12px; background:var(--acc-deep);
-    padding:1px 5px; border-radius:4px; }
 
-  /* ===== roadmap line ===== */
-  .roadmap { margin-top:44px; display:flex; justify-content:center; }
-  .roadmap-in {
-    border:1px solid var(--line-2); border-radius:12px; background:var(--bg-2);
-    padding:18px 24px; max-width:700px; font-size:13px; color:var(--ink-dim);
-    line-height:1.75; text-align:center;
-  }
-  .roadmap-in .now {
-    color:var(--acc); font-weight:500; text-transform:uppercase; letter-spacing:1px;
-    font-size:11px; margin-right:6px;
-  }
-  .roadmap-in b { color:var(--ink); font-weight:500; }
-
-  /* ===== layer (rebrand framing) ===== */
-  .layer { padding:78px 0 6px; border-top:1px solid var(--line); margin-top:32px; }
-  .layer-head { text-align:center; margin-bottom:34px; }
-  .layer-head h2 {
-    font-family:var(--serif); font-weight:400; font-size:clamp(34px,5vw,54px);
-    line-height:1.05; letter-spacing:-.3px;
-  }
-  .layer-head h2 em { font-style:italic; color:var(--acc); }
-  .layer-grid { display:grid; grid-template-columns:1fr 1fr; gap:18px; }
-  @media (max-width:760px){ .layer-grid { grid-template-columns:1fr; } }
-  .layer-col {
-    border:1px solid var(--line); border-radius:13px; background:var(--bg-2);
-    padding:24px 26px;
-  }
-  .layer-col.now { border-color:rgba(61,220,151,.32); }
-  .layer-col h3 {
-    font-family:var(--serif); font-size:22px; font-weight:400; margin:0 0 12px;
-  }
-  .layer-col ul { margin:0; padding:0; }
-  .layer-col li {
-    list-style:none; padding:10px 0 10px 22px; position:relative;
-    font-size:13px; color:var(--ink-dim); line-height:1.6;
-    border-top:1px solid var(--line);
-  }
-  .layer-col li:first-of-type { border-top:0; }
-  .layer-col.now li::before {
-    content:"✓"; position:absolute; left:0; top:10px; color:var(--acc); font-size:13px;
-  }
-  .layer-col.next li::before {
-    content:"→"; position:absolute; left:0; top:10px; color:var(--ink-faint); font-size:13px;
-  }
-  .layer-col li b { color:var(--ink); font-weight:500; }
-
-  /* ===== start: the dual CTA ===== */
-  .start { padding:78px 0 28px; border-top:1px solid var(--line); margin-top:64px; }
-  .start-head { text-align:center; margin-bottom:44px; }
-  .start-head h2 {
-    font-family:var(--serif); font-weight:400; font-size:clamp(34px,5vw,54px);
-    line-height:1.05; letter-spacing:-.3px;
-  }
-  .start-head h2 em { font-style:italic; color:var(--acc); }
-  .start-head p { margin:13px auto 0; max-width:52ch; color:var(--ink-dim); font-size:14px; }
-
-  .cards { display:grid; grid-template-columns:1fr 1fr; gap:22px; }
-  @media (max-width:720px){ .cards { grid-template-columns:1fr; } }
-  .card {
-    border:1px solid var(--line-2); border-radius:16px; background:var(--bg-2);
-    padding:28px; display:flex; flex-direction:column;
-  }
-  .card.claude { border-color:rgba(61,220,151,.34);
-    background:linear-gradient(180deg,#0e1a15,var(--bg-2) 60%); }
-  .tag {
-    align-self:flex-start; display:inline-flex; align-items:center; gap:7px;
-    font-size:11px; letter-spacing:1.8px; text-transform:uppercase;
-    border:1px solid var(--line-2); border-radius:999px; padding:5px 12px; color:var(--ink-dim);
-  }
-  .card.claude .tag { border-color:rgba(61,220,151,.4); color:var(--acc); }
-  .tag .d { width:6px; height:6px; border-radius:50%; background:currentColor; }
-  .card h3 { font-family:var(--serif); font-weight:400; font-size:30px; margin:18px 0 6px; }
-  .card .desc { color:var(--ink-dim); font-size:13.5px; line-height:1.7; min-height:56px; }
-  .card .desc b { color:var(--ink); font-weight:500; }
-
-  .copybox { margin-top:16px; border:1px solid var(--line); border-radius:11px;
-    background:var(--bg); overflow:hidden; }
-  .copybar {
-    display:flex; align-items:center; justify-content:space-between;
-    padding:8px 8px 8px 14px; border-bottom:1px solid var(--line); background:var(--bg-3);
-  }
-  .copybar span { font-size:10.5px; letter-spacing:1.2px; text-transform:uppercase; color:var(--ink-faint); }
-  .copy-btn {
-    font-family:var(--mono); font-size:12px; cursor:pointer;
-    border:1px solid var(--line-2); border-radius:7px; padding:6px 13px;
-    background:transparent; color:var(--ink);
-    transition:border-color .15s var(--ease),background .15s var(--ease),color .15s var(--ease);
-  }
-  .copy-btn:hover { border-color:var(--acc); background:var(--acc-deep); }
-  .copy-btn.ok { border-color:var(--acc); background:var(--acc); color:#04130c; }
-  .copybox pre {
-    margin:0; padding:16px; font-family:var(--mono); font-size:12.5px; line-height:1.9;
-    white-space:pre-wrap; word-break:break-word; color:var(--ink);
-  }
-  .copybox pre .p { color:var(--acc); }
-  .card .after { margin-top:14px; font-size:12px; color:var(--ink-faint); line-height:1.6; }
-  .card .after b { color:var(--ink-dim); font-weight:500; }
-
-  /* trust strip */
+  /* ===== trust strip + footer ===== */
   .strip {
     margin-top:60px; border-top:1px solid var(--line); border-bottom:1px solid var(--line);
     display:flex; flex-wrap:wrap; justify-content:center; gap:10px 24px;
@@ -436,7 +354,7 @@
   .strip i { color:var(--acc); font-style:normal; }
   .strip .sep { color:var(--ink-faint); }
 
-  footer { border-top:1px solid var(--line); padding:44px 0 54px; }
+  footer { border-top:1px solid var(--line); padding:38px 0 48px; }
   .foot { display:flex; flex-wrap:wrap; gap:22px; justify-content:space-between; align-items:center; }
   .foot-l { font-size:12.5px; color:var(--ink-faint); max-width:44ch; line-height:1.7; }
   .foot-l b { color:var(--ink-dim); font-weight:500; }
@@ -464,46 +382,62 @@
 
 <!-- HERO -->
 <div class="bound hero">
-  <div>
-    <h1 class="rise d2">Hand Claude Code every <span class="ac">API</span> key it needs — and <em>never show it one.</em></h1>
-    <p class="hero-sub rise d3">
-      Paste an API key into a chat and it's logged there forever. subscribetome keeps
-      <b>every key in your Mac's Keychain</b> and feeds it to commands automatically — so
-      Claude Code can <b>use</b> your keys without ever <b>seeing</b> them. One vault for
-      every service. Nothing to leak, nothing to rotate at 2am.
-    </p>
-  </div>
+  <h1 class="rise d2">Your AI keys, used by the agent — <em>never seen by it.</em></h1>
+  <p class="hero-sub rise d3">
+    The model writes a placeholder. The real key gets swapped in at the moment the command runs.
+    Keys live in <b>your OS keychain</b>; the chat never holds one. macOS, Linux, Windows. Free. Open source.
+  </p>
+</div>
 
-  <div class="hero-right rise d4">
-    <div class="hcard claude">
-      <span class="hcard-tag">Paste into Claude Code</span>
+<!-- 3 STEPS -->
+<div class="bound steps">
+  <div class="steps-grid">
+    <div class="step rise d3">
+      <span class="n">1</span>
+      <h3>Install</h3>
       <div class="copybox">
         <div class="copybar">
-          <span>one line · activates STM</span>
-          <button class="copy-btn" data-copy="cmd-claude">Copy</button>
+          <span>paste into Claude Code</span>
+          <button class="copy-btn" data-copy="cmd-install">Copy</button>
         </div>
-<pre id="cmd-claude">Set up subscribetome for me using https://github.com/matterhornso/subscribetome</pre>
+<pre id="cmd-install">Set up subscribetome for me using https://github.com/matterhornso/subscribetome</pre>
       </div>
-      <p class="after"><b>Then:</b> restart Claude Code when it asks. STM never asks you for a key.</p>
+      <p>Quit and reopen Claude Code when it's done.</p>
     </div>
 
-    <div class="hcard">
-      <span class="hcard-tag"><span class="d"></span>Or run two terminal commands</span>
+    <div class="step rise d4">
+      <span class="n">2</span>
+      <h3>Add a key</h3>
       <div class="copybox">
         <div class="copybar">
-          <span>terminal</span>
-          <button class="copy-btn" data-copy="cmd-human">Copy</button>
+          <span>in Claude Code</span>
+          <button class="copy-btn" data-copy="cmd-dash">Copy</button>
         </div>
-<pre id="cmd-human">claude plugin marketplace add <span class="p">matterhornso/subscribetome</span>
-claude plugin install <span class="p">stm@subscribetome</span></pre>
+<pre id="cmd-dash">/stm:dashboard</pre>
       </div>
-      <p class="after"><b>Then:</b> restart Claude Code, run <span style="color:var(--acc)">/stm:dashboard</span>, add your keys.</p>
+      <p>A <b>local web page</b> opens. Pick a service, paste the key. Goes straight to your OS keychain — <b>never through chat</b>.</p>
+    </div>
+
+    <div class="step rise d5">
+      <span class="n">3</span>
+      <h3>Use it</h3>
+      <div class="copybox">
+        <div class="copybar">
+          <span>just ask, in plain language</span>
+          <button class="copy-btn" data-copy="cmd-use">Copy</button>
+        </div>
+<pre id="cmd-use">Use my OpenAI key to call chat completions with the message "hello"</pre>
+      </div>
+      <p>The plugin swaps in the real key the instant the <span class="inline-cmd">curl</span> runs. The transcript only ever holds a placeholder.</p>
     </div>
   </div>
 </div>
 
 <!-- TRANSFORM DIAGRAM -->
 <div class="bound flow-wrap">
+  <div class="flow-head">
+    <h2>Here's the trick. <em>Plain and simple.</em></h2>
+  </div>
   <div class="flow rise d5">
     <div class="flow-side">
       <span class="flow-lbl">What Claude Code sees</span>
@@ -523,69 +457,26 @@ claude plugin install <span class="p">stm@subscribetome</span></pre>
 <div class="bound local">
   <div class="local-head">
     <h2>There is no server. <em>There is no us.</em></h2>
-    <p>subscribetome is an open-source plugin that runs entirely on your own machine.
-      It has no backend — so nobody, not the author and not "matterhornso", can see your
-      keys, your commands, or even that you use it. There is nothing to see, because
-      nothing of yours is anywhere but your own Mac.</p>
+    <p>subscribetome runs entirely on your own machine. There is no backend, so nobody —
+      not the author, not Matterhorn Labs — can see your keys, your commands, or even
+      that you use it. There is nothing to see, because nothing of yours is anywhere
+      but your own machine.</p>
   </div>
   <div class="local-grid">
     <div class="lc">
       <span class="t">Localhost only</span>
       <h3>The dashboard never goes online</h3>
-      <p>It's a page your own Mac serves on <code>127.0.0.1</code>, bound to loopback.
-        No remote machine can reach it.</p>
+      <p>Your machine serves it on 127.0.0.1, bound to loopback. No remote machine can reach it. Token-authed; DNS-rebind-defended.</p>
     </div>
     <div class="lc">
       <span class="t">No backend</span>
       <h3>Nowhere to send your data</h3>
-      <p>subscribetome has no servers, no cloud database, no sign-up, no telemetry.</p>
+      <p>No servers, no cloud, no sign-up, no telemetry. The only outbound calls happen when you click sync, only to the providers you've configured.</p>
     </div>
     <div class="lc">
-      <span class="t">Your keychain</span>
+      <span class="t">Your OS keychain</span>
       <h3>Keys stay on your disk</h3>
-      <p>Every secret lives in your OS keychain on your machine — macOS Keychain,
-        Linux Secret Service, or Windows Credential Manager. subscribetome reads
-        it locally.</p>
-    </div>
-  </div>
-  <div class="roadmap">
-    <div class="roadmap-in">
-      <span class="now">Available now</span> for <b>macOS</b>, <b>Linux desktop</b>,
-      <b>Linux headless</b> (pass + GPG, or an opt-in encrypted file),
-      and <b>Windows</b> — wrapping both <b>Claude Code</b> (per-command
-      rewrite — strongest) and <b>Codex</b> (session-env mode — weaker,
-      stated honestly). Other coding agents — opencode, Cursor — are on
-      the roadmap.
-    </div>
-  </div>
-</div>
-
-<!-- LAYER (rebrand framing) -->
-<div class="bound layer">
-  <div class="layer-head">
-    <h2>More than <em>just keys.</em></h2>
-  </div>
-  <div class="layer-grid">
-    <div class="layer-col now">
-      <h3>Security for the keys</h3>
-      <ul>
-        <li><b>Keys out of the chat.</b> Every API key your agent uses, kept out of the transcript.</li>
-        <li><b>Pasted-secret guardrail.</b> A secret you paste in chat is blocked before the model sees it.</li>
-        <li><b>Leaked-key alert.</b> A command that echoes its own input is flagged so you can rotate.</li>
-        <li><b>Spend visibility.</b> Real usage pulled from provider APIs, on demand.
-          <span style="display:block;color:#9aa1a8;font-size:13px;margin-top:4px">
-            stm makes outbound network calls only when you click sync, only to the providers you've configured. No background activity, no telemetry, no phone-home.
-          </span>
-        </li>
-      </ul>
-    </div>
-    <div class="layer-col next">
-      <h3>Security for the rest</h3>
-      <ul>
-        <li><b>Command policy.</b> Allow / deny rules at the PreToolUse layer.</li>
-        <li><b>Per-project key scope.</b> One session, one set of keys — sized to the project.</li>
-        <li><b>Headless Linux, Windows, and other agents</b> (opencode, Cursor).</li>
-      </ul>
+      <p>macOS Keychain, Windows Credential Manager, or Linux Secret Service / pass / opt-in encrypted file. Run <span class="inline-cmd">stm doctor</span> to see which is active.</p>
     </div>
   </div>
 </div>
@@ -595,7 +486,8 @@ claude plugin install <span class="p">stm@subscribetome</span></pre>
   <div class="strip">
     <span><i>50</i> services pre-configured</span><span class="sep">/</span>
     <span>keys never touch the chat</span><span class="sep">/</span>
-    <span>macOS Keychain &middot; Linux Secret Service / pass / EncryptedFile &middot; Windows Credential Manager</span><span class="sep">/</span>
+    <span>macOS · Linux · Windows</span><span class="sep">/</span>
+    <span>Claude Code &amp; Codex</span><span class="sep">/</span>
     <span><i>MIT</i> · open source</span>
   </div>
 </div>
@@ -603,12 +495,12 @@ claude plugin install <span class="p">stm@subscribetome</span></pre>
 <footer>
   <div class="bound foot">
     <div class="foot-l">
-      <b>subscribetome</b> — an open-source AI API key &amp; subscription manager for Claude Code.
-      MIT licensed.
+      <b>subscribetome</b> — open-source AI API key &amp; subscription manager. v1.0.0. MIT licensed.
     </div>
     <div class="foot-links">
       <a href="https://github.com/matterhornso/subscribetome">GitHub</a>
-      <a href="https://github.com/matterhornso/subscribetome#readme">Docs</a>
+      <a href="https://github.com/matterhornso/subscribetome/blob/main/DOCS.md">Docs</a>
+      <a href="https://github.com/matterhornso/subscribetome/blob/main/CHANGELOG.md">Changelog</a>
       <a href="https://github.com/matterhornso/subscribetome/blob/main/LICENSE">License</a>
     </div>
   </div>
