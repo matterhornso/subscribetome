@@ -57,7 +57,7 @@
       "downloadUrl": "https://github.com/matterhornso/subscribetome",
       "softwareVersion": "1.0.0",
       "datePublished": "2026-05-18",
-      "dateModified": "2026-05-27",
+      "dateModified": "2026-05-28",
       "license": "https://opensource.org/licenses/MIT",
       "description": "Open-source Claude Code plugin that keeps every API key in the OS keychain (macOS Keychain / Windows Credential Manager / Linux Secret Service / pass / encrypted-file). The agent uses your keys without the chat transcript ever holding one. PreToolUse hook substitutes keys into commands the instant before they run. 50 services pre-configured.",
       "image": "https://subscribetome.pro/og.png",
@@ -345,6 +345,27 @@
   .lc h3 { font-size:14.5px; font-weight:600; margin:12px 0 8px; }
   .lc p { font-size:13px; color:var(--ink-dim); line-height:1.72; }
 
+  /* ===== tour video ===== */
+  .tour { padding:62px 0 10px; }
+  .tour-head { text-align:center; margin-bottom:28px; }
+  .tour-head h2 {
+    font-family:var(--serif); font-weight:400; font-size:clamp(30px,4.4vw,46px);
+    line-height:1.05; letter-spacing:-.3px;
+  }
+  .tour-head h2 em { font-style:italic; color:var(--acc); }
+  .tour-head p {
+    margin:14px auto 0; max-width:52ch; color:var(--ink-dim);
+    font-size:14px; line-height:1.7;
+  }
+  .tour-frame {
+    border:1px solid var(--line-2); border-radius:14px;
+    background:var(--bg-2); overflow:hidden;
+    box-shadow:0 20px 60px rgba(0,0,0,.45);
+  }
+  .tour-frame video {
+    width:100%; height:auto; display:block; background:var(--bg);
+  }
+
   /* ===== feature strip — 4 cards with screenshots ===== */
   .features { padding:72px 0 10px; border-top:1px solid var(--line); margin-top:62px; }
   .features-head { text-align:center; margin-bottom:42px; }
@@ -462,6 +483,22 @@
       </div>
       <p>The plugin swaps in the real key the instant the <span class="inline-cmd">curl</span> runs. The transcript only ever holds a placeholder.</p>
     </div>
+  </div>
+</div>
+
+<!-- TOUR VIDEO -->
+<div class="bound tour">
+  <div class="tour-head">
+    <h2>See it in <em>action.</em></h2>
+    <p>A short, narration-free tour: Keys, Projects, Policy &amp; audit, Import. All four tabs of the local dashboard.</p>
+  </div>
+  <div class="tour-frame rise d5">
+    <video
+      src="screenshots/dashboard-tour.webm"
+      autoplay loop muted playsinline preload="metadata"
+      poster="screenshots/dashboard.png"
+      aria-label="A short tour of the subscribetome dashboard"
+    ></video>
   </div>
 </div>
 

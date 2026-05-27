@@ -16,6 +16,10 @@ runs.
 
 The dashboard splits into four tabs (Keys / Projects / Policy & audit / Import), each covered below.
 
+https://github.com/matterhornso/subscribetome/raw/main/docs/screenshots/dashboard-tour.webm
+
+> A short tour of all four tabs. Click to play.
+
 ### Dashboard tour
 
 **Projects — separate keys per project, longest-prefix `cwd` match**
