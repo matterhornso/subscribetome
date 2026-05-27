@@ -4,6 +4,8 @@
 
 The model writes `{{stm:openai:default}}`. The real key is swapped in at the moment the command runs. Keys never touch the chat.
 
+![subscribetome dashboard — add a key, see your inventory, fetch live spend](docs/screenshots/dashboard.png)
+
 ## 1. Install
 
 Paste this into Claude Code:

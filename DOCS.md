@@ -12,7 +12,29 @@ without ever seeing them. The model only sees a placeholder like
 `{{stm:openai:default}}`; the real key is swapped in at the moment a command
 runs.
 
-![The subscribetome dashboard — add a key out-of-band, see your key inventory, track subscription spend](docs/screenshots/dashboard.png)
+![The subscribetome dashboard — add a key out-of-band, see your inventory, fetch live spend](docs/screenshots/dashboard.png)
+
+The dashboard splits into four tabs (Keys / Projects / Policy & audit / Import), each covered below.
+
+### Dashboard tour
+
+**Projects — separate keys per project, longest-prefix `cwd` match**
+
+![Projects tab](docs/screenshots/projects-tab.png)
+
+Register a project (path + name), pick which keys are in scope, optionally flip **Enforce** on to make PreToolUse refuse out-of-scope substitutions. SessionStart only tells Claude Code about the in-scope keys when a session opens inside that path.
+
+**Command policy & audit — assign restrictions for each key usage**
+
+![Policy & audit tab](docs/screenshots/policy-tab.png)
+
+Glob-matched allow / deny / warn rules evaluated at PreToolUse. Test a command against the active rules before you save. The audit log is a forensic record of every PreToolUse decision (substitute / policy.deny / policy.warn / unresolved / malformed) — and crucially, it never holds a real key value.
+
+**Browse services — 50 services pre-configured**
+
+![Browse services](docs/screenshots/browse-services.png)
+
+Pick a service, click it, the form pre-fills with its standard credential labels. Categories: AI & LLM, Database & Backend, Hosting & Deploy, Auth, Payments, and more. "Other" handles anything not in the catalog.
 
 ## Install
 

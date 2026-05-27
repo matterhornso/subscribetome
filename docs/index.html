@@ -345,6 +345,38 @@
   .lc h3 { font-size:14.5px; font-weight:600; margin:12px 0 8px; }
   .lc p { font-size:13px; color:var(--ink-dim); line-height:1.72; }
 
+  /* ===== feature strip — 4 cards with screenshots ===== */
+  .features { padding:72px 0 10px; border-top:1px solid var(--line); margin-top:62px; }
+  .features-head { text-align:center; margin-bottom:42px; }
+  .features-head h2 {
+    font-family:var(--serif); font-weight:400; font-size:clamp(30px,4.4vw,46px);
+    line-height:1.05; letter-spacing:-.3px;
+  }
+  .features-head h2 em { font-style:italic; color:var(--acc); }
+  .features-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:20px; }
+  @media (max-width:760px){ .features-grid { grid-template-columns:1fr; } }
+  .feature {
+    border:1px solid var(--line); border-radius:14px;
+    background:var(--bg-2); overflow:hidden;
+    display:flex; flex-direction:column;
+    transition:border-color .2s var(--ease), transform .2s var(--ease);
+  }
+  .feature:hover { border-color:var(--line-2); transform:translateY(-2px); }
+  .feature .shot {
+    width:100%; aspect-ratio:16/10; overflow:hidden;
+    background:var(--bg); border-bottom:1px solid var(--line);
+  }
+  .feature .shot img {
+    width:100%; height:100%; object-fit:cover; object-position:top center;
+    display:block;
+  }
+  .feature h3 {
+    font-family:var(--serif); font-weight:400; font-size:21px;
+    line-height:1.32; letter-spacing:-.1px;
+    padding:22px 24px 24px;
+  }
+  .feature h3 em { font-style:italic; color:var(--acc); }
+
   /* ===== trust strip + footer ===== */
   .strip {
     margin-top:60px; border-top:1px solid var(--line); border-bottom:1px solid var(--line);
@@ -477,6 +509,31 @@
       <span class="t">Your OS keychain</span>
       <h3>Keys stay on your disk</h3>
       <p>macOS Keychain, Windows Credential Manager, or Linux Secret Service / pass / opt-in encrypted file. Run <span class="inline-cmd">stm doctor</span> to see which is active.</p>
+    </div>
+  </div>
+</div>
+
+<!-- FEATURE STRIP — 4 cards with screenshots -->
+<div class="bound features">
+  <div class="features-head">
+    <h2>What you actually <em>do.</em></h2>
+  </div>
+  <div class="features-grid">
+    <div class="feature">
+      <div class="shot"><img src="screenshots/dashboard.png" alt="The dashboard's Keys tab — Add Keys form with OpenAI api-key and admin-key fields, header showing active agents and keystore" loading="lazy"></div>
+      <h3>Add your keys, mask them, paste them in your coding agent with <em>full security.</em></h3>
+    </div>
+    <div class="feature">
+      <div class="shot"><img src="screenshots/projects-tab.png" alt="The Projects tab — a registered project path with an Enforce toggle and Edit scope / Remove buttons" loading="lazy"></div>
+      <h3>Maintain <em>separate keys per project.</em></h3>
+    </div>
+    <div class="feature">
+      <div class="shot"><img src="screenshots/policy-tab.png" alt="The Policy & audit tab — Add rule form, Test a command, Recent decisions" loading="lazy"></div>
+      <h3>Assign <em>restrictions for each key</em> usage.</h3>
+    </div>
+    <div class="feature">
+      <div class="shot"><img src="screenshots/browse-services.png" alt="The Browse Services panel — AI &amp; LLM, Database, Hosting, Auth, Payments tiles" loading="lazy"></div>
+      <h3>Pick a key from <em>50 pre-configured services</em> at STM.</h3>
     </div>
   </div>
 </div>
