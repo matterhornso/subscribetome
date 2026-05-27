@@ -527,29 +527,6 @@ export function dashboardHTML(): string {
   </div>
 
   <div class="tab-panel active" data-panel="keys" role="tabpanel">
-  <section class="card">
-    <div class="card-head"><h2>API keys</h2><span class="meta">Click a placeholder to copy</span></div>
-    <div class="table-wrap">
-      <table>
-        <thead><tr><th>Placeholder</th><th>Status</th><th>Source</th><th>Added</th><th></th></tr></thead>
-        <tbody id="keys"></tbody>
-      </table>
-    </div>
-    <div class="sub-head" style="display:flex;align-items:center;justify-content:space-between">
-      <span>Subscriptions</span>
-      <span style="font-weight:400;text-transform:none;letter-spacing:.2px;font-size:12px;color:var(--text-dim)">
-        stm makes outbound calls only when you click Sync spend &middot; only to providers you have configured
-      </span>
-    </div>
-    <div class="table-wrap">
-      <table>
-        <thead><tr><th>Tool</th><th>Plan</th><th>Monthly</th><th>Renews</th><th></th></tr></thead>
-        <tbody id="tools"></tbody>
-      </table>
-    </div>
-    <div id="sync-log" class="sync-log" style="display:none"></div>
-  </section>
-
   <section id="add-keys-card" class="card">
     <div class="card-head"><h2>Add keys</h2></div>
     <div class="field">
@@ -575,6 +552,16 @@ export function dashboardHTML(): string {
       <code>{{stm:tool:label}}</code> placeholder.</p>
   </section>
 
+  <section class="card">
+    <div class="card-head"><h2>API keys</h2><span class="meta">Click a placeholder to copy</span></div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Placeholder</th><th>Status</th><th>Source</th><th>Added</th><th></th></tr></thead>
+        <tbody id="keys"></tbody>
+      </table>
+    </div>
+  </section>
+
   <section id="browse-services" class="card">
     <div class="card-head" style="cursor:pointer" id="browse-head">
       <h2><span id="browse-caret" style="display:inline-block;width:14px;transition:transform .15s var(--ease)">▸</span> Browse services</h2>
@@ -588,6 +575,20 @@ export function dashboardHTML(): string {
       </p>
       <div id="svc-categories"></div>
     </div>
+  </section>
+
+  <section class="card">
+    <div class="card-head">
+      <h2>Subscriptions</h2>
+      <span class="meta">stm makes outbound calls only when you click Sync spend · only to providers you have configured</span>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Tool</th><th>Plan</th><th>Monthly</th><th>Renews</th><th></th></tr></thead>
+        <tbody id="tools"></tbody>
+      </table>
+    </div>
+    <div id="sync-log" class="sync-log" style="display:none"></div>
   </section>
   </div><!-- /tab-panel keys -->
 
