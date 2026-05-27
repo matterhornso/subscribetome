@@ -196,6 +196,26 @@ export function dashboardHTML(): string {
     margin-left:auto;
   }
 
+  /* ---- tab bar (top-level navigation) ---- */
+  .tab-bar {
+    display:flex; gap:2px;
+    margin-bottom:calc(var(--space)*5);
+    border-bottom:1px solid var(--border);
+    overflow-x:auto; -webkit-overflow-scrolling:touch;
+  }
+  .tab {
+    background:transparent; border:0; border-bottom:2px solid transparent;
+    padding:10px 18px; margin-bottom:-1px;
+    color:var(--text-muted); font-size:13.5px; font-weight:500;
+    white-space:nowrap; cursor:pointer;
+    transition:color .15s var(--ease), border-color .15s var(--ease);
+  }
+  .tab:hover { color:var(--text); }
+  .tab.active { color:var(--text); border-bottom-color:var(--primary); }
+  .tab-panel { display:none; }
+  .tab-panel.active { display:block; animation:fade-in .18s var(--ease); }
+  @keyframes fade-in { from { opacity:0; transform:translateY(2px); } to { opacity:1; transform:none; } }
+
   /* ---- projects card (Phase 2) ---- */
   .proj-row {
     border:1px solid var(--border); border-radius:var(--r-md);
@@ -203,8 +223,9 @@ export function dashboardHTML(): string {
     background:var(--ink-850);
   }
   .proj-row .head {
-    display:flex; align-items:baseline; gap:calc(var(--space)*3);
-    flex-wrap:wrap; margin-bottom:calc(var(--space)*2);
+    display:grid; grid-template-columns:auto 1fr auto;
+    align-items:center; gap:calc(var(--space)*3);
+    margin-bottom:calc(var(--space)*2);
   }
   .proj-row .head .name {
     font-size:14px; font-weight:600; color:var(--text);
@@ -212,8 +233,17 @@ export function dashboardHTML(): string {
   .proj-row .head .path {
     font-family:var(--mono,ui-monospace,monospace); font-size:12px;
     color:var(--text-dim);
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0;
   }
-  .proj-row .head .controls { margin-left:auto; display:flex; gap:8px; }
+  .proj-row .head .controls {
+    display:flex; gap:8px; align-items:center; flex-shrink:0;
+  }
+  @media (max-width:680px) {
+    .proj-row .head {
+      grid-template-columns:1fr;
+    }
+    .proj-row .head .controls { flex-wrap:wrap; }
+  }
   .proj-pills {
     display:flex; flex-wrap:wrap; gap:6px; margin-top:6px;
   }
@@ -225,10 +255,15 @@ export function dashboardHTML(): string {
     font-size:12.5px; color:var(--text-dim); font-style:italic;
   }
   .proj-enforce {
-    display:inline-flex; align-items:center; gap:6px;
-    font-size:12px; color:var(--text-dim);
+    display:inline-flex; align-items:center; gap:8px;
+    font-size:12px; color:var(--text-muted);
+    padding:6px 12px; border:1px solid var(--border-strong);
+    border-radius:var(--r-sm); cursor:pointer;
+    transition:border-color .15s var(--ease), color .15s var(--ease);
   }
-  .proj-enforce input { accent-color:var(--emerald-400); }
+  .proj-enforce:hover { border-color:var(--ink-600); color:var(--text); }
+  .proj-enforce input { accent-color:var(--emerald-400); margin:0; }
+  .proj-enforce:has(input:checked) { color:var(--primary); border-color:rgba(52,211,154,.35); }
   .proj-edit {
     margin-top:calc(var(--space)*3); padding-top:calc(var(--space)*3);
     border-top:1px solid var(--border);
@@ -462,6 +497,14 @@ export function dashboardHTML(): string {
 <main>
   <div id="session-signal" class="session-signal" style="display:none"></div>
 
+  <div class="tab-bar" role="tablist" aria-label="Sections">
+    <button class="tab active" data-tab="keys" role="tab" aria-selected="true">Keys</button>
+    <button class="tab" data-tab="projects" role="tab" aria-selected="false">Projects</button>
+    <button class="tab" data-tab="policy" role="tab" aria-selected="false">Policy &amp; audit</button>
+    <button class="tab" data-tab="import" role="tab" aria-selected="false">Import</button>
+  </div>
+
+  <div class="tab-panel active" data-panel="keys" role="tabpanel">
   <section id="browse-services" class="card">
     <div class="card-head">
       <h2>Browse services</h2>
@@ -522,7 +565,9 @@ export function dashboardHTML(): string {
     </div>
     <div id="sync-log" class="sync-log" style="display:none"></div>
   </section>
+  </div><!-- /tab-panel keys -->
 
+  <div class="tab-panel" data-panel="projects" role="tabpanel">
   <section id="projects-card" class="card">
     <div class="card-head">
       <h2>Projects</h2>
@@ -545,7 +590,9 @@ export function dashboardHTML(): string {
     </div>
     <div id="proj-msg" class="msg"></div>
   </section>
+  </div><!-- /tab-panel projects -->
 
+  <div class="tab-panel" data-panel="policy" role="tabpanel">
   <section class="card">
     <div class="card-head">
       <h2>Command policy</h2>
@@ -631,7 +678,9 @@ export function dashboardHTML(): string {
       No matching rule means allow — add a final catch-all to flip to default-deny.
       A predicate left blank matches anything.</p>
   </section>
+  </div><!-- /tab-panel policy -->
 
+  <div class="tab-panel" data-panel="import" role="tabpanel">
   <section class="card">
     <div class="card-head"><h2>Import from .env files</h2></div>
     <div class="grid" style="grid-template-columns:1fr auto;align-items:end">
@@ -650,6 +699,7 @@ export function dashboardHTML(): string {
       <button class="btn-primary" id="imp-btn">Import selected</button>
     </div>
   </section>
+  </div><!-- /tab-panel import -->
 </main>
 
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
@@ -878,7 +928,7 @@ function renderProjects(projects){
     html+='<span class="controls">';
     html+='<label class="proj-enforce" title="When ON, PreToolUse denies any out-of-scope substitution in this project">'
       +'<input type="checkbox" class="enf" data-id="'+p.id+'"'+(p.enforce_scope===1?' checked':'')+'>'
-      +'Enforce</label>';
+      +'<span>Enforce</span></label>';
     html+='<button class="btn-ghost proj-edit-btn" data-id="'+p.id+'">'
       +(editingProject===p.id?'Done':'Edit scope')+'</button>';
     html+='<button class="btn-ghost proj-remove-btn" data-id="'+p.id+'" '
@@ -1647,11 +1697,35 @@ el("projects-list").addEventListener("change",function(e){
   }
 });
 
+// ---- tab switching ----
+function activateTab(name){
+  var tabs=document.querySelectorAll(".tab");
+  for(var i=0;i<tabs.length;i++){
+    var on=tabs[i].getAttribute("data-tab")===name;
+    tabs[i].classList.toggle("active",on);
+    tabs[i].setAttribute("aria-selected",on?"true":"false");
+  }
+  var panels=document.querySelectorAll(".tab-panel");
+  for(var j=0;j<panels.length;j++){
+    panels[j].classList.toggle("active",panels[j].getAttribute("data-panel")===name);
+  }
+  try{ localStorage.setItem("stm-tab",name); }catch(e){}
+}
+document.querySelectorAll(".tab").forEach(function(btn){
+  btn.addEventListener("click",function(){ activateTab(btn.getAttribute("data-tab")); });
+});
+// Restore last-active tab (survives a refresh).
+try{
+  var saved=localStorage.getItem("stm-tab");
+  if(saved && document.querySelector('.tab[data-tab="'+saved+'"]')) activateTab(saved);
+}catch(e){}
+
 // ---- session signal wiring (?from=<cwd>) ----
 document.addEventListener("click",function(e){
   var ed=e.target.closest("#signal-edit-btn");
   if(ed){
     editingProject=Number(ed.getAttribute("data-pid"));
+    activateTab("projects");
     renderProjects(lastProjects);
     var card=el("projects-card");
     if(card){
@@ -1661,10 +1735,10 @@ document.addEventListener("click",function(e){
     return;
   }
   var cr=e.target.closest("#signal-create-btn");
-  if(cr){ prefillProjectFromCwd(cr.getAttribute("data-cwd")); return; }
+  if(cr){ activateTab("projects"); prefillProjectFromCwd(cr.getAttribute("data-cwd")); return; }
   // Phase 3: "Create project" button from the import banner.
   var ic=e.target.closest("#imp-create-proj-btn");
-  if(ic){ createProjectFromImport(); return; }
+  if(ic){ activateTab("projects"); createProjectFromImport(); return; }
 });
 
 refresh()
