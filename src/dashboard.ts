@@ -510,8 +510,8 @@ export function dashboardHTML(): string {
     monthly spend <b id="spend">$0.00</b>
     <span id="spend-source" class="spend-source"></span>
     <button class="btn-ghost" id="sync-btn" style="margin-left:12px"
-      title="Outbound calls only happen when you click this — only to the providers you've configured.">
-      Sync spend
+      title="Pull this month's real usage cost from each provider's admin API (OpenAI, Anthropic today). Outbound calls happen ONLY when you click this — and ONLY to providers whose admin key you've added.">
+      Fetch live spend
     </button>
   </div>
 </header>
@@ -580,7 +580,7 @@ export function dashboardHTML(): string {
   <section class="card">
     <div class="card-head">
       <h2>Subscriptions</h2>
-      <span class="meta">stm makes outbound calls only when you click Sync spend · only to providers you have configured</span>
+      <span class="meta">click <b>Fetch live spend</b> in the header to pull real usage from provider admin APIs · only to providers you have configured · no other outbound traffic</span>
     </div>
     <div class="table-wrap">
       <table>
