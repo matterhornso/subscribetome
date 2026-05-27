@@ -254,16 +254,38 @@ export function dashboardHTML(): string {
   .proj-pills .empty {
     font-size:12.5px; color:var(--text-dim); font-style:italic;
   }
+  /* Enforce-scope as a real toggle switch (not a checkbox pill) — the
+     pill+button cluster previously had matching transparent borders so
+     "Enforce" and "Edit scope" text appeared to overlap. A track-and-
+     thumb switch is visually distinct from the adjacent ghost buttons. */
   .proj-enforce {
     display:inline-flex; align-items:center; gap:8px;
     font-size:12px; color:var(--text-muted);
-    padding:6px 12px; border:1px solid var(--border-strong);
-    border-radius:var(--r-sm); cursor:pointer;
-    transition:border-color .15s var(--ease), color .15s var(--ease);
+    cursor:pointer; user-select:none;
+    padding:0 4px;
+    transition:color .15s var(--ease);
   }
-  .proj-enforce:hover { border-color:var(--ink-600); color:var(--text); }
-  .proj-enforce input { accent-color:var(--emerald-400); margin:0; }
-  .proj-enforce:has(input:checked) { color:var(--primary); border-color:rgba(52,211,154,.35); }
+  .proj-enforce:hover { color:var(--text); }
+  .proj-enforce input {
+    appearance:none; -webkit-appearance:none;
+    position:relative;
+    width:32px; height:18px; border-radius:999px;
+    background:var(--ink-700); border:1px solid var(--border-strong);
+    margin:0; cursor:pointer; flex:none;
+    transition:background .15s var(--ease), border-color .15s var(--ease);
+  }
+  .proj-enforce input::after {
+    content:""; position:absolute;
+    top:50%; left:2px; transform:translateY(-50%);
+    width:12px; height:12px; border-radius:50%;
+    background:var(--text-dim);
+    transition:left .15s var(--ease), background .15s var(--ease);
+  }
+  .proj-enforce input:checked {
+    background:rgba(52,211,154,.18); border-color:var(--primary);
+  }
+  .proj-enforce input:checked::after { left:16px; background:var(--primary); }
+  .proj-enforce:has(input:checked) { color:var(--primary); }
   .proj-edit {
     margin-top:calc(var(--space)*3); padding-top:calc(var(--space)*3);
     border-top:1px solid var(--border);
@@ -505,44 +527,6 @@ export function dashboardHTML(): string {
   </div>
 
   <div class="tab-panel active" data-panel="keys" role="tabpanel">
-  <section id="browse-services" class="card">
-    <div class="card-head">
-      <h2>Browse services</h2>
-      <span class="meta">50 pre-configured · click to open API-keys page</span>
-    </div>
-    <p class="browse-intro">
-      Pick what you want to wire up. Each tile opens the provider's
-      API-keys page in a new tab and pre-arms the Add keys form below —
-      paste the key when you come back.
-    </p>
-    <div id="svc-categories"></div>
-  </section>
-
-  <section id="add-keys-card" class="card">
-    <div class="card-head"><h2>Add keys</h2></div>
-    <div class="field">
-      <label for="svc">Service</label>
-      <select id="svc"></select>
-    </div>
-    <div id="svc-fields"></div>
-    <div class="grid cols-3" style="margin-top:16px">
-      <div class="field"><label for="k-plan">Plan (optional)</label>
-        <input id="k-plan" placeholder="Pro" autocomplete="off"></div>
-      <div class="field"><label for="k-cost">Monthly cost USD (optional)</label>
-        <input id="k-cost" type="number" min="0" step="0.01" placeholder="20"></div>
-      <div class="field"><label for="k-renews">Renews on (optional)</label>
-        <input id="k-renews" type="date"></div>
-    </div>
-    <div class="btn-row">
-      <button class="btn-primary" id="add-btn">Add</button>
-      <span id="add-msg" class="msg"></span>
-    </div>
-    <p class="note">Secrets go straight to your macOS Keychain — never the Claude Code
-      chat. Pick a service for its standard fields, or "Other" for a custom one; fill
-      only the fields you have. You and the model only ever see each
-      <code>{{stm:tool:label}}</code> placeholder.</p>
-  </section>
-
   <section class="card">
     <div class="card-head"><h2>API keys</h2><span class="meta">Click a placeholder to copy</span></div>
     <div class="table-wrap">
@@ -564,6 +548,46 @@ export function dashboardHTML(): string {
       </table>
     </div>
     <div id="sync-log" class="sync-log" style="display:none"></div>
+  </section>
+
+  <section id="add-keys-card" class="card">
+    <div class="card-head"><h2>Add keys</h2></div>
+    <div class="field">
+      <label for="svc">Service</label>
+      <select id="svc"></select>
+    </div>
+    <div id="svc-fields"></div>
+    <div class="grid cols-3" style="margin-top:16px">
+      <div class="field"><label for="k-plan">Plan (optional)</label>
+        <input id="k-plan" placeholder="Pro" autocomplete="off"></div>
+      <div class="field"><label for="k-cost">Monthly cost USD (optional)</label>
+        <input id="k-cost" type="number" min="0" step="0.01" placeholder="20"></div>
+      <div class="field"><label for="k-renews">Renews on (optional)</label>
+        <input id="k-renews" type="date"></div>
+    </div>
+    <div class="btn-row">
+      <button class="btn-primary" id="add-btn">Add</button>
+      <span id="add-msg" class="msg"></span>
+    </div>
+    <p class="note">Secrets go straight to your OS keychain — never the Claude Code
+      chat. Pick a service for its standard fields, or "Other" for a custom one; fill
+      only the fields you have. You and the model only ever see each
+      <code>{{stm:tool:label}}</code> placeholder.</p>
+  </section>
+
+  <section id="browse-services" class="card">
+    <div class="card-head" style="cursor:pointer" id="browse-head">
+      <h2><span id="browse-caret" style="display:inline-block;width:14px;transition:transform .15s var(--ease)">▸</span> Browse services</h2>
+      <span class="meta">50 pre-configured · click a tile to pre-arm the form above</span>
+    </div>
+    <div id="browse-body" style="display:none">
+      <p class="browse-intro">
+        Pick what you want to wire up. Each tile opens the provider's
+        API-keys page in a new tab and pre-arms the Add keys form above —
+        paste the key when you come back.
+      </p>
+      <div id="svc-categories"></div>
+    </div>
   </section>
   </div><!-- /tab-panel keys -->
 
@@ -1391,7 +1415,7 @@ function renderSvcFields(){
       +'<input id="o-label" value="default" autocomplete="off" spellcheck="false"></div></div>'
       +'<div class="field" style="margin-top:16px"><label for="o-value">Secret value</label>'
       +'<input id="o-value" type="password" autocomplete="off" '
-      +'placeholder="paste it \\u2014 goes straight to your macOS Keychain"></div>';
+      +'placeholder="paste it \\u2014 goes straight to your OS keychain"></div>';
     return;
   }
   var svc=CATALOG[Number(v)];
@@ -1696,6 +1720,26 @@ el("projects-list").addEventListener("change",function(e){
     return;
   }
 });
+
+// ---- Browse services collapse/expand ----
+(function(){
+  var head=document.getElementById("browse-head");
+  var body=document.getElementById("browse-body");
+  var caret=document.getElementById("browse-caret");
+  if(!head||!body||!caret) return;
+  function applyState(open){
+    body.style.display = open ? "block" : "none";
+    caret.style.transform = open ? "rotate(90deg)" : "rotate(0deg)";
+    try{ localStorage.setItem("stm-browse-open", open ? "1" : "0"); }catch(e){}
+  }
+  head.addEventListener("click",function(){
+    applyState(body.style.display==="none");
+  });
+  // Restore the user's last choice; default to collapsed.
+  var saved="0";
+  try{ saved=localStorage.getItem("stm-browse-open")||"0"; }catch(e){}
+  applyState(saved==="1");
+})();
 
 // ---- tab switching ----
 function activateTab(name){
