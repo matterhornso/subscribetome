@@ -398,6 +398,43 @@
   }
   .feature h3 em { font-style:italic; color:var(--acc); }
 
+  /* ===== coming soon callout ===== */
+  .coming { margin-top:48px; }
+  .coming-card {
+    border:1px dashed var(--line-2); border-radius:14px;
+    background:linear-gradient(180deg,var(--bg-2),var(--bg) 80%);
+    padding:32px 36px;
+    display:grid; grid-template-columns:auto 1fr; gap:24px;
+    align-items:start;
+  }
+  @media (max-width:680px){
+    .coming-card { grid-template-columns:1fr; gap:14px; padding:24px; }
+  }
+  .coming-tag {
+    display:inline-flex; align-items:center; gap:7px;
+    font-size:11px; letter-spacing:1.8px; text-transform:uppercase;
+    border:1px solid rgba(232,137,94,.34);
+    color:var(--warn); border-radius:999px;
+    padding:6px 13px; white-space:nowrap; align-self:start;
+  }
+  .coming-tag .d { width:6px; height:6px; border-radius:50%; background:currentColor; }
+  .coming-body h3 {
+    font-family:var(--serif); font-weight:400; font-size:clamp(22px,3vw,30px);
+    line-height:1.18; letter-spacing:-.2px; margin:0;
+  }
+  .coming-body h3 em { font-style:italic; color:var(--acc); }
+  .coming-body p {
+    margin:14px 0 0; color:var(--ink-dim); font-size:14px; line-height:1.7;
+    max-width:60ch;
+  }
+  .coming-body p b { color:var(--ink); font-weight:500; }
+  .coming-cta {
+    margin-top:18px; display:inline-flex; gap:7px;
+    align-items:center; font-size:12.5px; color:var(--acc);
+    text-decoration:none;
+  }
+  .coming-cta:hover { text-decoration:underline; }
+
   /* ===== trust strip + footer ===== */
   .strip {
     margin-top:60px; border-top:1px solid var(--line); border-bottom:1px solid var(--line);
@@ -571,6 +608,21 @@
     <div class="feature">
       <div class="shot"><img src="screenshots/browse-services.png" alt="The Browse Services panel — AI &amp; LLM, Database, Hosting, Auth, Payments tiles" loading="lazy"></div>
       <h3>Pick a key from <em>50 pre-configured services</em> at STM.</h3>
+    </div>
+  </div>
+</div>
+
+<!-- COMING SOON — browser extension teaser -->
+<div class="bound coming">
+  <div class="coming-card">
+    <span class="coming-tag"><span class="d"></span>Coming soon</span>
+    <div class="coming-body">
+      <h3>Browser extension — <em>one-click capture</em> from your provider's dashboard.</h3>
+      <p>
+        Today: generate an API key on OpenAI or Stripe, copy it, switch tabs to the stm dashboard, paste it.
+        Tomorrow: click <b>stm</b> in your browser bar from the provider's page, the key flows straight to the OS keychain — never to the clipboard, never to a chat.
+      </p>
+      <a class="coming-cta" href="https://github.com/matterhornso/subscribetome/issues">Want this sooner? Open an issue on GitHub →</a>
     </div>
   </div>
 </div>
