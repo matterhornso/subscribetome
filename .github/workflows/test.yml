@@ -54,7 +54,7 @@ jobs:
   #    test.skip`.
   # ─────────────────────────────────────────────────────────────────────────
   unit-linux:
-    name: Unit tests · Linux (injected paths)
+    name: Unit tests · Linux (encrypted-file tier)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -66,7 +66,17 @@ jobs:
           bun-version: latest
 
       - name: Run bun test
+        # Linux GHA runners ship without libsecret/keyring or `pass`, so the
+        # Tier 1 + Tier 2 backends are unreachable. Tier 3 (PBKDF2-SHA512
+        # 600k + AES-256-GCM) is opt-in by design — the resolver REFUSES to
+        # silently downgrade to it, which is the load-bearing
+        # never-silent-fallback invariant. Opt into it explicitly here so
+        # the Linux box gets a real keystore for the test suite.
         run: bun test
+        env:
+          STM_KEYSTORE: encrypted-file
+          STM_ALLOW_FILE_BACKEND: "1"
+          STM_FILE_PASSPHRASE: ci-test-passphrase-do-not-reuse
 
   # ─────────────────────────────────────────────────────────────────────────
   # 3. Playwright UI suite — drives the live dashboard daemon and asserts
