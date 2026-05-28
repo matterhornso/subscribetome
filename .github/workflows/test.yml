@@ -1,0 +1,115 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  # Manual trigger from the Actions tab — useful after a docs-only push.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One CI run per ref. A new push cancels the older in-flight run on the same
+# branch. This keeps the queue clean on rapid pushes.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ─────────────────────────────────────────────────────────────────────────
+  # 1. Unit suite on macOS — exercises the real Security.framework FFI path
+  #    (mac-real-ffi.test.ts, store.test.ts, vault-snapshot.test.ts) AND the
+  #    cross-platform tests via injected fakes.
+  # ─────────────────────────────────────────────────────────────────────────
+  unit-macos:
+    name: Unit tests · macOS
+    runs-on: macos-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Print versions
+        run: |
+          bun --version
+          sw_vers || true
+
+      - name: Run bun test
+        run: bun test
+        env:
+          # Match the test suite's expectation. mac-ffi tests write under
+          # this service name and clean up in afterAll().
+          STM_KEYCHAIN_SERVICE: subscribetome-test
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # 2. Unit suite on Linux — confirms the cross-platform tests (with injected
+  #    fakes) stay green even when the macOS Security framework isn't
+  #    available. mac-ffi tests skip themselves via `isDarwin ? test :
+  #    test.skip`.
+  # ─────────────────────────────────────────────────────────────────────────
+  unit-linux:
+    name: Unit tests · Linux (injected paths)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Run bun test
+        run: bun test
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # 3. Playwright UI suite — drives the live dashboard daemon and asserts
+  #    every load-bearing UX path (token auth, DNS-rebind defense, all four
+  #    tabs, the Enforce-toggle layout fix, copy-to-clipboard, …).
+  # ─────────────────────────────────────────────────────────────────────────
+  ui-macos:
+    name: UI tests · Playwright (macOS)
+    runs-on: macos-latest
+    # Don't waste cycles on a Playwright run when the unit suite is already
+    # red — that almost always means the dashboard would be broken anyway.
+    needs: unit-macos
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Caches/ms-playwright
+          # Bump this key when bumping Playwright. The version string in
+          # tests-ui/dashboard.spec.mjs is the source of truth.
+          key: playwright-${{ runner.os }}-1.58
+
+      - name: Install Playwright + Chromium
+        run: bunx --bun playwright install chromium
+
+      - name: Run UI suite
+        run: bun run tests-ui/run.mjs
+
+      # If the suite failed, ship the visual baselines back to the user so
+      # they can see what the dashboard actually rendered. Saves the
+      # "works on my machine" round-trip.
+      - name: Upload visual baselines on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-screenshots-on-failure
+          path: /tmp/stm-ui-test-*.png
+          retention-days: 7
+          if-no-files-found: ignore

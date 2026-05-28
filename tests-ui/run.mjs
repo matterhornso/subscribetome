@@ -115,7 +115,7 @@ async function teardown() {
 let suiteCode = 0;
 try {
   await setup();
-  const r = spawnSync("bun", ["run", `${ROOT}/tests-ui/dashboard.spec.mjs`], {
+  const r = spawnSync("bun", ["run", `${ROOT}/tests-ui/dashboard.suite.mjs`], {
     stdio: "inherit",
     encoding: "utf8",
   });

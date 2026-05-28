@@ -1,5 +1,7 @@
 # subscribetome
 
+[![test](https://github.com/matterhornso/subscribetome/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/matterhornso/subscribetome/actions/workflows/test.yml)
+
 **Your AI keys in the OS keychain. Claude Code uses them — without ever seeing them.**
 
 The model writes `{{stm:openai:default}}`. The real key is swapped in at the moment the command runs. Keys never touch the chat.
