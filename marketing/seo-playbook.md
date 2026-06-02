@@ -104,7 +104,7 @@ Whenever `docs/` changes, re-ping IndexNow to refresh Bing's copy. From
 the repo root:
 
 ```bash
-KEY=dc0bceeecb314d1fa5504e9c04e88a17  # in docs/${KEY}.txt
+KEY="dc0bceeecb314d1fa5504e9c04e88a17"  # in docs/${KEY}.txt
 curl -sS -X POST "https://api.indexnow.org/IndexNow" \
   -H "Content-Type: application/json" \
   -d "{

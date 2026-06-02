@@ -306,7 +306,7 @@ codex
 # EXPECTED: Codex prompts to trust the hook on first launch. Press y.
 
 # 4. Inside the session, paste a fake-but-shaped key into the prompt:
-#   prompt: "here's my key: sk-fakeFAKE1234567890fakeFAKE1234567890"
+#   prompt: "here's my key: sk-fakeFAKE1234…fakeFAKE1234"  (a full-length sk-… key)
 # EXPECTED: the prompt is BLOCKED. stderr message from the
 # UserPromptSubmit hook tells the model to use the {{stm:...}}
 # placeholder instead.
