@@ -10,6 +10,15 @@ const KC = process.env.STM_KEYCHAIN_SERVICE || "subscribetome-test";
 const CLI = join(import.meta.dir, "..", "src", "cli.ts");
 const ENV = { ...process.env, STM_DB: DB, STM_KEYCHAIN_SERVICE: KC };
 
+// Drop any inherited STM_POSTTOOLUSE_MODE. The block-mode tests below spawn
+// hooks via runHook (which spreads this ENV) and assert the DEFAULT posture
+// (exit 2). If the operator's shell exports STM_POSTTOOLUSE_MODE=warn, that
+// value would leak into the subprocess and flip the hook to warn (exit 0),
+// failing those tests for an environmental reason rather than a real
+// regression. The warn-mode tests set the var explicitly via runHookWithEnv,
+// so stripping it from the base env doesn't weaken their coverage.
+delete (ENV as Record<string, string | undefined>).STM_POSTTOOLUSE_MODE;
+
 // Point THIS process at the same keychain service the spawned hooks use (they
 // get STM_KEYCHAIN_SERVICE via ENV). keychainService() reads the env on each
 // call, so the key seeded below in-process and the keys the hooks resolve in a
