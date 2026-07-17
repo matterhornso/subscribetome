@@ -1,7 +1,8 @@
 # Spec — STM as a public product: research findings and plan
 
-**Status:** PLANNING — no code. **Gate 0 PASSED (0.1 / 0.2 / 0.3).** Next gate is demand (§4, Gate 1).
-**Last updated:** 2026-07-16
+**Status:** PLANNING — no code. **Gate 0 PASSED (0.1 / 0.2 / 0.3).** Permission is settled; the mechanism is safe.
+**Two open blockers before Gate 1 is worth running:** the segment decision (§2.5.1 — 4B looks wrong) and the data-source trilemma (§3.4 — unsolved).
+**Last updated:** 2026-07-17 (full-field competitive sweep, ~45 products — materially revised §2.5)
 **Research basis:** two adversarially-verified research passes (214 agents, ~12M tokens, 3-vote refutation per claim), plus three Gate 0 primary-source verifications (§2.6). Raw reports: session task outputs `wcvg7bt89` (payments/regulatory), `wbtx9uwwx` (platform/competitive).
 
 This document exists because the ask — "make STM a public-facing site, and the way
@@ -64,7 +65,7 @@ The four decisions were answered **1C / 2A / 3B→A / 4B**. Verdict on each:
 | 1 | **C** — track now, move money later | **Half-invalid.** "Track now" is right. "Move later" is not a deferred build; it is a different company. | Blocked by Directory Policy §4.A *and* Stripe's use-case list. |
 | 2 | **A** — hybrid, secrets local + metadata sync | **Unevidenced — do not commit yet. And now hard-constrained.** | Research question #5 returned zero verified claims: no precedent, no cost estimate, no market-reception data. Gate 0.2 adds a live constraint: Consumer Terms bar sharing the API key "with anyone else," so 2A is viable **only** if secrets genuinely never sync. The hybrid line is now contractual, not just principled. |
 | 3 | **B→A** — read spend, then spend | **B viable. A blocked.** | B is directory-legal and silent-on. A trips §4.A, *and* the rails don't offload injection risk — you'd own it yourself. |
-| 4 | **B** — teams/startups | **Viable but contested — and the competitor is not who we thought.** | A YC W26 company is here. But Gate 0.1 says the structural competitor is the FinOps layer (Datadog/CloudZero/Zylo/Vendr/Ramp). |
+| 4 | **B** — teams/startups | 🔴 **NEEDS RE-OPENING. The evidence points at 4A.** | 4B is occupied: 1Password shipped AI spend there 2026-07-14 (free, bundled), Ramp GA'd 2026-07-16, Zylo in April. The **only** structurally defensible ground is the individual developer — locked out of every incumbent by incorporation requirements and $25–50k balance floors that are *regulatory*, not commercial (§2.5.1). But 4A's price ceiling looks like **$7.99 one-time**. The moat and the money are in different segments. |
 
 The correction that matters: **1C was chosen specifically to keep the path to phase 2
 open. That path is closed.** If phase 2 is the point, this is the wrong plan, and the
@@ -189,14 +190,33 @@ of the same card, since the truncated part enables hash recovery.
   best-effort estimation, eventually consistent, 20 rules max, known-pricing models.)
 - **BYOK is commoditized.** Vercel, OpenRouter, Portkey, LiteLLM all ship it.
   *STM's key-management wedge is not differentiated at the gateway layer.*
-- **The subscription gap is real — and architectural.** A gateway only sees traffic
-  proxied through it. Claude Pro/Max, ChatGPT Plus, and Cursor seats are
-  OAuth/session-authed and **never transit a BYOK gateway**. Independent non-vendor
-  corroboration (Torii, 2026): proxy/SDK tools "do not see the ChatGPT Team seats,
-  Claude.ai signups, Copilot licenses, and Gemini Workspace add-ons employees buy
-  outside engineering."
-  ⚠️ **Medium confidence — verified against Cloudflare and Vercel only.** OpenRouter,
-  LiteLLM, Portkey, Helicone, Braintrust, Requesty were not individually checked.
+- **The subscription gap — REVISED 2026-07-17 after a full-field sweep (~45 products).**
+  The original two-vendor claim was too broad. **Two of its three clauses are retired:**
+
+  | Original clause | Status |
+  |---|---|
+  | "Gateways track only metered API cost" | ❌ **Retired.** Datadog CCM, Vantage, Finout, Zylo, Ramp all ingest flat AI seat cost as a real dollar line item — from the card/SaaS side, often free, card data already attached. |
+  | "Nothing tracks flat subscriptions + renewal dates" | ❌ **Retired.** Renewal tracking is this category's *core business*: Cledara, 1Password/Trelica, Ramp Vendor Mgmt, Sastrify, Productiv. |
+  | "Nothing knows which card funds which subscription" | ⚠️ **False for Cledara** — card-per-subscription is its architecture, because *Cledara issues the card*. Unverified for 1Password. Holds elsewhere. |
+
+  **What actually survives, stated precisely:**
+  > **None models a subscription as a term.** No product knows your Claude Max renews
+  > on the 14th, or which card funds it. Generic SaaS tools do renewals for generic
+  > SaaS; AI-specific tools do metered tokens. **Nobody joins them.**
+  > Claude Max/Pro appear in **zero product docs across all vendors checked.**
+
+  **Why it holds structurally — use this, not a feature-gap argument:**
+  > **A gateway prices requests; a seat emits no request.**
+
+  Set request volume to zero: every metered product reports $0 and the Max seat still
+  bills $200. Cledara is the sole renewal+card exception *because it issues the card* —
+  everyone else reads admin APIs and SSO logs, which never expose the funding
+  instrument. **That is the structural key to the whole category.**
+
+  **Citable competitor admissions** (verified verbatim — unlike the Cledara quote, §7):
+  - Finout docs: Codex seat fees *"never appear in the Analytics API."*
+  - Torii: *"not your invoice amount. Most AI tools run on flat subscriptions."*
+  - TrueFoundry on routing claude.ai: gives audit *"but not token-level cost tracking."*
 - **A competitor is contesting it.** **Carrot Labs / SuperPenguin** (YC W26, 2 people,
   live, Free / $30 / $200 / $20K+) tracks ~14 providers plus "100+ via LiteLLM,"
   advertises "invoice reconciliation," lists Cursor. **Their own blog names the gap**:
@@ -207,6 +227,67 @@ of the same card, since the truncated part enables hash recovery.
   Enterprise Analytics API exports to Datadog and CloudZero — they treat aggregation
   as a **partner** surface they won't build. Favorable for the wedge; but it means STM
   competes with Datadog/CloudZero/Zylo/Vendr/Ramp, not with Claude Code.
+
+### 2.5.1 The segment problem — this contradicts decision 4B
+
+**The individual developer is structurally excluded from every incumbent:**
+
+| Vendor | Floor to buy |
+|---|---|
+| Ramp | incorporation + **~$25,000** min. bank balance |
+| Brex | incorporation + **$50,000** |
+| Cledara | £100/mo + company verification, ~25-staff floor |
+| Sastrify | **€12.5k/yr** |
+| Zylo · Torii · Productiv · Vertice · 1Password SaaS Manager | **no published price — demo/quote only** |
+
+**A solo dev with a Claude Max seat on a personal card cannot buy any of these at any
+price.** For Ramp and Brex this is not pricing — it is *regulatory underwriting*. They
+cannot close it without becoming consumer fintechs.
+
+**So the defensible ground is 4A (individuals), which was explicitly rejected.** 4B puts
+STM in a room with 1Password (free, bundled, shipped 2026-07-14), Ramp (GA 2026-07-16),
+and Zylo — offering nothing they don't. **This decision needs re-opening.** The moat is
+in 4A; the willingness-to-pay is not (see Tokens 4 Breakfast: $7.99 **one-time**).
+
+**The honest reformulation:**
+> Everything that tracks flat subscriptions with renewal dates is an enterprise
+> procurement tool sold to finance via a rep. Everything AI-specific tracks metered
+> tokens, because that's what admin APIs expose. **Nothing an individual developer can
+> buy knows what their Claude Max seat costs, when it renews, or which card pays it.**
+
+### 2.5.2 Named competitors, ranked by threat
+
+1. **1Password — AI Spend & Consumption Management, shipped 2026-07-14.** Public
+   preview, GA fall 2026, **free to SaaS Manager customers**, covers Anthropic/Cursor/
+   OpenAI. Trelica (acq. 2025-01) already does contracts, cost-per-unit, auto-renew
+   flags, and 90-day renewal dashboards. **Closest anyone comes.** Deliberately rejects
+   card/invoice inference — connects to admin APIs *"rather than inferring spend from
+   card transactions, invoices, or manual exports."* Enterprise, quote-only.
+2. **Ramp — AI Token Spend GA 2026-07-16.** Early access → GA in **3 months**. Vendor
+   Management separately tracks renewals + *"associated cards & funds"* — but with
+   **zero AI awareness**, disconnected from the token product. Their own AI Index proves
+   they can already classify "subscriptions vs. coding agents vs. tokens" in the
+   warehouse. **That gap is packaging, not capability.**
+3. **Tokens 4 Breakfast** — macOS menu bar, **$7.99 one-time**, local-first, reads
+   `~/.claude/projects/` JSONL. FAQ (verified): *"a subscription tracker where you can
+   add flat-rate subscriptions like Claude Pro, ChatGPT Plus, Cursor Pro, GitHub
+   Copilot."* Reaches the dollar line item; **misses renewal date and card**; entry is
+   manual. **This is the price ceiling for 4A.**
+4. **`nkur22/subscription-tracker` — 0 stars, last commit Mar 2026.** A Claude skill
+   scanning Gmail via MCP, computing renewals from payment history. **The only thing
+   hitting the full crux.** That a 0★ hobby project is the closest competitor is the
+   strongest evidence the position is unoccupied — *and* it confirms the only mechanism
+   that reaches consumer plans is **email/receipt ingestion**.
+
+### 2.5.3 ⚠️ Claude Code "integrations" are anti-correlated with this thesis
+
+Respan, Bifrost, Martian, and Portkey all support Claude Code by rewriting
+`ANTHROPIC_BASE_URL` to bill through **their** key. Bifrost states it: *"No credits are
+needed on the Anthropic account since billing goes through your Bifrost virtual key."*
+
+**They don't track the $200/mo Max seat — they abolish it.** These are *substitutes
+competing for the same budget*, not competitors with a feature gap. If they win, the
+subscription STM proposes to track stops existing.
 
 ### 2.6 Gate 0 verification results
 
@@ -348,7 +429,38 @@ Gate 0.1 sharpens the question. The competitor is the FinOps layer, so the inter
 question is **not** "would you use a dev tool for this" — it is **"why isn't this
 already in your FinOps stack, and what does its absence cost you?"**
 
-### 3.4 Also unresearched
+### 3.4 The data-source trilemma — UNSOLVED, and it gates Phase 1
+
+Surfaced by the 2026-07-17 sweep; absent from both earlier passes. **Phase 1 says "add
+renewal dates + funding card." From where?**
+
+> **For an individual Claude Max subscriber there is no billing API exposing "$200/mo,
+> renews the 14th."** Every billing API — GitHub Copilot seats, Cursor Admin,
+> Anthropic Usage & Cost — is org/enterprise-scoped. Consumer tiers have no Admin API
+> to connect. That is the structural reason no vendor names Claude Pro/Max.
+
+Three possible sources. All three are bad:
+
+| Source | Problem |
+|---|---|
+| **Manual entry** | A spreadsheet with extra steps — the exact critique that killed option 1A. Tokens 4 Breakfast already does this for **$7.99 one-time**. |
+| **Admin APIs** | Org-scoped → teams only → the room where 1Password just landed, free and bundled. |
+| **Email / receipt parsing** | The only mechanism that reaches consumer plans (confirmed by the 0★ Gmail-MCP project). **Requires reading the user's email — identity-destroying for a tool whose pitch is "zero telemetry, local-only."** |
+
+**This is now the hardest unsolved problem in the plan, ahead of demand.** Gate 1 must
+ask it directly: *where would the renewal date come from?* If ten people answer "I'd
+type it in," the product is a $7.99 menu-bar app.
+
+⚠️ **Note the pattern before choosing "card/invoice ingestion" as the differentiator:**
+SuperPenguin named the gap and didn't ship it. 1Password designed it out *explicitly*.
+Two competent teams looked at card/invoice inference and declined. That is evidence
+about the gap's desirability, not merely its availability.
+
+**One tailwind, for balance:** Amex added a **$300/yr ChatGPT Business statement credit
+(2026-05-12)** — the first named AI benefit on a major US card, making card-level AI
+subscription attribution newly legible.
+
+### 3.5 Also unresearched
 
 - **Trust model (Q2/2A):** no evidence on E2E-sync precedent (1Password, Obsidian,
   Bitwarden, Standard Notes), on developer backlash to local-first tools adding sync, on
@@ -388,6 +500,15 @@ already in your FinOps stack, and what does its absence cost you?"**
       just not by a dev tool. That is a result, not an objection to overcome.
 - [ ] **1.3** Falsifiable bar, set now, before we're invested: **if fewer than 3 of 10
       describe this unprompted as a real recurring problem, do not build.**
+- [ ] **1.4 NEW — resolve the segment first (§2.5.1).** 4B is occupied. Interview *both*
+      4A and 4B and let the answers pick, rather than defending a choice made before the
+      sweep. Ask 4B directly: **"you already have 1Password — why isn't this solved?"**
+- [ ] **1.5 NEW — ask the data-source question (§3.4):** *"where would the renewal date
+      come from?"* This gates the build harder than demand does. Ten "I'd type it in"
+      answers means the product is a $7.99 menu-bar app that already exists.
+
+**Prerequisite before Gate 1 is worth running:** settle §2.5.1 and §3.4. Interviewing
+for a segment that's occupied, about a feature with no data source, wastes the two weeks.
 
 ### Phase 1 — The ledger (only if Gates 0+1 pass)
 
@@ -451,6 +572,15 @@ discovery. Until one is true, **this is not a roadmap item.**
    it's unwanted, not because it's unserved.
 4. **SuperPenguin ships subscription/seat/renewal tracking.** They've published the gap.
    Their shipping it doesn't make us wrong — it makes us late, with no moat.
+7. **NEW — 1Password ships a self-serve Business tier of SaaS Manager.** The 4A moat is
+   *go-to-market, not technical*: enterprise SaaS-management vendors have never sold
+   self-serve to individuals. That moat evaporates the day one of them tries.
+8. **NEW — the gateways abolish the seat.** Bifrost/Respan/Martian/Portkey "support
+   Claude Code" by routing `ANTHROPIC_BASE_URL` through their own billing (§2.5.3). If
+   that pattern wins, the flat subscription STM proposes to track **stops existing**.
+   This kills the wedge without anyone building a competing feature.
+9. **NEW — the data-source question has no good answer** (§3.4). If Gate 1 says "I'd
+   type it in," the honest product is a $7.99 menu-bar app, and one already exists.
 5. **Any breach or trust erosion.** The zero-telemetry claim is the only asset that
    isn't commoditized.
 6. **NEW — the monetization silence closes.** The Directory Terms are amendable without
@@ -470,6 +600,11 @@ differentiation**:
 - Directory Policy is three months old and **self-describes as mutable**: "We may
   revisit these restrictions as our Directories and Anthropic Services evolve."
 - SuperPenguin is a 2-person W26 company that has **already publicly named the gap**.
+- **1Password shipped AI spend 2026-07-14. Ramp GA'd 2026-07-16.** Both landed *during
+  the drafting of this document.* Ramp went early-access → GA in **three months**;
+  1Password went contracts → shadow-AI → token spend in 18. **Brex has pre-announced
+  intent** (internal "Magpie" dashboard) — treat its absence as a roadmap item, not a
+  gap. The category is consolidating faster than this plan can be executed.
 - Stripe's Sessions 2026 *previewed* self-serve issuing, Issuing for agents, and
   consumer debit — all announcement-stage, any of which would change §2.2.
 
@@ -481,8 +616,30 @@ differentiation**:
 
 Stated so a future reader doesn't over-trust this document:
 
-- The subscription-gap finding is **medium confidence, two vendors** (Cloudflare,
-  Vercel). Not a market sweep.
+- ⛔ **DO NOT PUBLISH these three — they did not survive verification:**
+  1. The Cledara line *"subscription-based personal accounts cannot be connected."*
+     `help.cledara.com` returns **Cloudflare 403** to every fetch; this is
+     search-snippet-sourced, not verified. It was briefly cited as the strongest
+     evidence for the thesis and is in fact the least citable. Needs a manual browser
+     pass before any external use.
+  2. A quote attributed to **Finout's Anthropic page** — could not be reproduced. (The
+     *Codex* equivalent — seat fees *"never appear in the Analytics API"* — **is**
+     verified verbatim and is safe to cite.)
+  3. A **DigitalOcean acquisition of Arch/Katanemo** — unverified; archgw.com carries
+     no such notice.
+- The subscription-gap finding was **revised twice**. The original was two vendors
+  (Cloudflare, Vercel) and **too broad — two of its three clauses are now retired**
+  (§2.5). The surviving claim is narrow: *nothing models an AI subscription as a term.*
+  It rests on an **architectural constraint two vendors confirm in writing**, not on
+  silence — which is why it survives where the broader phrasing didn't.
+- **Vendor catalogs are undocumented across the entire field.** Whether Claude Max /
+  Cursor / Copilot are recognized catalog entries **cannot be determined from public
+  docs for any vendor.** Absence of evidence is genuinely weak here; a trial account is
+  the only way to settle it. Same for **1Password's card↔subscription attribution** —
+  the single most important unresolved competitive question.
+- **Not reached:** Airbase, Navan. **403/404-gated:** Cledara help center, Braintrust
+  proxy docs, CloudEagle (login-gated, marketing-only), Vertice (publishes no docs site
+  at all), all vendor consoles behind login.
 - Gate 0.1's OpenAI soft-cap finding is **sourced from search indexing**;
   help.openai.com 403s to direct fetch. The "they removed the hard cap" narrative comes
   only from secondary blogs with no OpenAI announcement — **do not rely on it.**
