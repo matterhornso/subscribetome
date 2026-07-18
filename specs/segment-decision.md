@@ -122,8 +122,40 @@ incumbents. Key safety is the part a funded competitor built in parallel because
 load-bearing for agentic coding.
 
 **Option C is not "do nothing."** It's: *stop trying to monetize the ledger, and ask
-whether the credential layer is the actual product.* That question has not been
-researched at all. It deserves its own pass before either 4A or 4B gets built.
+whether the credential layer is the actual product.*
+
+**UPDATE 2026-07-17 — Option C has now been researched and the answer is no.** See
+[`option-c-credential-layer.md`](./option-c-credential-layer.md). The mechanism
+converged on by Anthropic and Infisical is **real but crowded**: 1Password shipped a GA
+agent-credential platform (2026-03-17) with OpenAI/Anthropic/Cursor as partners,
+Infisical shipped Agent Vault on a $16M Series A, and Cisco absorbed the closest
+analogue (Astrix) into an identity platform. Demand evidence for the *transcript-leak*
+surface STM defends is **absent** — the measurable pain is git-commit sprawl (0.08% is
+MCP-config), and the platform owner patches its own leaks while documenting the
+mechanism for free (`apiKeyHelper`). Verdict: **feature of an NHI/secrets platform, not
+a standalone business; weak acqui-hire case** (both incumbents already built it).
+
+### The cross-pass pattern — the thing that actually decides this
+
+Three independent, adversarially-verified research passes now exist, and **they rhyme**:
+
+| Thesis | Pass verdict |
+|---|---|
+| **Payments** — STM as the way people pay through AI platforms | 🔴 **Walled.** Anthropic Directory §4.A + Stripe use-case exclusion. |
+| **Subscription tracking** — the AI-spend ledger | 🟡 **Occupied feature.** 1Password/Ramp/Zylo shipped it free/bundled; individual tier is a $7.99 comp. |
+| **Credential safety** — the injection mechanism | 🟡 **Occupied feature.** 1Password/Infisical shipped it; being absorbed into identity platforms. |
+
+**STM keeps landing as a well-built mechanism that is *someone else's feature*, not a
+standalone venture.** That is the single most important finding of the entire effort,
+and no individual pass shows it — only the three together do.
+
+This is **not** "STM is worthless." It is a sharp, working, MIT-licensed tool with a
+genuine architectural edge (command-string substitution has a narrower blast radius than
+the incumbents' env-var injection), whose core mechanism Anthropic documents by name. The
+honest reframe: **stop trying to make STM a company; decide whether it is worth running
+as an excellent open-source tool.** That is a real and respectable answer — just not a
+venture-scale one. The only thing that could overturn it is the one input no pass could
+supply: real users saying they would pay. Gate 1, now demo-able, is the test.
 
 ---
 
