@@ -9,7 +9,7 @@
     {
       "name": "stm",
       "source": "./",
-      "description": "AI API key & subscription manager. Keys are entered out-of-band, stored in the macOS Keychain, and injected into commands by a PreToolUse hook — they never touch the chat.",
+      "description": "AI API key & subscription manager. Keys are entered out-of-band, stored in your OS keychain, and injected into commands by a PreToolUse hook — they never touch the chat.",
       "version": "1.0.0",
       "author": {
         "name": "Abhinav Ramesh"

@@ -124,7 +124,9 @@ The `stm` CLI (on `PATH` once installed):
 
 ```
 stm dashboard           open the localhost web UI
-stm list                keys, subscriptions, monthly spend
+stm list                keys, subscriptions, cards, monthly spend, renewals due
+stm add --tool <t>      add a key (value read from stdin; never on the CLI)
+stm subscription <t>    set plan/cost/renewal + funding card (last-4 only) + cadence
 stm import [dir]        scan .env files for keys to import
 stm revoke <tool> <l>   mark a key revoked
 stm rotate <tool> <l>   open provider dashboard, paste new key, swap in place
@@ -145,6 +147,30 @@ stm stop                stop the dashboard daemon
 stm uninstall           remove all stm data + Codex blocks from this host
 stm --version           print the installed stm version
 ```
+
+### Subscriptions & funding cards
+
+Beyond API keys, `stm` tracks the **subscriptions** behind them — plan, monthly
+cost, renewal date, and **which card funds each one**. Set it from the CLI:
+
+```
+stm subscription runway --plan Unlimited --cost 95 --renews 2026-08-14 \
+                        --card-nickname "Personal Amex" --card-last4 4321
+```
+
+or inline in the dashboard's Subscriptions table. `stm list` then shows a Card
+column and a **RENEWS SOON (next 14 days)** section; the dashboard shows
+renews-soon / overdue badges. Renewal math is local — no polling, no network.
+
+**Card safety.** `stm` stores only a nickname and the **last four digits** — a
+PCI-sanctioned truncation (PCI DSS v4 Req 3.5.1). A value that isn't exactly
+four digits is **rejected, not truncated**, so a full card number never reaches
+the database. `stm` never enters card details into any platform for you.
+
+### Dashboard theme
+
+The dashboard ships light and dark themes. It follows your system preference by
+default; the ☀/☾ toggle in the header switches and remembers your choice.
 
 ### Spend sync — network posture
 

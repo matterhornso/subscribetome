@@ -45,20 +45,34 @@ conversation transcript. Everything below serves that.
 - **The local process table.** While a command with an injected key runs, the
   key is an argv element of that process, briefly visible to a local `ps`.
   This is inherent to passing a secret to a shell command.
-- **A compromised local machine.** Keys live in the macOS Keychain; anything
-  that can read your Keychain (malware running as you, physical access to an
-  unlocked machine) can read them. subscribetome is not a defence against that.
+- **A compromised local machine.** Keys live in your OS keychain (macOS
+  Keychain, Linux Secret Service / `pass` / encrypted file, or Windows
+  Credential Manager — run `stm doctor` to see which is active); anything that
+  can read that store (malware running as you, physical access to an unlocked
+  machine) can read them. subscribetome is not a defence against that.
 - **The provider side.** `stm revoke` is a metadata flag; it does not call a
   provider API to rotate the key. Revoke at the provider too.
 
 ## Data handling
 
-subscribetome has **no servers and no backend**. Nothing is sent anywhere.
+subscribetome has **no servers and no backend of its own**, and **no
+telemetry** — it never phones home. The one exception is deliberate and
+user-initiated: when you run `stm sync` (or click **Fetch live spend**), it
+calls the billing/usage API of **the providers you have configured** — today
+OpenAI and Anthropic — to pull your month-to-date spend, using an admin key
+you added. Nothing is sent in the background, on a schedule, or to us. If you
+never run sync, subscribetome makes zero outbound network calls. (See
+`specs/spend-visibility.md` §2 for the exact rule.)
 
-- Key values: macOS Keychain (service name `subscribetome`), OS-encrypted.
-- Inventory metadata (tool/label/status/cost — never key values): a local
-  SQLite file at `~/.subscribetome/db.sqlite`.
-- The dashboard is a localhost-only page. There is no telemetry.
+- Key values: your OS keychain (service name `subscribetome`), OS-encrypted —
+  never in the database, never in the chat, never in argv logs.
+- Inventory metadata (tool / label / status / cost / renewal date, and the
+  funding **card nickname + last-4** — never a full card number, never a key
+  value): a local SQLite file at `~/.subscribetome/db.sqlite`, mode `0600`.
+  Card data is limited to the last four digits by design (PCI DSS v4 Req 3.5.1
+  truncation); a full card number is rejected, not stored.
+- The dashboard is a localhost-only page, bound to `127.0.0.1` behind a
+  per-run auth token. There is no telemetry.
 
 ## Supported versions
 

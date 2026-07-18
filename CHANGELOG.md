@@ -3,6 +3,32 @@
 All notable changes to subscribetome. This project is pre-1.0; minor versions
 may still change behaviour. Format follows [Keep a Changelog](https://keepachangelog.com).
 
+## [Unreleased]
+
+### Added — funding-card ledger, renewal reminders, light/dark theme
+
+- **Funding-card ledger.** Each subscription can record which card funds it —
+  a nickname plus the **last four digits only**. `stm` never stores a full
+  card number: a value that isn't exactly four digits is rejected, not
+  truncated (PCI DSS v4 Req 3.5.1). Adds a billing cadence field too.
+- **Renewal reminders.** `stm list` now shows a "RENEWS SOON (next 14 days)"
+  section and the dashboard shows renews-soon / overdue badges. Computed
+  locally — no background polling, no network.
+- **`stm subscription <tool>`** — new command to set plan / cost / renewal /
+  funding card / cadence from the CLI (also the agent-facing write surface).
+  `stm list` gains a Card column.
+- **Light/dark dashboard theme.** System-preference default, header toggle,
+  persisted, applied before first paint. Dark remains the default look.
+
+### Fixed
+
+- Light theme rendered several surfaces (Projects, Browse tiles, sync log) as
+  unreadable dark boxes; they now use semantic tokens and adapt correctly.
+- Dashboard edits no longer wipe `billing_cadence` (the daemon now read-merges
+  omitted fields).
+- `stm --cost` rejects non-numeric input instead of silently storing NaN.
+- The local DB is created mode `0600`.
+
 ## [1.0.0] — 2026-05-26
 
 ### Milestone — early-customer release
