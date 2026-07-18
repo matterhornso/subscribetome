@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import { rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Store } from "../src/store.ts";
+import { Store, assertCardLast4 } from "../src/store.ts";
 
 const DB = join(tmpdir(), `stm-test-store-${process.pid}.sqlite`);
 const KC = process.env.STM_KEYCHAIN_SERVICE || "subscribetome-test";
@@ -116,5 +116,111 @@ test("setSubscription returns false for an unknown tool", () => {
   expect(
     s.setSubscription({ name: "ghost-tool", plan: "Pro", monthlyCost: 9, renewsOn: null }),
   ).toBe(false);
+  s.close();
+});
+
+// ---- funding-card ledger (specs/public-product.md Phase 1) ---------------
+
+test("assertCardLast4 accepts 4 digits, null, and empty; rejects everything else", () => {
+  expect(assertCardLast4("4321")).toBe("4321");
+  expect(assertCardLast4(null)).toBe(null);
+  expect(assertCardLast4("")).toBe(null);
+  expect(assertCardLast4(undefined)).toBe(null);
+  // The load-bearing case: a full PAN must be REJECTED, not truncated.
+  expect(() => assertCardLast4("4111111111111111")).toThrow(/4 digits/);
+  expect(() => assertCardLast4("432")).toThrow();
+  expect(() => assertCardLast4("43a1")).toThrow();
+  expect(() => assertCardLast4(" 4321")).toThrow();
+});
+
+test("setSubscription stores and clears funding-card fields", () => {
+  const s = new Store(DB);
+  s.upsertTool({ name: "Runway", displayName: "Runway" });
+  const ok = s.setSubscription({
+    name: "runway",
+    plan: "Unlimited",
+    monthlyCost: 95,
+    renewsOn: "2026-08-14",
+    cardNickname: "Personal Amex",
+    cardLast4: "4321",
+    billingCadence: "monthly",
+  });
+  expect(ok).toBe(true);
+  const t = s.getTool("runway")!;
+  expect(t.card_nickname).toBe("Personal Amex");
+  expect(t.card_last4).toBe("4321");
+  expect(t.billing_cadence).toBe("monthly");
+  // Passing null clears the card fields (the edit form's "remove" path).
+  s.setSubscription({
+    name: "runway",
+    plan: "Unlimited",
+    monthlyCost: 95,
+    renewsOn: "2026-08-14",
+    cardNickname: null,
+    cardLast4: null,
+    billingCadence: null,
+  });
+  const t2 = s.getTool("runway")!;
+  expect(t2.card_nickname).toBe(null);
+  expect(t2.card_last4).toBe(null);
+  s.close();
+});
+
+test("setSubscription rejects a full PAN before writing", () => {
+  const s = new Store(DB);
+  s.upsertTool({ name: "ElevenLabs", displayName: "ElevenLabs" });
+  expect(() =>
+    s.setSubscription({
+      name: "elevenlabs",
+      plan: "Pro",
+      monthlyCost: 22,
+      renewsOn: null,
+      cardLast4: "4111111111111111", // a full card number
+    }),
+  ).toThrow(/4 digits/);
+  // Nothing should have been written to the card field.
+  const t = s.getTool("elevenlabs")!;
+  expect(t.card_last4).toBe(null);
+  s.close();
+});
+
+test("new tools default the funding-card columns to null", () => {
+  const s = new Store(DB);
+  const t = s.upsertTool({ name: "PlainTool", displayName: "PlainTool" });
+  expect(t.card_nickname).toBe(null);
+  expect(t.card_last4).toBe(null);
+  expect(t.billing_cadence).toBe(null);
+  s.close();
+});
+
+test("renewalsDue: overdue, due-soon, and out-of-window sorting", () => {
+  const s = new Store(DB);
+  const ref = new Date(Date.UTC(2026, 6, 17)); // 2026-07-17
+  s.upsertTool({ name: "overdue-sub" });
+  s.setSubscription({ name: "overdue-sub", plan: null, monthlyCost: 10, renewsOn: "2026-07-10" });
+  s.upsertTool({ name: "today-sub" });
+  s.setSubscription({ name: "today-sub", plan: null, monthlyCost: 10, renewsOn: "2026-07-17" });
+  s.upsertTool({ name: "soon-sub" });
+  s.setSubscription({ name: "soon-sub", plan: null, monthlyCost: 10, renewsOn: "2026-07-24" });
+  s.upsertTool({ name: "far-sub" });
+  s.setSubscription({ name: "far-sub", plan: null, monthlyCost: 10, renewsOn: "2026-09-01" });
+  s.upsertTool({ name: "no-renewal-sub" }); // no renews_on -> omitted
+
+  const due = s.renewalsDue(14, ref);
+  const names = due.map((d) => d.name);
+  // far-sub (46d) is outside the 14d window; no-renewal-sub is omitted.
+  expect(names).toEqual(["overdue-sub", "today-sub", "soon-sub"]);
+  expect(due[0].days_until).toBe(-7); // overdue
+  expect(due[1].days_until).toBe(0); // today
+  expect(due[2].days_until).toBe(7);
+  s.close();
+});
+
+test("renewalsDue: empty when nothing is within the window", () => {
+  const s = new Store(DB);
+  const ref = new Date(Date.UTC(2026, 0, 1));
+  s.upsertTool({ name: "future-only" });
+  s.setSubscription({ name: "future-only", plan: null, monthlyCost: 5, renewsOn: "2026-12-31" });
+  expect(s.renewalsDue(30, ref)).toEqual([]);
   s.close();
 });

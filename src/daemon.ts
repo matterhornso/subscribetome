@@ -173,13 +173,21 @@ async function apiRoute(path: string, req: Request, store: Store): Promise<Respo
       b.cost != null && b.cost !== "" && Number.isFinite(Number(b.cost))
         ? Number(b.cost)
         : null;
-    const ok = store.setSubscription({
-      name: b.tool,
-      plan: b.plan ? String(b.plan) : null,
-      monthlyCost: cost,
-      renewsOn: b.renews ? String(b.renews) : null,
-    });
-    return ok ? json({ ok: true }) : json({ error: "no such tool" }, 404);
+    try {
+      const ok = store.setSubscription({
+        name: b.tool,
+        plan: b.plan ? String(b.plan) : null,
+        monthlyCost: cost,
+        renewsOn: b.renews ? String(b.renews) : null,
+        cardNickname: b.cardNickname ? String(b.cardNickname) : null,
+        cardLast4: b.cardLast4 ? String(b.cardLast4) : null,
+        billingCadence: b.cadence ? String(b.cadence) : null,
+      });
+      return ok ? json({ ok: true }) : json({ error: "no such tool" }, 404);
+    } catch (e: any) {
+      // e.g. a card_last4 that isn't 4 digits — surface the guard's message.
+      return json({ error: e?.message ?? String(e) }, 400);
+    }
   }
   if (path === "/api/import/scan" && req.method === "POST") {
     const b: any = await req.json().catch(() => ({}));

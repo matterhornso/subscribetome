@@ -160,6 +160,68 @@ async function addCmd(args: string[]): Promise<void> {
   }
 }
 
+/** Render a funding card for display: "Personal Amex ••4321", or just one part. */
+function fmtCard(nickname: string | null, last4: string | null): string {
+  if (nickname && last4) return `${nickname} ••${last4}`;
+  if (nickname) return nickname;
+  if (last4) return `••${last4}`;
+  return "-";
+}
+
+/**
+ * Set subscription/ledger metadata on a tool: plan, cost, renewal, and the
+ * funding card (nickname + last-4 only). Creates the tool if it doesn't
+ * exist yet, so a subscription can be tracked before any API key is added.
+ * Flags omitted are left unchanged; `--card-last4 ""` clears the card.
+ */
+function subscriptionCmd(args: string[]): void {
+  const { flags, positional } = parseFlags(args);
+  const tool = positional[0] ?? flags.tool ?? "";
+  if (!tool) {
+    process.stderr.write(
+      "usage: stm subscription <tool> [--plan <p>] [--cost <usd>] " +
+        "[--renews <YYYY-MM-DD>]\n" +
+        "                        [--card-nickname <name>] [--card-last4 <4 digits>] " +
+        "[--cadence <monthly|yearly>]\n" +
+        "  Tracks a subscription and which card funds it. stm stores only the\n" +
+        "  last 4 digits + a nickname — never a full card number.\n",
+    );
+    process.exit(1);
+  }
+  const store = new Store();
+  try {
+    store.upsertTool({ name: tool });
+    const cur = store.getTool(tool)!;
+    const has = (k: string) => Object.prototype.hasOwnProperty.call(flags, k);
+    const ok = store.setSubscription({
+      name: tool,
+      plan: has("plan") ? flags.plan : cur.plan,
+      monthlyCost: has("cost") ? Number(flags.cost) : cur.monthly_cost,
+      renewsOn: has("renews") ? flags.renews : cur.renews_on,
+      cardNickname: has("card-nickname") ? flags["card-nickname"] : cur.card_nickname,
+      cardLast4: has("card-last4") ? flags["card-last4"] : cur.card_last4,
+      billingCadence: has("cadence") ? flags.cadence : cur.billing_cadence,
+    });
+    if (!ok) {
+      process.stderr.write(`error: no such tool "${tool}"\n`);
+      process.exit(1);
+    }
+    const t = store.getTool(tool)!;
+    process.stdout.write(
+      `updated ${t.display_name}: ` +
+        `${t.plan ?? "no plan"}, ` +
+        `${t.monthly_cost != null ? "$" + t.monthly_cost + "/mo" : "no cost"}, ` +
+        `card ${fmtCard(t.card_nickname, t.card_last4)}, ` +
+        `renews ${t.renews_on ?? "-"}\n`,
+    );
+  } catch (e: any) {
+    process.stderr.write(`error: ${e?.message ?? e}\n`);
+    process.exit(1);
+  } finally {
+    store.close();
+  }
+}
+
 function listCmd(): void {
   const store = new Store();
   try {
@@ -184,17 +246,36 @@ function listCmd(): void {
     }
     process.stdout.write("\nSUBSCRIPTIONS\n");
     printTable(
-      ["TOOL", "PLAN", "MONTHLY", "RENEWS"],
+      ["TOOL", "PLAN", "MONTHLY", "CARD", "RENEWS"],
       tools.map((t) => [
         t.display_name,
         t.plan ?? "-",
         t.monthly_cost != null ? `$${t.monthly_cost}` : "-",
+        fmtCard(t.card_nickname, t.card_last4),
         t.renews_on ?? "-",
       ]),
     );
     process.stdout.write(
-      `\n  Total declared monthly spend: $${store.monthlySpend().toFixed(2)}\n\n`,
+      `\n  Total declared monthly spend: $${store.monthlySpend().toFixed(2)}\n`,
     );
+    const due = store.renewalsDue(14);
+    if (due.length > 0) {
+      process.stdout.write("\nRENEWS SOON (next 14 days)\n");
+      printTable(
+        ["TOOL", "WHEN", "MONTHLY", "CARD"],
+        due.map((d) => [
+          d.display_name,
+          d.days_until < 0
+            ? `${-d.days_until}d overdue`
+            : d.days_until === 0
+              ? "today"
+              : `in ${d.days_until}d`,
+          d.monthly_cost != null ? `$${d.monthly_cost}` : "-",
+          fmtCard(d.card_nickname, d.card_last4),
+        ]),
+      );
+    }
+    process.stdout.write("\n");
   } finally {
     store.close();
   }
@@ -1667,7 +1748,8 @@ function helpCmd(): void {
     `subscribetome — AI API key & subscription manager\n\n` +
       `  stm add --tool <name> [--label <l>] [--plan <p>] [--cost <usd>]\n` +
       `                                  add a key (value read from stdin)\n` +
-      `  stm list                        show keys, subscriptions, monthly spend\n` +
+      `  stm list                        show keys, subscriptions, cards, renewals due\n` +
+      `  stm subscription <tool> [...]   set plan/cost/renewal + funding card (last-4 only)\n` +
       `  stm resolve {{stm:t:l}}          print a key value (local use only)\n` +
       `  stm revoke <tool> <label>       mark a key revoked\n` +
       `  stm rotate <tool> <label>       open provider dashboard, paste new key, swap in place\n` +
@@ -1707,6 +1789,9 @@ async function main(): Promise<void> {
     }
     case "add":
       return addCmd(rest);
+    case "subscription":
+    case "sub":
+      return subscriptionCmd(rest);
     case "list":
     case "ls":
       return listCmd();
