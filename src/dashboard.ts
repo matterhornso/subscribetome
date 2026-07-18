@@ -131,7 +131,7 @@ export function dashboardHTML(): string {
   .svc-tile {
     display:flex; align-items:center; justify-content:space-between;
     gap:calc(var(--space)*2);
-    background:var(--ink-850); border:1px solid var(--border);
+    background:var(--surface-2); border:1px solid var(--border);
     border-radius:var(--r-md); padding:calc(var(--space)*3) calc(var(--space)*4);
     color:var(--text); font-size:13px; font-weight:500;
     cursor:pointer; user-select:none; text-align:left;
@@ -183,7 +183,7 @@ export function dashboardHTML(): string {
   .sync-log {
     margin-top:calc(var(--space)*3);
     padding:calc(var(--space)*3) calc(var(--space)*4);
-    background:var(--ink-850); border:1px solid var(--border);
+    background:var(--surface-2); border:1px solid var(--border);
     border-radius:var(--r-md); font-family:var(--font-mono); font-size:12px;
     color:var(--text); white-space:pre-wrap; line-height:1.55;
     max-height:200px; overflow-y:auto;
@@ -201,7 +201,7 @@ export function dashboardHTML(): string {
     display:flex; align-items:center; gap:calc(var(--space)*3); flex-wrap:wrap;
   }
   .session-signal.unmatched {
-    background:var(--ink-850); border-color:var(--border);
+    background:var(--surface-2); border-color:var(--border);
     color:var(--text-dim);
   }
   .session-signal code {
@@ -236,7 +236,7 @@ export function dashboardHTML(): string {
   .proj-row {
     border:1px solid var(--border); border-radius:var(--r-md);
     padding:calc(var(--space)*4); margin-bottom:calc(var(--space)*3);
-    background:var(--ink-850);
+    background:var(--surface-2);
   }
   .proj-row .head {
     display:grid; grid-template-columns:auto 1fr auto;
@@ -286,7 +286,7 @@ export function dashboardHTML(): string {
     appearance:none; -webkit-appearance:none;
     position:relative;
     width:32px; height:18px; border-radius:999px;
-    background:var(--ink-700); border:1px solid var(--border-strong);
+    background:var(--border-strong); border:1px solid var(--border-strong);
     margin:0; cursor:pointer; flex:none;
     transition:background .15s var(--ease), border-color .15s var(--ease);
   }
