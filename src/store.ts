@@ -34,7 +34,50 @@ export interface Tool {
   plan: string | null;
   monthly_cost: number | null;
   renews_on: string | null;
+  /** Funding-card nickname, e.g. "Personal Amex". Free text, never a PAN. */
+  card_nickname: string | null;
+  /**
+   * Last four digits of the funding card, exactly. This is the ONLY card
+   * data stm stores — a PCI-sanctioned truncation (PCI DSS v4 Req 3.5.1).
+   * Writes are validated against /^\d{4}$/; a full PAN is rejected, not
+   * silently truncated, so stm never holds cardholder data. See
+   * `assertCardLast4`.
+   */
+  card_last4: string | null;
+  /** Billing cadence label: 'monthly' | 'yearly' | free text | null. */
+  billing_cadence: string | null;
   created_at: string;
+}
+
+/**
+ * Guard the one card field stm persists. Accepts null/empty (clears it) or
+ * exactly four digits; throws on anything else. This is a load-bearing
+ * safety boundary, not a formatting nicety: it is what keeps a full card
+ * number from ever reaching the database. Rejecting (rather than
+ * truncating) a longer value means a caller that fat-fingers a PAN gets an
+ * error instead of stm quietly storing the last 4 of a number it should
+ * never have seen.
+ */
+/** A subscription due to renew, from `Store.renewalsDue`. */
+export interface RenewalDue {
+  name: string;
+  display_name: string;
+  renews_on: string;
+  /** Days from the reference date; negative = already overdue. */
+  days_until: number;
+  monthly_cost: number | null;
+  card_nickname: string | null;
+  card_last4: string | null;
+}
+
+export function assertCardLast4(v: string | null | undefined): string | null {
+  if (v == null || v === "") return null;
+  if (!/^\d{4}$/.test(v)) {
+    throw new Error(
+      "card_last4 must be exactly 4 digits (stm never stores a full card number)",
+    );
+  }
+  return v;
 }
 
 export interface KeyView {
@@ -55,6 +98,9 @@ CREATE TABLE IF NOT EXISTS tools (
   plan          TEXT,
   monthly_cost  REAL,
   renews_on     TEXT,
+  card_nickname TEXT,
+  card_last4    TEXT,
+  billing_cadence TEXT,
   created_at    TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS keys (
@@ -248,6 +294,11 @@ export class Store {
       "enforce_scope",
       "enforce_scope INTEGER NOT NULL DEFAULT 0",
     );
+    // Funding-card ledger (specs/public-product.md Phase 1). Nullable; older
+    // DBs get the columns with no default (existing rows read back as NULL).
+    addColumnIfMissing("tools", "card_nickname", "card_nickname TEXT");
+    addColumnIfMissing("tools", "card_last4", "card_last4 TEXT");
+    addColumnIfMissing("tools", "billing_cadence", "billing_cadence TEXT");
   }
 
   close(): void {
@@ -456,16 +507,69 @@ export class Store {
     plan: string | null;
     monthlyCost: number | null;
     renewsOn: string | null;
+    cardNickname?: string | null;
+    cardLast4?: string | null;
+    billingCadence?: string | null;
   }): boolean {
     const name = normalizeSegment(input.name);
     const existing = this.getTool(name);
     if (!existing) return false;
+    // Validate BEFORE the write so a bad last-4 (e.g. a full PAN) never lands.
+    const last4 = assertCardLast4(input.cardLast4);
     this.db
       .query(
-        `UPDATE tools SET plan = ?, monthly_cost = ?, renews_on = ? WHERE id = ?`,
+        `UPDATE tools SET plan = ?, monthly_cost = ?, renews_on = ?,
+           card_nickname = ?, card_last4 = ?, billing_cadence = ?
+         WHERE id = ?`,
       )
-      .run(input.plan, input.monthlyCost, input.renewsOn, existing.id);
+      .run(
+        input.plan,
+        input.monthlyCost,
+        input.renewsOn,
+        input.cardNickname ?? null,
+        last4,
+        input.billingCadence ?? null,
+        existing.id,
+      );
     return true;
+  }
+
+  /**
+   * Local, computed renewal reminders — no network, no background poll.
+   * Returns tools whose `renews_on` falls on or before `withinDays` from
+   * `ref` (default today), INCLUDING already-overdue ones (negative
+   * `days_until`), sorted soonest-first. Tools with no renewal date are
+   * omitted. `ref` is injectable so the date math is deterministic in tests.
+   */
+  renewalsDue(withinDays: number, ref?: Date): RenewalDue[] {
+    const today = ref ?? new Date();
+    const t0 = Date.UTC(
+      today.getUTCFullYear(),
+      today.getUTCMonth(),
+      today.getUTCDate(),
+    );
+    const DAY = 86_400_000;
+    const out: RenewalDue[] = [];
+    for (const t of this.listTools()) {
+      if (!t.renews_on) continue;
+      const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(t.renews_on);
+      if (!m) continue;
+      const due = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+      const days = Math.round((due - t0) / DAY);
+      if (days <= withinDays) {
+        out.push({
+          name: t.name,
+          display_name: t.display_name,
+          renews_on: t.renews_on,
+          days_until: days,
+          monthly_cost: t.monthly_cost,
+          card_nickname: t.card_nickname,
+          card_last4: t.card_last4,
+        });
+      }
+    }
+    out.sort((a, b) => a.days_until - b.days_until);
+    return out;
   }
 
   // ---- keys --------------------------------------------------------------

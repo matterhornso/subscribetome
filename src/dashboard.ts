@@ -16,7 +16,7 @@ export function dashboardHTML(): string {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="color-scheme" content="dark">
+<meta name="color-scheme" content="dark light">
 <title>subscribetome</title>
 <style>
   /* ---- tokens: primitive ---- */
@@ -32,7 +32,7 @@ export function dashboardHTML(): string {
     --font-mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
     --ease:cubic-bezier(.2,.6,.2,1);
   }
-  /* ---- tokens: semantic ---- */
+  /* ---- tokens: semantic (dark = default) ---- */
   :root {
     --bg:var(--ink-950); --surface:var(--ink-900); --surface-2:var(--ink-850);
     --field:var(--ink-950); --border:var(--ink-800); --border-strong:var(--ink-700);
@@ -41,6 +41,22 @@ export function dashboardHTML(): string {
     --danger:var(--red-400);
     --focus:rgba(52,211,154,.45);
     --shadow-md:0 8px 28px -8px rgba(0,0,0,.6);
+    --header-bg:rgba(15,18,24,.85);
+    --overlay:var(--overlay); --overlay-2:var(--overlay-2); --overlay-3:var(--overlay-3);
+    --color-scheme:dark;
+  }
+  /* ---- tokens: semantic (light override) ---- */
+  :root[data-theme="light"] {
+    --bg:#f6f7f9; --surface:#ffffff; --surface-2:#eef0f4;
+    --field:#ffffff; --border:#e3e6ec; --border-strong:#d2d7e0;
+    --text:#11151c; --text-muted:#5a6373; --text-dim:#828b9c;
+    --primary:var(--emerald-500); --primary-bright:var(--emerald-400); --on-primary:#ffffff;
+    --danger:#d64545;
+    --focus:rgba(16,185,129,.4);
+    --shadow-md:0 8px 28px -10px rgba(17,21,28,.16);
+    --header-bg:rgba(255,255,255,.82);
+    --overlay:rgba(17,21,28,.04); --overlay-2:rgba(17,21,28,.06); --overlay-3:rgba(17,21,28,.03);
+    --color-scheme:light;
   }
   /* ---- reset ---- */
   *,*::before,*::after { box-sizing:border-box; }
@@ -59,7 +75,7 @@ export function dashboardHTML(): string {
     position:sticky; top:0; z-index:10;
     display:flex; align-items:center; justify-content:space-between;
     padding:0 calc(var(--space)*7); height:60px;
-    background:rgba(15,18,24,.85); backdrop-filter:blur(8px);
+    background:var(--header-bg); backdrop-filter:blur(8px);
     border-bottom:1px solid var(--border);
   }
   .brand { display:flex; align-items:center; gap:calc(var(--space)*2.5); }
@@ -143,7 +159,7 @@ export function dashboardHTML(): string {
     margin-right:14px; font-size:11px; font-weight:600; letter-spacing:.4px;
     text-transform:uppercase; color:var(--text-dim);
     padding:3px 9px; border-radius:999px;
-    background:rgba(255,255,255,.04); border:1px solid var(--border);
+    background:var(--overlay); border:1px solid var(--border);
   }
 
   /* ---- spend visibility (v0.3.0) ---- */
@@ -151,7 +167,7 @@ export function dashboardHTML(): string {
     display:inline-block; margin-left:8px;
     font-size:11px; font-weight:600; letter-spacing:.4px; text-transform:uppercase;
     padding:2px 8px; border-radius:999px;
-    background:rgba(255,255,255,.04); color:var(--text-dim);
+    background:var(--overlay); color:var(--text-dim);
     border:1px solid var(--border);
   }
   .spend-source.fetched { color:var(--emerald-300); border-color:rgba(52,211,154,.3); }
@@ -159,7 +175,7 @@ export function dashboardHTML(): string {
   .spend-source.self    { color:var(--text-dim); }
   .spend-tag {
     display:inline-block; font-size:10.5px; padding:1px 6px; border-radius:4px;
-    color:var(--text-dim); background:rgba(255,255,255,.04);
+    color:var(--text-dim); background:var(--overlay);
     border:1px solid var(--border); margin-left:6px;
   }
   .spend-tag.fetched { color:var(--emerald-300); border-color:rgba(52,211,154,.3); }
@@ -189,7 +205,7 @@ export function dashboardHTML(): string {
     color:var(--text-dim);
   }
   .session-signal code {
-    color:var(--text); background:rgba(255,255,255,.05);
+    color:var(--text); background:var(--overlay-2);
     padding:1px 6px; border-radius:4px; font-size:12px;
   }
   .session-signal .pill {
@@ -248,7 +264,7 @@ export function dashboardHTML(): string {
     display:flex; flex-wrap:wrap; gap:6px; margin-top:6px;
   }
   .proj-pills code.copy {
-    background:rgba(255,255,255,.04); border:1px solid var(--border);
+    background:var(--overlay); border:1px solid var(--border);
     padding:3px 8px; font-size:12px;
   }
   .proj-pills .empty {
@@ -299,7 +315,7 @@ export function dashboardHTML(): string {
     font-size:12.5px; color:var(--text); cursor:pointer;
     padding:4px 6px; border-radius:6px;
   }
-  .proj-edit .checklist label:hover { background:rgba(255,255,255,.03); }
+  .proj-edit .checklist label:hover { background:var(--overlay-3); }
   .proj-edit .checklist input { accent-color:var(--emerald-400); }
   .proj-add {
     display:grid; grid-template-columns:2fr 2fr auto; gap:calc(var(--space)*3);
@@ -324,8 +340,8 @@ export function dashboardHTML(): string {
   input::placeholder { color:var(--text-dim); }
   input:hover,select:hover { border-color:var(--ink-600); }
   input:focus,select:focus { outline:none; border-color:var(--primary); box-shadow:0 0 0 3px var(--focus); }
-  input[type=date] { color-scheme:dark; }
-  select { -webkit-appearance:none; appearance:none; cursor:pointer; color-scheme:dark; }
+  input[type=date] { color-scheme:var(--color-scheme); }
+  select { -webkit-appearance:none; appearance:none; cursor:pointer; color-scheme:var(--color-scheme); }
 
   /* ---- buttons ---- */
   button {
@@ -496,6 +512,16 @@ export function dashboardHTML(): string {
     header,main { padding-left:calc(var(--space)*4); padding-right:calc(var(--space)*4); }
   }
 </style>
+<script>
+  /* Set theme before first paint to avoid a flash of the wrong theme. */
+  (function(){
+    try {
+      var saved = localStorage.getItem("stm-theme");
+      var sys = window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+      document.documentElement.setAttribute("data-theme", saved || sys);
+    } catch (e) { document.documentElement.setAttribute("data-theme", "dark"); }
+  })();
+</script>
 </head>
 <body>
 <header>
@@ -513,6 +539,8 @@ export function dashboardHTML(): string {
       title="Pull this month's real usage cost from each provider's admin API (OpenAI, Anthropic today). Outbound calls happen ONLY when you click this — and ONLY to providers whose admin key you've added.">
       Fetch live spend
     </button>
+    <button class="btn-ghost" id="theme-btn" style="margin-left:8px;width:38px;padding:0"
+      aria-label="Toggle light / dark theme" title="Toggle light / dark theme"></button>
   </div>
 </header>
 
@@ -584,7 +612,7 @@ export function dashboardHTML(): string {
     </div>
     <div class="table-wrap">
       <table>
-        <thead><tr><th>Tool</th><th>Plan</th><th>Monthly</th><th>Renews</th><th></th></tr></thead>
+        <thead><tr><th>Tool</th><th>Plan</th><th>Monthly</th><th>Card</th><th>Renews</th><th></th></tr></thead>
         <tbody id="tools"></tbody>
       </table>
     </div>
@@ -1217,7 +1245,7 @@ var lastSpend = {};
 function renderTools(tools){
   var tb=el("tools");
   if(!tools.length){
-    tb.innerHTML='<tr><td colspan="5" class="empty">No subscriptions tracked yet.</td></tr>';
+    tb.innerHTML='<tr><td colspan="6" class="empty">No subscriptions tracked yet.</td></tr>';
     return;
   }
   tb.innerHTML=tools.map(function(t){
@@ -1228,6 +1256,12 @@ function renderTools(tools){
         +'autocomplete="off" style="height:30px"></td>'
         +'<td><input class="ed-cost" type="number" min="0" step="0.01" '
         +'value="'+(t.monthly_cost!=null?t.monthly_cost:"")+'" placeholder="20" style="height:30px"></td>'
+        +'<td style="white-space:nowrap"><input class="ed-card-nick" value="'+esc(t.card_nickname||"")+'" '
+        +'placeholder="Personal Amex" autocomplete="off" style="height:30px;width:110px"> '
+        +'<input class="ed-card-last4" value="'+esc(t.card_last4||"")+'" placeholder="4321" '
+        +'inputmode="numeric" maxlength="4" autocomplete="off" '
+        +'title="Last 4 digits only — stm never stores a full card number" '
+        +'style="height:30px;width:56px"></td>'
         +'<td><input class="ed-renews" type="date" value="'+esc(t.renews_on||"")+'" style="height:30px"></td>'
         +'<td style="text-align:right;white-space:nowrap">'
         +'<button class="btn-primary sub-save" style="height:30px;padding:0 12px" '
@@ -1258,7 +1292,8 @@ function renderTools(tools){
       +'<td>'+esc(t.display_name)+'</td>'
       +'<td style="color:var(--text-muted)">'+esc(t.plan||"\\u2014")+'</td>'
       +'<td class="num">'+monthlyHTML+'</td>'
-      +'<td class="num" style="color:var(--text-muted)">'+esc(t.renews_on||"\\u2014")+'</td>'
+      +'<td style="color:var(--text-muted)">'+cardCell(t)+'</td>'
+      +'<td class="num" style="color:var(--text-muted)">'+renewsCell(t.renews_on)+'</td>'
       +'<td style="text-align:right"><button class="btn-ghost sub-edit" '
       +'style="height:28px;padding:0 12px" data-tool="'+esc(t.name)+'">Edit</button></td></tr>';
   }).join("");
@@ -1310,15 +1345,41 @@ async function syncSpend(){
   }
 }
 
+/** Funding-card display: "Personal Amex ••4321" / "••4321" / dash. */
+function cardCell(t){
+  var nick=t.card_nickname, l4=t.card_last4;
+  if(nick&&l4) return esc(nick)+' <span class="mono" style="color:var(--text-dim)">\\u2022\\u2022'+esc(l4)+'</span>';
+  if(nick) return esc(nick);
+  if(l4) return '<span class="mono" style="color:var(--text-dim)">\\u2022\\u2022'+esc(l4)+'</span>';
+  return '<span style="color:var(--text-dim)">\\u2014</span>';
+}
+/** Renewal date with a "soon"/"overdue" badge computed locally from today. */
+function renewsCell(iso){
+  if(!iso) return '<span style="color:var(--text-dim)">\\u2014</span>';
+  var m=/^(\\d{4})-(\\d{2})-(\\d{2})/.exec(iso);
+  if(!m) return esc(iso);
+  var now=new Date();
+  var t0=Date.UTC(now.getUTCFullYear(),now.getUTCMonth(),now.getUTCDate());
+  var due=Date.UTC(+m[1],+m[2]-1,+m[3]);
+  var days=Math.round((due-t0)/86400000);
+  var badge='';
+  if(days<0) badge=' <span class="badge revoked" title="overdue">overdue</span>';
+  else if(days<=14) badge=' <span class="badge active" title="renews soon">'+(days===0?'today':'in '+days+'d')+'</span>';
+  return esc(iso)+badge;
+}
+
 async function saveSubscription(tool){
   var row=el("tools").querySelector('tr[data-tool="'+tool+'"]');
   if(!row)return;
   var plan=row.querySelector(".ed-plan").value.trim();
   var cost=row.querySelector(".ed-cost").value.trim();
   var renews=row.querySelector(".ed-renews").value.trim();
+  var cardNick=row.querySelector(".ed-card-nick").value.trim();
+  var cardLast4=row.querySelector(".ed-card-last4").value.trim();
   try{
     await api("/api/tools/subscription",{method:"POST",body:JSON.stringify({
-      tool:tool,plan:plan||null,cost:cost!==""?Number(cost):null,renews:renews||null})});
+      tool:tool,plan:plan||null,cost:cost!==""?Number(cost):null,renews:renews||null,
+      cardNickname:cardNick||null,cardLast4:cardLast4||null})});
     editingTool=null;
     toast("Subscription updated");
     refresh();
@@ -1785,6 +1846,21 @@ document.addEventListener("click",function(e){
   var ic=e.target.closest("#imp-create-proj-btn");
   if(ic){ activateTab("projects"); createProjectFromImport(); return; }
 });
+
+/* Theme toggle: reflect current theme on the button, flip + persist on click. */
+function syncThemeBtn(){
+  var t = document.documentElement.getAttribute("data-theme") || "dark";
+  var b = el("theme-btn");
+  if (b) b.textContent = (t === "light") ? "☾" : "☀"; // ☾ when light (click→dark), ☀ when dark
+}
+el("theme-btn").addEventListener("click", function(){
+  var cur = document.documentElement.getAttribute("data-theme") || "dark";
+  var next = (cur === "light") ? "dark" : "light";
+  document.documentElement.setAttribute("data-theme", next);
+  try { localStorage.setItem("stm-theme", next); } catch (e) {}
+  syncThemeBtn();
+});
+syncThemeBtn();
 
 refresh()
   .then(function(){ return renderSessionSignal(); })
