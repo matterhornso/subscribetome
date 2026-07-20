@@ -259,16 +259,66 @@ async function run() {
     );
   }
 
-  // 2n. Visual artifacts — full-page screenshot of each tab for the record.
-  for (const tab of ["keys", "projects", "policy", "import"]) {
-    await page.click(`button.tab[data-tab="${tab}"]`);
-    await page.waitForTimeout(400);
-    await page.screenshot({
-      path: `/tmp/stm-ui-test-${tab}.png`,
-      fullPage: true,
-    });
+  // 2n. Light/dark theme: the toggle flips data-theme AND the rendered
+  //     background, and the choice persists across reload. This guards the
+  //     light theme, which shipped without a human visual pass.
+  await page.click('button.tab[data-tab="keys"]');
+  await page.waitForTimeout(150);
+  {
+    const read = () =>
+      page.evaluate(() => ({
+        theme: document.documentElement.getAttribute("data-theme"),
+        bg: getComputedStyle(document.body).backgroundColor,
+        hasToggle: !!document.getElementById("theme-btn"),
+      }));
+    const before = await read();
+    record("Theme toggle button present", before.hasToggle);
+
+    await page.click("#theme-btn");
+    await page.waitForTimeout(150);
+    const after = await read();
+    record(
+      "Toggle flips data-theme",
+      before.theme !== after.theme &&
+        (after.theme === "light" || after.theme === "dark"),
+      `${before.theme} → ${after.theme}`,
+    );
+    record(
+      "Toggle changes the rendered background",
+      before.bg !== after.bg,
+      `${before.bg} → ${after.bg}`,
+    );
+
+    await page.reload();
+    await page.waitForLoadState("networkidle");
+    const persisted = await page.evaluate(() =>
+      document.documentElement.getAttribute("data-theme"),
+    );
+    record(
+      "Chosen theme persists across reload",
+      persisted === after.theme,
+      `reloaded as ${persisted}`,
+    );
   }
-  record("Visual baselines saved to /tmp/stm-ui-test-*.png", true);
+
+  // 2o. Visual artifacts — screenshot each tab, in BOTH themes, for the record.
+  for (const theme of ["dark", "light"]) {
+    await page.evaluate((t) => {
+      document.documentElement.setAttribute("data-theme", t);
+      try {
+        localStorage.setItem("stm-theme", t);
+      } catch {}
+    }, theme);
+    for (const tab of ["keys", "projects", "policy", "import"]) {
+      await page.click(`button.tab[data-tab="${tab}"]`);
+      await page.waitForTimeout(300);
+      await page.screenshot({
+        path: `/tmp/stm-ui-test-${theme}-${tab}.png`,
+        fullPage: true,
+      });
+    }
+  }
+  record("Visual baselines saved to /tmp/stm-ui-test-{dark,light}-*.png", true);
 
   await context.close();
   await browser.close();

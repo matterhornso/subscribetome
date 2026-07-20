@@ -4,6 +4,7 @@
 // pointer. The real secret is in the OS keychain (keychain.ts). The DB is the
 // inventory; the keychain is the vault.
 import { Database } from "bun:sqlite";
+import { chmodSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
@@ -257,6 +258,15 @@ export class Store {
   constructor(path: string = DB_PATH) {
     ensureDataDir();
     this.db = new Database(path, { create: true });
+    // The DB holds no key values, but it does hold card last-4, card
+    // nicknames, and audit-log command text — restrict it to the owner
+    // (defense-in-depth beyond the 0700 data dir). Best-effort; harmless
+    // on in-memory/":memory:" paths where chmod fails.
+    try {
+      chmodSync(path, 0o600);
+    } catch {
+      /* not a real file (e.g. :memory:), or perms unsupported */
+    }
     this.db.exec("PRAGMA journal_mode = WAL;");
     this.db.exec("PRAGMA foreign_keys = ON;");
     this.db.exec(SCHEMA);

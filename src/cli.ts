@@ -137,7 +137,7 @@ async function addCmd(args: string[]): Promise<void> {
         name: tool,
         displayName: flags.display,
         plan: flags.plan ?? null,
-        monthlyCost: flags.cost ? Number(flags.cost) : null,
+        monthlyCost: parseCostFlag(flags.cost),
         renewsOn: flags.renews ?? null,
       });
     }
@@ -158,6 +158,18 @@ async function addCmd(args: string[]): Promise<void> {
   } finally {
     store.close();
   }
+}
+
+/**
+ * Parse a --cost flag to a finite number or null. Rejects non-numeric input
+ * (e.g. "abc", "1e999"→Infinity) rather than silently storing NaN/Infinity —
+ * matches the daemon's Number.isFinite guard.
+ */
+function parseCostFlag(v: string | undefined): number | null {
+  if (v == null || v === "") return null;
+  const n = Number(v);
+  if (!Number.isFinite(n)) throw new Error(`--cost must be a number (got "${v}")`);
+  return n;
 }
 
 /** Render a funding card for display: "Personal Amex ••4321", or just one part. */
@@ -196,7 +208,7 @@ function subscriptionCmd(args: string[]): void {
     const ok = store.setSubscription({
       name: tool,
       plan: has("plan") ? flags.plan : cur.plan,
-      monthlyCost: has("cost") ? Number(flags.cost) : cur.monthly_cost,
+      monthlyCost: has("cost") ? parseCostFlag(flags.cost) : cur.monthly_cost,
       renewsOn: has("renews") ? flags.renews : cur.renews_on,
       cardNickname: has("card-nickname") ? flags["card-nickname"] : cur.card_nickname,
       cardLast4: has("card-last4") ? flags["card-last4"] : cur.card_last4,
