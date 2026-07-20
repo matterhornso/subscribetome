@@ -32,7 +32,7 @@ Just ask:
 
 Claude Code sees a placeholder. The plugin swaps in the real key the instant the command runs.
 
-That's it. macOS, Linux, Windows. Free. Open source. Zero telemetry.
+That's it. **This beta is scoped to macOS + Claude Code** — Linux and Windows are experimental (the Bash hook may not fire on native Windows), and Codex is experimental. Free. Open source. Zero telemetry.
 
 ---
 
@@ -45,7 +45,7 @@ Claude Code reads this when a user pastes the install prompt above. Humans can s
 
 Do these steps in order. **Never ask the user for an API key. Never run a command that contains a real key. Never add a key yourself** — key entry is out-of-band by design.
 
-1. **Check the OS.** Run `uname` (or `ver` on Windows). subscribetome supports macOS, Linux, and Windows.
+1. **Check the OS.** Run `uname` (or `ver` on Windows). This beta is supported on **macOS**; Linux and Windows are experimental — on native Windows (no WSL/git-bash) the Bash hook may not fire, so tell a Windows user this is experimental before continuing.
 2. **Check Bun.** Run `bun --version`. If that fails, install Bun with `curl -fsSL https://bun.sh/install | bash` (or `brew install bun` on macOS with Homebrew), then re-check.
 3. **Add the marketplace:** `claude plugin marketplace add matterhornso/subscribetome`
 4. **Install the plugin:** `claude plugin install stm@subscribetome`
