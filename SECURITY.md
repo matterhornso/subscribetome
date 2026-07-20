@@ -76,5 +76,5 @@ never run sync, subscribetome makes zero outbound network calls. (See
 
 ## Supported versions
 
-Pre-1.0: only the latest published version is supported. Update with
+During the beta, only the latest published version is supported. Update with
 `claude plugin update stm@subscribetome`.

@@ -219,9 +219,12 @@ with a did-you-mean suggestion.
 
 ## Compatibility — agents
 
-stm wraps Claude Code and Codex today. Codex ships with two integration
-modes (different security postures); pick one. `stm status` and the
-dashboard header always tell you which agent gets which guarantee.
+stm wraps Claude Code and Codex today. **Claude Code is the supported
+surface for this beta; Codex is experimental** — both Codex modes are
+smoke-tested only, against external contracts (Codex's env-policy and
+trust-gate) not yet verified on real hardware. Codex ships with two
+integration modes (different security postures); pick one. `stm status`
+and the dashboard header always tell you which agent gets which guarantee.
 
 | Agent | Mode | Guarantee | What you run |
 |---|---|---|---|
@@ -307,6 +310,11 @@ pairs in `~/.codex/config.toml`. You can run either independently
 or both. `stm codex doctor` reports both tracks.
 
 ## Supported platforms
+
+> **Beta scope:** macOS is the supported platform for this beta. The keystore
+> backends below work on all three OSes, but on Linux the dashboard opener is
+> macOS-only today and on native Windows (no WSL/git-bash) the Claude Code Bash
+> hook may not fire — so treat Linux and Windows as **experimental** for now.
 
 - **macOS** — keys live in the macOS Keychain. Since v0.6.1 stm
   calls the Security framework directly through
