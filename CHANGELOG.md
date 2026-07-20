@@ -1,9 +1,15 @@
 # Changelog
 
-All notable changes to subscribetome. This project is pre-1.0; minor versions
-may still change behaviour. Format follows [Keep a Changelog](https://keepachangelog.com).
+All notable changes to subscribetome. Pre-stable; minor versions may still
+change behaviour. Format follows [Keep a Changelog](https://keepachangelog.com).
 
 ## [Unreleased]
+
+## [1.1.0-beta.1] - 2026-07-20
+
+First public beta. Scoped to macOS + Claude Code; other platforms are
+experimental. See [SECURITY.md](SECURITY.md) for the security model and
+[specs/READINESS.md](specs/READINESS.md) for the go/no-go criteria.
 
 ### Added — funding-card ledger, renewal reminders, light/dark theme
 
