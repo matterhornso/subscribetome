@@ -5,6 +5,23 @@ change behaviour. Format follows [Keep a Changelog](https://keepachangelog.com).
 
 ## [Unreleased]
 
+## [1.1.0-beta.2] - 2026-07-22
+
+Second beta. A bug fix plus expanded test coverage on top of beta.1; same scope
+(macOS + Claude Code).
+
+### Fixed
+- Funding-card **last 4**: pasting a full card number into the subscription
+  editor kept its *first* four digits (e.g. showed `••4111`); it now keeps the
+  true last four. Only 4 digits were ever stored — no full card number persisted
+  then or now — but the displayed value is now correct.
+
+### Testing
+- Added a full functional test plan (`TEST_PLAN.md`) and an extended Playwright
+  QA suite (`tests-ui/qa.suite.mjs`) covering the dashboard controls, HTTP
+  posture, and an end-to-end proof that a key entered once is injected into live
+  service calls without re-pasting or rotating.
+
 ## [1.1.0-beta.1] - 2026-07-20
 
 First public beta. Scoped to macOS + Claude Code; other platforms are
