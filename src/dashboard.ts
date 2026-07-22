@@ -1259,7 +1259,7 @@ function renderTools(tools){
         +'<td style="white-space:nowrap"><input class="ed-card-nick" value="'+esc(t.card_nickname||"")+'" '
         +'placeholder="Personal Amex" autocomplete="off" style="height:30px;width:110px"> '
         +'<input class="ed-card-last4" value="'+esc(t.card_last4||"")+'" placeholder="4321" '
-        +'inputmode="numeric" maxlength="4" autocomplete="off" '
+        +'inputmode="numeric" autocomplete="off" '
         +'title="Last 4 digits only — stm never stores a full card number" '
         +'style="height:30px;width:56px"></td>'
         +'<td><input class="ed-renews" type="date" value="'+esc(t.renews_on||"")+'" style="height:30px"></td>'
@@ -1724,6 +1724,15 @@ el("tools").addEventListener("click",function(e){
   if(ca){editingTool=null;if(lastInv)renderTools(lastInv.tools);return;}
   var sv=e.target.closest(".sub-save");
   if(sv){saveSubscription(sv.dataset.tool);}
+});
+// Normalize the funding-card "last 4" field: on every input/paste, keep only
+// digits and only the LAST four, so a pasted full PAN (e.g. 4111111111111111)
+// becomes its last four (1111), not its first four.
+el("tools").addEventListener("input",function(e){
+  var f=e.target.closest?e.target.closest(".ed-card-last4"):null;
+  if(!f)return;
+  var norm=f.value.replace(/\D/g,"").slice(-4);
+  if(norm!==f.value)f.value=norm;
 });
 document.addEventListener("click",function(e){
   var c=e.target.closest?e.target.closest(".copy"):null;
