@@ -38,6 +38,8 @@ That's it. **This beta is scoped to macOS + Claude Code** — Linux and Windows 
 
 **More:** [`DOCS.md`](./DOCS.md) — every command, the security model, the Codex surface · [`SECURITY.md`](./SECURITY.md) · [`CHANGELOG.md`](./CHANGELOG.md) · MIT licensed
 
+**Contributing & community:** [`CONTRIBUTING.md`](./CONTRIBUTING.md) · [`CODE_OF_CONDUCT.md`](./CODE_OF_CONDUCT.md) · found a security issue? see [`SECURITY.md`](./SECURITY.md) (please don't open a public issue)
+
 <details>
 <summary><b>Install instructions for the AI agent</b></summary>
 
