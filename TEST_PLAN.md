@@ -21,6 +21,7 @@ tester can execute it as a user and judge pass/fail against a concrete expected 
   `tests-ui/dashboard.suite.mjs`). "Act as a user": click the real control, then assert
   the resulting DOM change **and** the network call it fired.
 - **HTTP posture cases** (`API-*`): raw `fetch` against the daemon, no browser.
+- **End-to-end core-promise proof**: `node tests-ui/e2e-core-promise.mjs` (macOS) — enters a fake key once, has the PreToolUse hook inject it into a real `curl` to a localhost mock service, and proves the service receives the real key with no re-paste/rotate and no leak into the DB/audit. Covers SEC-04/05 + HOOK-PRE-01 end-to-end over a live socket.
 
 Legend for **Channel**: `bash` = CLI/hook via shell; `pw` = Playwright browser; `http` = raw fetch.
 Legend for **Pri**: P1 = core path / security; P2 = important; P3 = edge/polish.
