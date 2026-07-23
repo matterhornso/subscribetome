@@ -1,0 +1,66 @@
+name: 🐛 Bug report
+description: Something isn't working the way it should
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug. **Never paste a real API key**
+        into this issue. If your report involves a key value, redact it — and if
+        it's a security flaw, use the private advisory link instead (see SECURITY.md).
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear description of the bug, and what you expected instead.
+      placeholder: When I run …, stm does … but I expected …
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: The exact commands or dashboard actions, in order.
+      placeholder: |
+        1. `/stm:dashboard`
+        2. Add a key for …
+        3. Ask Claude Code to …
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      description: This beta is supported on macOS; Linux and Windows are experimental.
+      options:
+        - macOS
+        - Linux (experimental)
+        - Windows (experimental)
+    validations:
+      required: true
+  - type: dropdown
+    id: agent
+    attributes:
+      label: Agent
+      options:
+        - Claude Code
+        - Codex (experimental)
+        - Other / not agent-specific
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: stm version
+      description: Output of `stm --version` (or the version in plugin.json).
+      placeholder: "1.1.0-beta.2"
+    validations:
+      required: true
+  - type: textarea
+    id: doctor
+    attributes:
+      label: "`stm doctor` output (optional)"
+      description: Helps diagnose keystore/hook issues. Redact anything sensitive.
+      render: shell
+    validations:
+      required: false
