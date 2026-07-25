@@ -5,6 +5,13 @@ change behaviour. Format follows [Keep a Changelog](https://keepachangelog.com).
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-07-25
+
+Stable release. Promotes `1.1.0-beta.2` to stable with no functional changes —
+the two beta cycles (funding-card ledger, renewal reminders, light/dark theme,
+and the card last-4 fix) are now shipped as the current stable version. Scope is
+unchanged: macOS + Claude Code, with Linux, Windows, and Codex experimental.
+
 ## [1.1.0-beta.2] - 2026-07-22
 
 Second beta. A bug fix plus expanded test coverage on top of beta.1; same scope
