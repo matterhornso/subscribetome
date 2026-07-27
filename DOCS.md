@@ -385,7 +385,7 @@ is not a TTY, `get()` returns `null` and the PreToolUse hook fails
 safe — exits 0 without rewriting, so the command runs with the
 placeholder intact and fails harmlessly (never leaks a key).
 
-## Limitations (v1.0)
+## Limitations
 
 - **Import is `.env`-only** — scanning third-party password managers
   (1Password, Bitwarden, Doppler) for keys is deferred. Specs welcome
