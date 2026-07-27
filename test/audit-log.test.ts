@@ -275,6 +275,10 @@ function runHook(hook: string, payload: object): { code: number; stdout: string;
       input: JSON.stringify(payload),
       env: ENV,
       encoding: "utf8",
+      // Capture the hook's stderr rather than inheriting it to the terminal.
+      // Bun tees child stderr to the parent by default, spewing STM's own
+      // alarm text on every `bun test`. The catch block still reads e.stderr.
+      stdio: ["pipe", "pipe", "pipe"],
     });
     return { code: 0, stdout, stderr: "" };
   } catch (e: any) {

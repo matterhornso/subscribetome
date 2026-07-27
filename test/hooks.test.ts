@@ -44,6 +44,12 @@ function runHook(hook: string, payload: object): HookResult {
       input: JSON.stringify(payload),
       env: ENV,
       encoding: "utf8",
+      // Capture the hook's stderr into the error object instead of letting it
+      // inherit to the terminal. Bun's child_process tees child stderr to the
+      // parent by default, which spews STM's own alarm text ("revoke your
+      // key", policy blocks) on every `bun test` — training contributors to
+      // ignore the real alarm. The catch block below still reads e.stderr.
+      stdio: ["pipe", "pipe", "pipe"],
     });
     return { code: 0, stdout, stderr: "" };
   } catch (e: any) {
@@ -206,6 +212,10 @@ function runHookWithEnv(
     input: JSON.stringify(payload),
     env: { ...ENV, ...extraEnv },
     encoding: "utf8",
+    // Explicit pipe so the hook's stderr is captured into r.stderr instead of
+    // also being teed to the parent terminal (Bun's default). r.stderr below
+    // still carries the warn-mode advisory text the assertions check.
+    stdio: ["pipe", "pipe", "pipe"],
   });
   return {
     code: r.status ?? 1,
