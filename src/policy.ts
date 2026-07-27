@@ -63,11 +63,17 @@ export function globMatch(pattern: string | null, input: string): boolean {
   if (pattern === "") return input === "";
 
   // Escape regex metachars except `*`, then turn `*` into `.*`. Anchor with
-  // ^...$ so the whole input must match (not just a prefix).
+  // ^...$ so the whole input must match (not just a prefix). The `s` (dotAll)
+  // flag is load-bearing for SECURITY: without it `.` excludes line
+  // terminators, so `*` could not cross a newline — a `when_command` deny/warn
+  // glob would silently fail to match (and fall through to the default allow)
+  // on any multi-line command, or even a command with a trailing "\n". That is
+  // a fail-OPEN: the key gets substituted despite a deny rule. dotAll makes `*`
+  // match "characters of any kind" as this function's contract promises.
   const re = pattern
     .replace(/[.+?^${}()|[\]\\]/g, "\\$&")
     .replace(/\*/g, ".*");
-  return new RegExp(`^${re}$`).test(input);
+  return new RegExp(`^${re}$`, "s").test(input);
 }
 
 /**

