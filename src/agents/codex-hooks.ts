@@ -75,9 +75,25 @@ export function hookScriptPaths(rootOverride?: string): {
  * already set it elsewhere we override-to-the-same-value, which is
  * harmless.
  */
+/**
+ * Escape a value for a TOML basic (double-quoted) string. Escapes the
+ * backslash FIRST (so we don't double-escape our own additions), then the
+ * quote and the control characters TOML forbids raw. Without this a path
+ * containing a `\`, a `"`, or a newline (all legal on Unix) could break out of
+ * the string and inject additional TOML into a `command =` that Codex executes.
+ */
+export function tomlEscape(s: string): string {
+  return s
+    .replace(/\\/g, "\\\\")
+    .replace(/"/g, '\\"')
+    .replace(/\n/g, "\\n")
+    .replace(/\r/g, "\\r")
+    .replace(/\t/g, "\\t");
+}
+
 export function renderManagedBlock(paths: ReturnType<typeof hookScriptPaths>): string {
-  const u = paths.userPromptSubmit.replace(/"/g, '\\"');
-  const s = paths.sessionStart.replace(/"/g, '\\"');
+  const u = tomlEscape(paths.userPromptSubmit);
+  const s = tomlEscape(paths.sessionStart);
   return [
     STM_MARKER_CURRENT,
     "# Managed by `stm codex install-hooks`. Do not edit between the markers —",
