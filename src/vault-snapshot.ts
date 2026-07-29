@@ -169,7 +169,11 @@ export function exportSnapshot(opts: {
   const json = JSON.stringify(snap);
   const enc = encryptVault(json, opts.passphrase);
   const tmp = `${opts.outPath}.tmp.${process.pid}`;
-  writeFileSync(tmp, enc);
+  // Create 0600 atomically (not 0644-then-chmod): closes the window in which a
+  // local user could open the temp file before the chmod narrowed it. The
+  // contents are AES-256-GCM ciphertext, so this is defense-in-depth, not a
+  // key-leak fix — but it matches the correct pattern used in encrypted-file.ts.
+  writeFileSync(tmp, enc, { mode: 0o600 });
   try {
     chmodSync(tmp, 0o600);
   } catch {
@@ -237,7 +241,10 @@ export function importSnapshot(opts: {
     renameSync(dbPath, dbBackedUpTo);
   }
   const dbBytes = Buffer.from(snap.db, "base64");
-  writeFileSync(dbPath, dbBytes);
+  // Create 0600 atomically: the restored inventory DB holds audit-log command
+  // text and card last-4 (never key values, but still user-private). Same
+  // no-0644-window rationale as the snapshot temp file above.
+  writeFileSync(dbPath, dbBytes, { mode: 0o600 });
   try {
     chmodSync(dbPath, 0o600);
   } catch {

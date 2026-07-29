@@ -168,6 +168,21 @@ test("vault file is written with mode 0600", () => {
   expect(mode & 0o077).toBe(0);
 });
 
+test("vault parent dir is created 0700, not world-traversable", () => {
+  // Point the backend at a filePath whose parent dir does NOT yet exist, so
+  // save() has to create it. Pre-fix this used mkdirSync without a mode and
+  // landed at ~0755; the dir must be 0700 so other local users can't even
+  // list keys.enc / its .bak copies.
+  const dir = join(ROOT, `sub-${counter++}`, "deep");
+  const ks = createEncryptedFileKeyStore({
+    filePath: join(dir, "keys.enc"),
+    passphraseProvider: () => "p",
+  });
+  ks.set("r", "v");
+  const dirMode = statSync(dir).mode & 0o777;
+  expect(dirMode & 0o077).toBe(0);
+});
+
 test("set persists across backend instances (file IS the consent)", () => {
   const path = newPath();
   const ks1 = createEncryptedFileKeyStore({
