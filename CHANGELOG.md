@@ -5,6 +5,48 @@ change behaviour. Format follows [Keep a Changelog](https://keepachangelog.com).
 
 ## [Unreleased]
 
+## [1.1.2] - 2026-07-29
+
+Defense-in-depth hardening. Follow-ups from a full-surface internal security
+review whose main finding was reassuring: the core invariant holds — real key
+values live only in the OS keychain (or as AES-256-GCM ciphertext on the
+experimental file tier), never in the model context, transcript, logs, or the
+SQLite inventory. **None of the items below fixed a live key leak;** each closes
+a gap that could expose a secret under an unlucky provider error or a
+pre-existing loose directory. No behavioural change to substitution, resolution,
+or the guardrail hooks. Scope unchanged (macOS + Claude Code; other platforms
+experimental).
+
+### Security
+
+- **Provider sync errors are now scrubbed before they touch disk or the
+  dashboard.** `syncOne` passes a provider's usage credential into its
+  `current()` call; on failure the raw error was persisted to the `spend` table
+  and rendered in the dashboard. If a provider SDK or the `fetch`/undici layer
+  ever folded the credential into an exception message or a failing request URL,
+  that secret would land on disk in cleartext. `redactSyncError` now removes both
+  the exact credential (literal replace, any shape) and any other key-shaped
+  token before the message is stored or returned. (#16)
+- **At-rest file permissions tightened.** The vault snapshot temp file and the
+  restored inventory DB are now created `0600` atomically instead of `0644`
+  then narrowed by a later `chmod` (closing the open-window); the encrypted-file
+  vault directory is created `0700`; and `ensureDataDir` re-tightens the data
+  dir to `0700` even when it already exists, protecting the SQLite WAL/SHM
+  sidecars that carry audit-log command text and card last-4. (#16)
+
+### Fixed
+
+- **Brace-malformed placeholders now get a "did you mean" instead of failing
+  opaquely.** The near-miss detector matched a `{{...}}` blob via a regex whose
+  character class could not cross a brace, so a placeholder with a stray inner
+  brace (`{{stm:fal:de{fault}}`) or a missing closing brace (`{{stm:fal:default}`)
+  was matched by neither the exact nor the near-miss path. This was fail-safe —
+  no key was ever substituted for it — but the command ran with a broken literal
+  and no suggestion. Replaced with an opener scan: every `{{stm` that is not a
+  valid placeholder is surfaced as a near-miss, so PreToolUse blocks with a
+  suggestion rather than passing a silent literal through. Strictly widens
+  near-miss coverage; never resolves a malformed form. (#17)
+
 ## [1.1.1] - 2026-07-27
 
 Security patch. Closes a fail-open in the command-policy engine and quiets the
