@@ -11,9 +11,17 @@
 const SEGMENT_MAX = 64;
 const SEGMENT = "[a-z0-9-]{1,64}";
 const EXACT = new RegExp(`\\{\\{stm:(${SEGMENT}):(${SEGMENT})\\}\\}`, "g");
-// Loose form: any {{...}} blob mentioning "stm". A superset of EXACT, used
-// only to surface near-misses — never to resolve.
-const LOOSE = /\{\{[^{}]*?stm[^{}]*?\}\}/gi;
+// Opener of an INTENDED placeholder: "{{", optional inner whitespace, then
+// "stm" (case-insensitive, so {{STM...}} and {{ stm ...}} surface as
+// near-misses). Used only to FIND near-misses — never to resolve. This is
+// deliberately broader than a brace-delimited blob: it also catches a malformed
+// placeholder with a stray inner "{" (e.g. {{stm:fal:de{fault}}) or a missing
+// closing brace (e.g. {{stm:fal:default}), which a "{{...}}" blob regex misses
+// entirely — those would otherwise slip through with no did-you-mean.
+const OPENER = /\{\{\s*stm/gi;
+// Cap a near-miss snippet so a stray "{{stm" with no close doesn't swallow the
+// rest of the command into the suggestion text.
+const NEARMISS_MAX = 128;
 
 export interface Match {
   raw: string;
@@ -40,24 +48,41 @@ export function findExact(text: string): Placeholder[] {
   return out;
 }
 
-/** Every loose {{...stm...}} blob — a superset of the exact matches.
- *  Internal: only findNearMisses needs it. */
-function findLoose(text: string): Match[] {
-  const out: Match[] = [];
-  for (const m of text.matchAll(LOOSE)) {
-    out.push({ raw: m[0], start: m.index!, end: m.index! + m[0].length });
-  }
-  return out;
-}
-
 /** True iff `raw` is exactly one valid placeholder and nothing else. */
 export function isExact(raw: string): boolean {
   return new RegExp(`^\\{\\{stm:${SEGMENT}:${SEGMENT}\\}\\}$`).test(raw);
 }
 
-/** Loose matches that are NOT valid placeholders — the near-misses to block. */
+/**
+ * Every malformed `{{stm...` opener — the near-misses to block with a
+ * did-you-mean. An opener that is the exact start of a VALID placeholder is not
+ * a near-miss (it resolves); every other opener is. Each near-miss snippet runs
+ * from the opener to whichever comes first: its closing `}}`, the next opener,
+ * or a length cap — so the snippet stays tight enough for `suggest()` to score.
+ */
 export function findNearMisses(text: string): Match[] {
-  return findLoose(text).filter((m) => !isExact(m.raw));
+  const exactStarts = new Set(findExact(text).map((p) => p.start));
+  const out: Match[] = [];
+  for (const m of text.matchAll(OPENER)) {
+    const start = m.index!;
+    if (exactStarts.has(start)) continue; // a valid placeholder starts here
+    const rest = text.slice(start, start + NEARMISS_MAX);
+    const closeIdx = rest.indexOf("}}"); // -1 if this opener never closes
+    // Next opener AFTER this one's "{{" (search past the leading 2 chars).
+    // Non-global on purpose: .search from index 0 of the sliced tail.
+    const nextRel = rest.slice(2).search(/\{\{\s*stm/i);
+    const nextIdx = nextRel === -1 ? -1 : nextRel + 2;
+    let end: number;
+    if (closeIdx !== -1 && (nextIdx === -1 || closeIdx < nextIdx)) {
+      end = start + closeIdx + 2; // include the closing "}}"
+    } else if (nextIdx !== -1) {
+      end = start + nextIdx; // stop before the next opener
+    } else {
+      end = start + rest.length; // no close, no next opener — cap
+    }
+    out.push({ raw: text.slice(start, end), start, end });
+  }
+  return out;
 }
 
 /** Normalize arbitrary user input into a valid grammar segment. */
