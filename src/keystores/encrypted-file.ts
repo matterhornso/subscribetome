@@ -279,7 +279,10 @@ export function createEncryptedFileKeyStore(
   function save(map: Record<string, string>, passphrase: string): void {
     const bytes = encryptVault(JSON.stringify(map), passphrase);
     const dir = dirname(filePath);
-    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+    // 0700: the vault dir holds keys.enc (encrypted) and its .bak.<ts> copies.
+    // Even though those files are 0600 + encrypted, a 0755 dir leaks their
+    // names/sizes/existence to other local users. Matches ensureDataDir().
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true, mode: 0o700 });
     const tmp = `${filePath}.tmp`;
     writeFileSync(tmp, bytes, { mode: 0o600 });
     try {
@@ -369,7 +372,7 @@ export function rotatePassphrase(opts: {
     // so subsequent set/get use it.
     const empty = encryptVault("{}", opts.newPassphrase);
     const dir = dirname(filePath);
-    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true, mode: 0o700 });
     writeFileSync(filePath, empty, { mode: 0o600 });
     return null;
   }

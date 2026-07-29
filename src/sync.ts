@@ -16,6 +16,34 @@
 // `POST /api/spend/sync` endpoint, both of which are user-initiated.
 import { Store } from "./store.ts";
 import { PROVIDERS, getProvider, listProviderIds, type SpendProvider } from "./providers/index.ts";
+import { detectKeys } from "./detect.ts";
+
+/**
+ * Scrub any real secret out of a provider error before it is persisted to the
+ * inventory DB (`markSpendError`) or returned to the dashboard (`SyncResult.error`).
+ *
+ * Two layers:
+ *   (a) the EXACT usage credential we passed into `provider.current()`, if we
+ *       have it — a literal substring replace, so it catches a credential of any
+ *       shape (even one `detectKeys` would miss);
+ *   (b) any other key-SHAPED token the detector recognises.
+ *
+ * Defense in depth: a provider SDK or the underlying `fetch`/undici layer can
+ * embed the credential in an exception message or a failing request URL. Without
+ * this, that secret would land on disk in cleartext in the spend table and be
+ * rendered on the dashboard. `String.split(x).join(y)` is a literal (non-regex)
+ * global replace, so a secret containing regex metacharacters is handled safely.
+ */
+export function redactSyncError(msg: string, credential: string | null): string {
+  let out = msg;
+  if (credential && credential.length >= 8) {
+    out = out.split(credential).join("[redacted:credential]");
+  }
+  for (const hit of detectKeys(out)) {
+    out = out.split(hit.value).join(`[redacted:${hit.kind}]`);
+  }
+  return out;
+}
 
 export interface SyncResult {
   tool: string;
@@ -46,13 +74,16 @@ export async function syncOne(
   const ownsStore = !opts?.store;
   const store = opts?.store ?? new Store();
   const at = new Date().toISOString();
+  // Hoisted so the catch block can redact this exact value out of any error
+  // message before it is persisted or returned. Null until resolved.
+  let usageKey: string | null = null;
   try {
     // Ensure the tool row exists — it might not, if the user configured
     // the usage credential but hasn't added a runtime key yet. upsertTool
     // is idempotent.
     const tool = store.upsertTool({ name: provider.id });
 
-    const usageKey = store.resolve(provider.id, provider.usageCredentialLabel);
+    usageKey = store.resolve(provider.id, provider.usageCredentialLabel);
     if (!usageKey) {
       return {
         tool: provider.id,
@@ -95,7 +126,9 @@ export async function syncOne(
     });
     return { tool: provider.id, ok: true, usd: res.monthlyToDateUSD, at: res.asOf || at };
   } catch (e: any) {
-    const msg = e?.message ?? String(e);
+    // Redact any secret the provider/fetch layer may have folded into the
+    // error BEFORE it is written to the DB or returned to the dashboard.
+    const msg = redactSyncError(e?.message ?? String(e), usageKey);
     try {
       const tool = store.upsertTool({ name: provider.id });
       store.markSpendError(tool.id, msg);
