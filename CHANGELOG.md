@@ -5,6 +5,38 @@ change behaviour. Format follows [Keep a Changelog](https://keepachangelog.com).
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-07-27
+
+Security patch. Closes a fail-open in the command-policy engine and quiets the
+test suite's own alarm noise. No behavioural change to the funding-card,
+renewal-reminder, or theme features shipped in 1.1.0; scope is unchanged
+(macOS + Claude Code, other platforms experimental).
+
+### Security
+
+- **Command-policy `deny`/`warn` rules no longer fail open on multi-line
+  commands.** `globMatch` compiled a rule's `when_command` glob to an anchored
+  regex without the dotAll (`s`) flag, so `*` could not match across a newline.
+  A `deny`/`warn` rule was therefore silently skipped for any command spanning
+  more than one line — including a lone trailing newline — and the real key was
+  substituted anyway, the exact case the rule exists to block. Fixed by
+  compiling with the `s` flag; the change only makes previously-skipped rules
+  fire (a strict tightening, never a new bypass). Regression tests cover `\n`,
+  CRLF, and trailing-newline commands. (#13)
+
+### Fixed
+
+- Dropped a stale `(v1.0)` version label from the DOCS.md "Limitations"
+  heading. (#12)
+
+### Testing
+
+- `bun test` no longer tees STM's own "treat the key as COMPROMISED" alarm to
+  the terminal from subprocess fixtures. The hook-spawning tests now capture
+  child stderr (`stdio: ["pipe", "pipe", "pipe"]`) instead of letting Bun tee
+  it to the parent, so a genuine leak alarm during a run is no longer lost in
+  expected noise. No assertions changed. (#11)
+
 ## [1.1.0] - 2026-07-25
 
 Stable release. Promotes `1.1.0-beta.2` to stable with no functional changes —
