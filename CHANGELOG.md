@@ -54,6 +54,15 @@ unchanged (macOS + Claude Code; other platforms experimental).
   vault directory is created `0700`; and `ensureDataDir` re-tightens the data
   dir to `0700` even when it already exists, protecting the SQLite WAL/SHM
   sidecars that carry audit-log command text and card last-4. (#16)
+- **`.env` scanner confined to the requested tree.** The importer followed
+  symlinks (`statSync`), so a hostile repo's `.env.bak -> ~/.aws/credentials`
+  (or a `subdir -> /` symlink) could make the scan read outside the requested
+  directory. It now skips symlinks (`lstatSync`), caps the read size, confines
+  `importSelected` to real `.env` files (blocking a crafted selection from
+  reading an arbitrary path into the keychain), and reveals mask edges only on
+  longer secrets. Plus dashboard-escaping consistency (`esc()` covers `'`;
+  `monthly_cost` and the audit event-class escaped) and a hardened TOML escape
+  for the Codex config writer. (#19)
 
 ### Fixed
 
