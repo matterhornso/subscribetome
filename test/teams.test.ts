@@ -11,7 +11,12 @@
 
 import { test, expect } from "bun:test";
 import { TeamServerStore, makeTeamServerHandler } from "../src/teams/server.ts";
-import { createTeam, pushVault, pullVault, type TeamConfig } from "../src/teams/client.ts";
+import {
+  createTeam, pushVault, pullVault, generateTeamKey,
+  registerMember, listMembers, getMember, uploadEnvelope, fetchEnvelope,
+  type TeamConfig,
+} from "../src/teams/client.ts";
+import { generateIdentityKeys, seal, openWith } from "../src/teams/keypair.ts";
 import { decryptVault } from "../src/keystores/encrypted-file.ts";
 
 const ADMIN = "admin-token-abc";
@@ -165,5 +170,56 @@ test("audit rows can be pushed and read back for a team", async () => {
   const rows = (await get.json()).rows;
   expect(rows).toHaveLength(2);
   expect(rows[0].event).toBeDefined();
+  server.close();
+});
+
+test("public-key enrollment: a new member gets the team key without a shared passphrase", async () => {
+  const server = new TeamServerStore();
+  const f = wire(server);
+  const team = await createTeam("http://s", ADMIN, "acme", { fetch: f });
+  const cfg: TeamConfig = { serverUrl: "http://s", teamToken: team.token, teamId: team.id };
+  const df = { fetch: f };
+
+  // Admin: generate the team key, self-enroll, push an encrypted vault.
+  const teamKey = generateTeamKey();
+  const admin = generateIdentityKeys();
+  await registerMember(cfg, admin.memberId, admin.publicKeyB64, df);
+  await uploadEnvelope(cfg, admin.memberId, seal(teamKey, admin.publicKeyB64), df);
+  const src = new FakeStore();
+  src.seed("openai", "default", "sk-openai-shared-team-key-000111");
+  await pushVault({ store: asStore(src), cfg, passphrase: teamKey, fetch: f });
+
+  // New member: request enrollment (publishes only a PUBLIC key).
+  const member = generateIdentityKeys();
+  await registerMember(cfg, member.memberId, member.publicKeyB64, df);
+
+  // Server shows the member pending (no wrapped key yet).
+  let members = await listMembers(cfg, df);
+  expect(members.find((m) => m.memberId === member.memberId)!.enrolled).toBe(false);
+  expect(await fetchEnvelope(cfg, member.memberId, df)).toBeNull(); // nothing to accept yet
+
+  // Admin enrolls the member: seal the team key to THEIR public key + upload.
+  const theirPub = (await getMember(cfg, member.memberId, df))!.pubkey;
+  await uploadEnvelope(cfg, member.memberId, seal(teamKey, theirPub), df);
+
+  members = await listMembers(cfg, df);
+  expect(members.find((m) => m.memberId === member.memberId)!.enrolled).toBe(true);
+
+  // Member accepts: unwrap with THEIR private key -> the same team key.
+  const envelope = (await fetchEnvelope(cfg, member.memberId, df))!;
+  const recovered = openWith(envelope, member.privateKeyB64);
+  expect(recovered).toBe(teamKey);
+
+  // And with it, the member can pull + decrypt the vault.
+  const dst = new FakeStore();
+  const pulled = await pullVault({ store: asStore(dst), cfg, passphrase: recovered, fetch: f });
+  expect(pulled.added).toBe(1);
+  expect(dst.resolve("openai", "default")).toBe("sk-openai-shared-team-key-000111");
+
+  // The team key was NEVER sent in the clear: every envelope is ciphertext that
+  // only the addressed private key opens.
+  const outsider = generateIdentityKeys();
+  expect(() => openWith(envelope, outsider.privateKeyB64)).toThrow();
+
   server.close();
 });

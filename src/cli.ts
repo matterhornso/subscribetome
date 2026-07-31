@@ -1763,6 +1763,7 @@ async function teamsCmd(args: string[]): Promise<void> {
     return i >= 0 ? rest[i + 1] : undefined;
   };
   const t = await import("./teams/client.ts");
+  const kp = await import("./teams/keypair.ts");
   const out = (s: string) => process.stdout.write(s);
   const die = (s: string): never => {
     process.stderr.write(s + "\n");
@@ -1782,19 +1783,31 @@ async function teamsCmd(args: string[]): Promise<void> {
         die("usage: stm teams init --server <url> --admin <admin-token> [--name <name>]");
       }
       const created = await t.createTeam(server!, admin!, name);
-      t.writeTeamConfig({
+      const cfg = {
         serverUrl: server!,
         teamToken: created.token,
         teamId: created.id,
         teamName: created.name,
-      });
+      };
+      t.writeTeamConfig(cfg);
+      // Generate the team key, keep it locally, and self-enroll by sealing it to
+      // this machine's own identity key. The team key never leaves this machine
+      // except sealed to a specific member's public key.
+      const teamKey = t.generateTeamKey();
+      t.setTeamPassphrase(teamKey);
+      const id = kp.ensureIdentity();
+      await t.registerMember(cfg, id.memberId, id.publicKeyB64);
+      await t.uploadEnvelope(cfg, id.memberId, kp.seal(teamKey, id.publicKeyB64));
       out(
-        `created team "${created.name}" (id ${created.id}); config saved (0600).\n\n` +
+        `created team "${created.name}" (id ${created.id}); config saved (0600).\n` +
+          `you are enrolled (member ${id.memberId}); team key generated + stored in the keychain.\n\n` +
           `  team token : ${created.token}\n\n` +
-          `Share that token AND your shared team passphrase with teammates out-of-band\n` +
-          `(the server never sees the passphrase). Then set the passphrase locally:\n` +
-          `  stm teams passphrase        # reads the passphrase from stdin\n` +
-          `  stm teams push              # encrypt + upload your keys\n`,
+          `Give teammates the SERVER URL + TEAM TOKEN (safe to share — it decrypts nothing).\n` +
+          `They run:  stm teams join --server ${server} --token <token>\n` +
+          `then:      stm teams enroll-request     (sends you their public key)\n` +
+          `you run:   stm teams enroll <their-member-id>\n` +
+          `they run:  stm teams accept  &&  stm teams pull\n\n` +
+          `Upload your keys now with:  stm teams push\n`,
       );
       return;
     }
@@ -1806,10 +1819,60 @@ async function teamsCmd(args: string[]): Promise<void> {
       }
       t.writeTeamConfig({ serverUrl: server!, teamToken: token! });
       out(
-        `joined. Set the shared team passphrase (given to you out-of-band), then pull:\n` +
-          `  stm teams passphrase\n` +
-          `  stm teams pull\n`,
+        `joined "${server}". Now request enrollment (sends your public key to the team):\n` +
+          `  stm teams enroll-request\n` +
+          `An existing member enrolls you, then:  stm teams accept  &&  stm teams pull\n`,
       );
+      return;
+    }
+    case "enroll-request": {
+      const cfg = t.readTeamConfig();
+      if (!cfg) die("teams: not configured. Run `stm teams join` first.");
+      const id = kp.ensureIdentity();
+      await t.registerMember(cfg!, id.memberId, id.publicKeyB64);
+      out(
+        `enrollment requested. Give an existing team member your member id:\n\n` +
+          `  ${id.memberId}\n\n` +
+          `They run:  stm teams enroll ${id.memberId}\n` +
+          `Then you run:  stm teams accept\n`,
+      );
+      return;
+    }
+    case "members": {
+      const cfg = t.readTeamConfig();
+      if (!cfg) die("teams: not configured.");
+      const members = await t.listMembers(cfg!);
+      if (members.length === 0) {
+        out("no members yet.\n");
+        return;
+      }
+      out("member-id           enrolled\n");
+      for (const m of members) out(`${m.memberId.padEnd(18)}  ${m.enrolled ? "yes" : "PENDING"}\n`);
+      return;
+    }
+    case "enroll": {
+      const memberId = rest[0];
+      if (!memberId) die("usage: stm teams enroll <member-id>");
+      const cfg = t.readTeamConfig();
+      if (!cfg) die("teams: not configured.");
+      const teamKey = t.getTeamPassphrase();
+      if (!teamKey) die("you don't have the team key on this machine — accept your own enrollment first.");
+      const member = await t.getMember(cfg!, memberId!);
+      if (!member) die(`no member "${memberId}" — they must run \`stm teams enroll-request\` first.`);
+      await t.uploadEnvelope(cfg!, memberId!, kp.seal(teamKey!, member!.pubkey));
+      out(`enrolled ${memberId}. They can now run \`stm teams accept\`.\n`);
+      return;
+    }
+    case "accept": {
+      const cfg = t.readTeamConfig();
+      if (!cfg) die("teams: not configured. Run `stm teams join` first.");
+      if (!kp.hasIdentity()) die("no identity yet — run `stm teams enroll-request` first.");
+      const id = kp.ensureIdentity();
+      const envelope = await t.fetchEnvelope(cfg!, id.memberId);
+      if (!envelope) die("not enrolled yet — ask an existing member to run `stm teams enroll " + id.memberId + "`.");
+      const teamKey = kp.open(envelope);
+      t.setTeamPassphrase(teamKey);
+      out("accepted — team key unwrapped and stored in the keychain. Now: stm teams pull\n");
       return;
     }
     case "passphrase": {
@@ -1864,7 +1927,8 @@ async function teamsCmd(args: string[]): Promise<void> {
     }
     case "leave": {
       t.clearTeam();
-      out("left the team; local config + passphrase cleared.\n");
+      kp.clearIdentity();
+      out("left the team; local config, team key, and identity cleared.\n");
       return;
     }
     case "help":
@@ -1878,12 +1942,17 @@ async function teamsCmd(args: string[]): Promise<void> {
           `                                   STM_TEAM_ADMIN_TOKEN)\n` +
           `  stm teams init --server <url> --admin <tok> [--name <n>]  create a team\n` +
           `  stm teams join --server <url> --token <tok>               join an existing team\n` +
-          `  stm teams passphrase            set the shared team passphrase (stdin -> keychain)\n` +
+          `  stm teams enroll-request        publish your public key (ask to be enrolled)\n` +
+          `  stm teams members               list members + enrollment status\n` +
+          `  stm teams enroll <member-id>    seal the team key to a member (enroll them)\n` +
+          `  stm teams accept                unwrap the team key sealed to you\n` +
+          `  stm teams passphrase            set a shared team key manually (stdin -> keychain)\n` +
           `  stm teams push                  encrypt local keys + upload the vault\n` +
           `  stm teams pull                  download + decrypt + add any new keys\n` +
           `  stm teams status                show the configured team\n` +
           `  stm teams leave                 clear local team config + passphrase\n\n` +
-          `The server only ever stores ciphertext — it can never read a credential.\n`,
+          `Enrollment is public-key: the team key is sealed to each member's key and\n` +
+          `never shared as a plaintext passphrase. The server only stores ciphertext.\n`,
       );
       return;
     default:

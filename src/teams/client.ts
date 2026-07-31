@@ -10,6 +10,7 @@
 //   - the team passphrase (the actual encryption key) -> the OS keychain, never
 //     on disk in plaintext. Shared between teammates out-of-band (v1).
 import { chmodSync, existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { randomBytes } from "node:crypto";
 import { join } from "node:path";
 import { encryptVault, decryptVault } from "../keystores/encrypted-file.ts";
 import { keychainGet, keychainSet, keychainDelete } from "../keychain.ts";
@@ -68,6 +69,12 @@ export function setTeamPassphrase(passphrase: string): void {
 
 export function getTeamPassphrase(): string | null {
   return keychainGet(TEAM_PASSPHRASE_REF);
+}
+
+/** A fresh high-entropy team key, used as the vault-encryption passphrase and
+ *  distributed to members by sealing it to their public keys. */
+export function generateTeamKey(): string {
+  return randomBytes(32).toString("base64");
 }
 
 export function clearTeam(): void {
@@ -177,6 +184,82 @@ export async function pullVault(deps: {
     }
   }
   return { version, added, skipped };
+}
+
+// ---- public-key enrollment -----------------------------------------------
+
+/** Register (or refresh) a member's public key with the team (pending until an
+ *  existing member seals the team key to it). */
+export async function registerMember(
+  cfg: TeamConfig,
+  memberId: string,
+  pubkey: string,
+  deps?: { fetch?: Fetch },
+): Promise<void> {
+  const doFetch = deps?.fetch ?? fetch;
+  const r = await doFetch(`${trim(cfg.serverUrl)}/v1/members`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${cfg.teamToken}`, "content-type": "application/json" },
+    body: JSON.stringify({ memberId, pubkey }),
+  });
+  if (!r.ok) throw new Error(`enroll-request failed: HTTP ${r.status} ${await safeText(r)}`);
+}
+
+export async function listMembers(
+  cfg: TeamConfig,
+  deps?: { fetch?: Fetch },
+): Promise<{ memberId: string; pubkey: string; enrolled: boolean }[]> {
+  const doFetch = deps?.fetch ?? fetch;
+  const r = await doFetch(`${trim(cfg.serverUrl)}/v1/members`, {
+    headers: { authorization: `Bearer ${cfg.teamToken}` },
+  });
+  if (!r.ok) throw new Error(`list members failed: HTTP ${r.status} ${await safeText(r)}`);
+  return ((await r.json()) as any).members ?? [];
+}
+
+export async function getMember(
+  cfg: TeamConfig,
+  memberId: string,
+  deps?: { fetch?: Fetch },
+): Promise<{ memberId: string; pubkey: string; enrolled: boolean } | null> {
+  const doFetch = deps?.fetch ?? fetch;
+  const r = await doFetch(`${trim(cfg.serverUrl)}/v1/members/${encodeURIComponent(memberId)}`, {
+    headers: { authorization: `Bearer ${cfg.teamToken}` },
+  });
+  if (r.status === 404) return null;
+  if (!r.ok) throw new Error(`get member failed: HTTP ${r.status} ${await safeText(r)}`);
+  return (await r.json()) as any;
+}
+
+/** Upload the sealed team-key envelope for a member (enroll them). */
+export async function uploadEnvelope(
+  cfg: TeamConfig,
+  memberId: string,
+  envelope: string,
+  deps?: { fetch?: Fetch },
+): Promise<void> {
+  const doFetch = deps?.fetch ?? fetch;
+  const r = await doFetch(`${trim(cfg.serverUrl)}/v1/members/${encodeURIComponent(memberId)}/envelope`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${cfg.teamToken}`, "content-type": "application/json" },
+    body: JSON.stringify({ envelope }),
+  });
+  if (!r.ok) throw new Error(`enroll failed: HTTP ${r.status} ${await safeText(r)}`);
+}
+
+/** Fetch this member's sealed envelope, or null if not enrolled yet. */
+export async function fetchEnvelope(
+  cfg: TeamConfig,
+  memberId: string,
+  deps?: { fetch?: Fetch },
+): Promise<string | null> {
+  const doFetch = deps?.fetch ?? fetch;
+  const r = await doFetch(`${trim(cfg.serverUrl)}/v1/members/${encodeURIComponent(memberId)}/envelope`, {
+    headers: { authorization: `Bearer ${cfg.teamToken}` },
+  });
+  if (r.status === 404) return null;
+  if (!r.ok) throw new Error(`fetch envelope failed: HTTP ${r.status} ${await safeText(r)}`);
+  return ((await r.json()) as any).envelope ?? null;
 }
 
 function trim(u: string): string {

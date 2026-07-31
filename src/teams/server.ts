@@ -48,6 +48,14 @@ CREATE TABLE IF NOT EXISTS team_audit (
   detail   TEXT
 );
 CREATE INDEX IF NOT EXISTS team_audit_idx ON team_audit(team_id, id DESC);
+CREATE TABLE IF NOT EXISTS members (
+  team_id     INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+  member_id   TEXT NOT NULL,
+  pubkey      TEXT NOT NULL,
+  wrapped_key TEXT,            -- the sealed team-key envelope; null while pending
+  added_at    TEXT NOT NULL,
+  PRIMARY KEY (team_id, member_id)
+);
 `;
 
 /** Max encrypted-vault size the server will accept (10 MiB) — a team vault is
@@ -154,6 +162,41 @@ export class TeamServerStore {
       .all(teamId, limit) as any[];
   }
 
+  /** Register (or refresh) a member's public key. Leaves any existing sealed
+   *  envelope intact; a brand-new member starts pending (wrapped_key null). */
+  registerMember(teamId: number, memberId: string, pubkey: string): void {
+    this.db
+      .query(
+        `INSERT INTO members (team_id, member_id, pubkey, wrapped_key, added_at)
+         VALUES (?, ?, ?, NULL, ?)
+         ON CONFLICT(team_id, member_id) DO UPDATE SET pubkey = excluded.pubkey`,
+      )
+      .run(teamId, memberId, pubkey, new Date().toISOString());
+  }
+
+  /** Record the sealed team-key envelope for a member (enroll them). */
+  setMemberEnvelope(teamId: number, memberId: string, envelope: string): boolean {
+    const r = this.db
+      .query(`UPDATE members SET wrapped_key = ? WHERE team_id = ? AND member_id = ?`)
+      .run(envelope, teamId, memberId);
+    return r.changes > 0;
+  }
+
+  getMember(teamId: number, memberId: string): { member_id: string; pubkey: string; wrapped_key: string | null } | null {
+    return (
+      (this.db
+        .query(`SELECT member_id, pubkey, wrapped_key FROM members WHERE team_id = ? AND member_id = ?`)
+        .get(teamId, memberId) as any) ?? null
+    );
+  }
+
+  listMembers(teamId: number): { memberId: string; pubkey: string; enrolled: boolean }[] {
+    const rows = this.db
+      .query(`SELECT member_id, pubkey, wrapped_key FROM members WHERE team_id = ? ORDER BY added_at ASC`)
+      .all(teamId) as { member_id: string; pubkey: string; wrapped_key: string | null }[];
+    return rows.map((r) => ({ memberId: r.member_id, pubkey: r.pubkey, enrolled: r.wrapped_key != null }));
+  }
+
   close(): void {
     this.db.close();
   }
@@ -213,8 +256,55 @@ export function makeTeamServerHandler(
 
     // --- everything below is team-token authenticated ---
     const team = store.teamByToken(bearer(req));
-    if (path.startsWith("/v1/vault") || path.startsWith("/v1/audit")) {
+    if (
+      path.startsWith("/v1/vault") ||
+      path.startsWith("/v1/audit") ||
+      path.startsWith("/v1/members")
+    ) {
       if (!team) return json({ error: "unauthorized" }, 401);
+    }
+
+    // --- member enrollment (public-key key distribution) ---
+    if (path === "/v1/members" && method === "POST") {
+      const b: any = await req.json().catch(() => ({}));
+      if (typeof b?.memberId !== "string" || typeof b?.pubkey !== "string" || !b.memberId || !b.pubkey) {
+        return json({ error: "memberId and pubkey are required" }, 400);
+      }
+      store.registerMember(team!.id, b.memberId, b.pubkey);
+      return json({ ok: true });
+    }
+    if (path === "/v1/members" && method === "GET") {
+      return json({ members: store.listMembers(team!.id) });
+    }
+    {
+      const m = path.match(/^\/v1\/members\/([A-Za-z0-9_-]+)\/envelope$/);
+      if (m) {
+        const memberId = m[1];
+        if (method === "POST") {
+          const b: any = await req.json().catch(() => ({}));
+          if (typeof b?.envelope !== "string" || !b.envelope) {
+            return json({ error: "envelope is required" }, 400);
+          }
+          return store.setMemberEnvelope(team!.id, memberId, b.envelope)
+            ? json({ ok: true })
+            : json({ error: "no such member — they must enroll-request first" }, 404);
+        }
+        if (method === "GET") {
+          const mem = store.getMember(team!.id, memberId);
+          if (!mem) return json({ error: "no such member" }, 404);
+          if (!mem.wrapped_key) return json({ error: "not enrolled yet — ask an admin to enroll you" }, 404);
+          return json({ envelope: mem.wrapped_key, pubkey: mem.pubkey });
+        }
+      }
+    }
+    {
+      const m = path.match(/^\/v1\/members\/([A-Za-z0-9_-]+)$/);
+      if (m && method === "GET") {
+        const mem = store.getMember(team!.id, m[1]);
+        return mem
+          ? json({ memberId: mem.member_id, pubkey: mem.pubkey, enrolled: mem.wrapped_key != null })
+          : json({ error: "no such member" }, 404);
+      }
     }
 
     if (path === "/v1/vault" && method === "PUT") {
