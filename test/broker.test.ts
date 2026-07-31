@@ -10,7 +10,7 @@
 //   - client-supplied auth can't override the injected credential.
 
 import { test, expect } from "bun:test";
-import { brokerRequest, type BrokerTarget } from "../src/broker.ts";
+import { brokerRequest, readBodyCapped, type BrokerTarget } from "../src/broker.ts";
 
 const KEY = "sk-ant-secret-VALUE-do-not-leak-1234567890";
 
@@ -39,6 +39,38 @@ test("bearer target: key is attached to the outbound Authorization header", asyn
   expect(calls).toHaveLength(1);
   expect(calls[0].url).toBe("https://api.openai.com/v1/models");
   expect(calls[0].init.headers["Authorization"]).toBe(`Bearer ${KEY}`);
+});
+
+test("outbound fetch does NOT auto-follow redirects (key must not ride a 3xx off-origin)", async () => {
+  const { fn, calls } = recordingFetch({});
+  await brokerRequest(
+    { tool: "anthropic", label: "default", path: "/v1/messages", method: "POST", headers: {} },
+    { resolveKey, fetch: fn },
+  );
+  expect(calls[0].init.redirect).toBe("manual");
+});
+
+test("readBodyCapped returns null past the byte cap (OOM guard)", async () => {
+  const small = new Response("x".repeat(50));
+  expect(await readBodyCapped(small, 10)).toBeNull();
+  const ok = new Response("hello");
+  expect(await readBodyCapped(ok, 100)).toBe("hello");
+});
+
+test("query-auth error scrub also strips the percent-ENCODED key", async () => {
+  const targets: Record<string, BrokerTarget> = {
+    demo: { id: "demo", baseUrl: "https://api.demo.test", auth: { kind: "query", name: "api_key" } },
+  };
+  const weirdKey = "sk live/with+special=chars"; // encodeURIComponent differs from raw
+  const failing = (async (url: string) => {
+    throw new Error(`connect ECONNREFUSED for ${url}`); // url has ?api_key=<encoded key>
+  }) as unknown as typeof fetch;
+  const r = await brokerRequest(
+    { tool: "demo", label: "default", path: "/x", method: "GET", headers: {} },
+    { resolveKey: () => weirdKey, fetch: failing, targets },
+  );
+  expect(r.error).not.toContain(weirdKey);
+  expect(r.error).not.toContain(encodeURIComponent(weirdKey));
 });
 
 test("the key is NEVER present in the returned body (upstream echoes it back)", async () => {

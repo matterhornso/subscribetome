@@ -574,6 +574,10 @@ export async function runDaemon(): Promise<void> {
   const server = Bun.serve({
     hostname: "127.0.0.1",
     port: 0,
+    // Bound request bodies so a brokered POST (or any request) can't buffer an
+    // unbounded body into the long-lived daemon. Generous enough for real API
+    // uploads through the broker; a hard ceiling against abuse.
+    maxRequestBodySize: 32 * 1024 * 1024,
     async fetch(req): Promise<Response> {
       const url = new URL(req.url);
       const path = url.pathname;

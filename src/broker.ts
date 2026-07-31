@@ -125,14 +125,51 @@ function authHeaderNames(auth: AuthInjection): string[] {
   return [];
 }
 
+/** Upstream response body cap (16 MiB) — a hostile/compromised provider must
+ *  not be able to OOM the daemon by returning an unbounded body. */
+const MAX_RESPONSE_BYTES = 16 * 1024 * 1024;
+
+/** Hop-by-hop + connection headers that must not be forwarded to the upstream
+ *  (RFC 7230 §6.1 plus proxy-auth). */
+const HOP_BY_HOP = [
+  "host", "content-length", "connection", "keep-alive", "transfer-encoding",
+  "te", "trailer", "upgrade", "proxy-authorization", "proxy-authenticate",
+];
+
 /** Replace every occurrence of `secret` in `text` with a fixed marker. Literal
- *  (non-regex) global replace, so a secret with regex metachars is handled. */
+ *  (non-regex) global replace, so a secret with regex metachars is handled.
+ *  Also strips the percent-ENCODED form, since a query-auth target's key appears
+ *  URL-encoded in a request URL that an error message may embed. */
 function scrub(text: string, secret: string): string {
   if (!secret) return text;
   let out = text.split(secret).join("[stm:redacted]");
+  const enc = encodeURIComponent(secret);
+  if (enc !== secret) out = out.split(enc).join("[stm:redacted]");
   // Defense in depth: also mask any OTHER key-shaped token the upstream echoed.
   for (const hit of detectKeys(out)) out = out.split(hit.value).join("[stm:redacted]");
   return out;
+}
+
+/** Read a response body as text, but abort past `max` bytes so a hostile
+ *  upstream can't OOM the daemon. Returns null if the cap is exceeded. */
+export async function readBodyCapped(resp: Response, max: number): Promise<string | null> {
+  const reader = resp.body?.getReader();
+  if (!reader) return "";
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (value) {
+      total += value.byteLength;
+      if (total > max) {
+        try { await reader.cancel(); } catch { /* ignore */ }
+        return null;
+      }
+      chunks.push(value);
+    }
+  }
+  return Buffer.concat(chunks).toString("utf8");
 }
 
 /**
@@ -177,7 +214,7 @@ export async function brokerRequest(
 
   // Copy caller headers, dropping any auth for the scheme we're about to inject
   // and hop-by-hop headers that must not be forwarded.
-  const drop = new Set([...authHeaderNames(target.auth), "host", "content-length", "connection"]);
+  const drop = new Set([...authHeaderNames(target.auth), ...HOP_BY_HOP]);
   const outHeaders: Record<string, string> = {};
   for (const [k, v] of Object.entries(req.headers ?? {})) {
     if (!drop.has(k.toLowerCase())) outHeaders[k] = v;
@@ -199,6 +236,12 @@ export async function brokerRequest(
       headers: outHeaders,
       body: req.body ?? undefined,
       signal: deps.signal,
+      // CRITICAL: do NOT auto-follow redirects. The injected credential is on
+      // this request's headers; if the provider 3xx-redirects off-origin, a
+      // followed request would replay a custom auth header (e.g. x-api-key) to
+      // another host — a key leak the SSRF path-guard can't see. Surface the
+      // 3xx to the caller instead of following it with the key attached.
+      redirect: "manual",
     });
   } catch (e: any) {
     // Scrub the key from any network-error message too (fetch/undici can embed
@@ -206,7 +249,10 @@ export async function brokerRequest(
     return { ok: false, status: 502, headers: {}, body: "", error: scrub(e?.message ?? String(e), key) };
   }
 
-  const rawBody = await resp.text();
+  const rawBody = await readBodyCapped(resp, MAX_RESPONSE_BYTES);
+  if (rawBody === null) {
+    return { ok: false, status: 502, headers: {}, body: "", error: "upstream response exceeded the broker size limit" };
+  }
   const body = scrub(rawBody, key);
   const headers: Record<string, string> = {};
   resp.headers.forEach((v, k) => {
