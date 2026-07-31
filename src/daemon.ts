@@ -17,6 +17,7 @@ import { DAEMON_FILE, ensureDataDir } from "./paths.ts";
 import { dashboardHTML } from "./dashboard.ts";
 import { importSelected, scanEnv } from "./import.ts";
 import { evaluateAll, type PolicyAction } from "./policy.ts";
+import { brokerRequest } from "./broker.ts";
 import { findExact } from "./grammar.ts";
 import { syncAll, syncProvider } from "./sync.ts";
 import { listProviderIds } from "./providers/index.ts";
@@ -470,6 +471,80 @@ async function apiRoute(path: string, req: Request, store: Store): Promise<Respo
   return json({ error: "not found" }, 404);
 }
 
+/**
+ * Broker route: `/proxy/<tool>/<label>/<upstream-path>`. Thin adapter over
+ * `brokerRequest` — parse the path, forward the request, return the scrubbed
+ * response. Token-gated + loopback-bound by the outer handler. The real
+ * credential is resolved from the keychain inside brokerRequest and attached
+ * only to the outbound provider call; it never appears in the response.
+ */
+async function brokerRoute(url: URL, req: Request, store: Store): Promise<Response> {
+  const parts = url.pathname.split("/"); // ["", "proxy", tool, label, ...rest]
+  const tool = parts[2] ?? "";
+  const label = parts[3] ?? "";
+  if (!tool || !label) {
+    return json({ error: "usage: /proxy/<tool>/<label>/<upstream-path>" }, 400);
+  }
+  const rest = "/" + parts.slice(4).join("/");
+  // Forward the incoming query string, minus our own capability token so it is
+  // never sent upstream to the provider.
+  const search = new URLSearchParams(url.search);
+  search.delete("token");
+  const qs = search.toString();
+  const upstreamPath = rest + (qs ? `?${qs}` : "");
+
+  // Copy caller headers; drop our capability token + host so neither reaches
+  // the provider. brokerRequest additionally drops the injected auth scheme.
+  const headers: Record<string, string> = {};
+  req.headers.forEach((v, k) => {
+    const lk = k.toLowerCase();
+    if (lk === "x-stm-token" || lk === "host") return;
+    headers[k] = v;
+  });
+
+  const method = req.method;
+  const body =
+    method === "GET" || method === "HEAD"
+      ? null
+      : new Uint8Array(await req.arrayBuffer());
+
+  const result = await brokerRequest(
+    { tool, label, path: upstreamPath, method, headers, body },
+    { resolveKey: (t, l) => { try { return store.resolve(t, l); } catch { return null; } } },
+  );
+
+  // Best-effort audit of the brokered call — never the key, never the body.
+  try {
+    store.recordAudit({
+      event: "substitute",
+      tool,
+      label,
+      command: `broker ${method} /proxy/${tool}/${label}${rest} -> ${result.status}`,
+      agent: "broker",
+    });
+  } catch {
+    /* audit is best-effort */
+  }
+
+  if (result.error) {
+    return json({ error: result.error }, result.status || 502);
+  }
+
+  // Forward upstream response headers, minus hop-by-hop / encoding headers we
+  // already resolved by reading the body as text.
+  const respHeaders: Record<string, string> = { ...SEC_HEADERS };
+  const skip = new Set([
+    "content-encoding",
+    "content-length",
+    "transfer-encoding",
+    "connection",
+  ]);
+  for (const [k, v] of Object.entries(result.headers)) {
+    if (!skip.has(k.toLowerCase())) respHeaders[k] = v;
+  }
+  return new Response(result.body, { status: result.status, headers: respHeaders });
+}
+
 /** Run the daemon in the foreground (the process is `stm daemon`). */
 export async function runDaemon(): Promise<void> {
   const live = await liveInfo();
@@ -515,6 +590,10 @@ export async function runDaemon(): Promise<void> {
       if (path.startsWith("/api/")) {
         if (!authed) return json({ error: "unauthorized" }, 401);
         return apiRoute(path, req, store);
+      }
+      if (path.startsWith("/proxy/")) {
+        if (!authed) return json({ error: "unauthorized" }, 401);
+        return brokerRoute(url, req, store);
       }
       return new Response("not found", { status: 404, headers: SEC_HEADERS });
     },
