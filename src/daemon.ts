@@ -17,7 +17,7 @@ import { DAEMON_FILE, ensureDataDir } from "./paths.ts";
 import { dashboardHTML } from "./dashboard.ts";
 import { importSelected, scanEnv } from "./import.ts";
 import { evaluateAll, type PolicyAction } from "./policy.ts";
-import { brokerRequest } from "./broker.ts";
+import { brokerRequest, BROKER_TARGETS } from "./broker.ts";
 import { findExact } from "./grammar.ts";
 import { syncAll, syncProvider } from "./sync.ts";
 import { listProviderIds } from "./providers/index.ts";
@@ -25,7 +25,17 @@ import { listSupportedAgents } from "./agents/codex.ts";
 
 interface DaemonInfo {
   port: number;
+  /** Dashboard token — gates GET / and every /api/ call. Browser-only; never
+   *  printed to stdout. */
   token: string;
+  /**
+   * Broker capability token — gates /proxy/ only. Deliberately weaker than the
+   * dashboard token: it lets a command make brokered API calls (the key is
+   * injected server-side and never revealed) but CANNOT read the inventory or
+   * open the dashboard. Safe to hand to a command / print to stdout, because it
+   * exposes no secret and resets when the daemon restarts.
+   */
+  brokerToken: string;
   pid: number;
 }
 
@@ -556,6 +566,7 @@ export async function runDaemon(): Promise<void> {
   }
 
   const token = randomBytes(24).toString("hex");
+  const brokerToken = randomBytes(24).toString("hex");
   const store = new Store();
 
   const server = Bun.serve({
@@ -574,7 +585,11 @@ export async function runDaemon(): Promise<void> {
 
       const tok =
         req.headers.get("x-stm-token") ?? url.searchParams.get("token") ?? "";
+      // Two capability levels. The dashboard token authorizes everything. The
+      // broker token authorizes ONLY /proxy — it can't read the inventory or
+      // open the dashboard, which is what makes it safe to hand to a command.
       const authed = tok === token;
+      const brokerAuthed = authed || tok === brokerToken;
 
       if (path === "/") {
         if (!authed) {
@@ -592,7 +607,7 @@ export async function runDaemon(): Promise<void> {
         return apiRoute(path, req, store);
       }
       if (path.startsWith("/proxy/")) {
-        if (!authed) return json({ error: "unauthorized" }, 401);
+        if (!brokerAuthed) return json({ error: "unauthorized" }, 401);
         return brokerRoute(url, req, store);
       }
       return new Response("not found", { status: 404, headers: SEC_HEADERS });
@@ -610,7 +625,7 @@ export async function runDaemon(): Promise<void> {
     );
     process.exit(0);
   }
-  writeInfo({ port: server.port, token, pid: process.pid });
+  writeInfo({ port: server.port, token, brokerToken, pid: process.pid });
   process.stderr.write(
     `subscribetome daemon on http://127.0.0.1:${server.port}/?token=${token}\n`,
   );
@@ -628,8 +643,9 @@ function cliPath(): string {
   return join(import.meta.dir, "cli.ts");
 }
 
-/** Ensure the daemon is up, print the dashboard URL, open a browser. */
-export async function openDashboard(): Promise<void> {
+/** Ensure the daemon is running; spawn it and wait if needed. Returns the live
+ *  descriptor, or exits the process on failure. */
+async function ensureDaemonLive(): Promise<DaemonInfo> {
   let info = await liveInfo();
   if (!info) {
     const child = Bun.spawn([process.execPath, cliPath(), "daemon"], {
@@ -643,10 +659,16 @@ export async function openDashboard(): Promise<void> {
       info = await liveInfo();
     }
     if (!info) {
-      process.stderr.write("failed to start the dashboard daemon\n");
+      process.stderr.write("failed to start the subscribetome daemon\n");
       process.exit(1);
     }
   }
+  return info;
+}
+
+/** Ensure the daemon is up, print the dashboard URL, open a browser. */
+export async function openDashboard(): Promise<void> {
+  const info = await ensureDaemonLive();
   // The token-bearing URL goes ONLY to the browser via `open`. stdout may be
   // captured into a terminal transcript or an agent's conversation, so the
   // token must never be printed there.
@@ -664,6 +686,37 @@ export async function openDashboard(): Promise<void> {
     `dashboard: http://127.0.0.1:${info.port}/  (opening in your browser)\n`,
   );
   spawnSync("open", [tokenUrl]);
+}
+
+/**
+ * `stm broker [tool] [label]` — ensure the daemon is up and print how to route
+ * a command's API calls through the broker so the real key is injected
+ * server-side and never touches the command, its env, or the transcript.
+ *
+ * Unlike the dashboard URL, the broker token IS printed to stdout on purpose:
+ * it's a loopback-only capability that exposes no secret (it can't read the
+ * inventory or reveal a key), it's what a command needs in order to authenticate
+ * to the broker, and it resets on daemon restart.
+ */
+export async function printBroker(argv: string[] = []): Promise<void> {
+  const info = await ensureDaemonLive();
+  const base = `http://127.0.0.1:${info.port}`;
+  const tool = argv[0] && !argv[0].startsWith("-") ? argv[0] : "openai";
+  const label = argv[1] && !argv[1].startsWith("-") ? argv[1] : "default";
+  process.stdout.write(
+    `subscribetome broker\n\n` +
+      `  base URL : ${base}/proxy/<tool>/<label>/<upstream-path>\n` +
+      `  auth     : header  x-stm-token: ${info.brokerToken}\n\n` +
+      `Route a request through the broker and STM injects the real key on the way\n` +
+      `out to the provider — your command, its environment, and the transcript\n` +
+      `never contain the key. Example:\n\n` +
+      `  curl ${base}/proxy/${tool}/${label}/v1/models \\\n` +
+      `    -H "x-stm-token: ${info.brokerToken}"\n\n` +
+      `The token above is a LOCAL, loopback-only capability: it lets a command make\n` +
+      `API calls through STM without ever seeing your key, it cannot read your\n` +
+      `inventory or open the dashboard, and it resets when the daemon restarts.\n\n` +
+      `Supported targets: ${Object.keys(BROKER_TARGETS).sort().join(", ")}.\n`,
+  );
 }
 
 export async function stopDaemon(): Promise<void> {
