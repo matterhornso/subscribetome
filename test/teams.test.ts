@@ -14,6 +14,7 @@ import { TeamServerStore, makeTeamServerHandler } from "../src/teams/server.ts";
 import {
   createTeam, pushVault, pullVault, generateTeamKey,
   registerMember, listMembers, getMember, uploadEnvelope, fetchEnvelope,
+  pushLocalAudit, fetchTeamAudit,
   type TeamConfig,
 } from "../src/teams/client.ts";
 import { generateIdentityKeys, seal, openWith } from "../src/teams/keypair.ts";
@@ -52,6 +53,16 @@ class FakeStore {
     this.vals.set(k, value);
     this.meta.push({ tool, label, status: "active" });
     return { placeholder: `{{stm:${tool}:${label}}}` };
+  }
+  private auditRows: any[] = [];
+  seedAudit(event: string, tool: string, label: string, command: string) {
+    this.auditRows.push({
+      id: this.auditRows.length + 1, ts: "2026-01-01T00:00:00Z",
+      event, tool, label, command, agent: "claude-code",
+    });
+  }
+  listAuditForSync(since: number, limit: number) {
+    return this.auditRows.filter((r) => r.id > since).slice(0, limit);
   }
 }
 
@@ -220,6 +231,39 @@ test("public-key enrollment: a new member gets the team key without a shared pas
   // only the addressed private key opens.
   const outsider = generateIdentityKeys();
   expect(() => openWith(envelope, outsider.privateKeyB64)).toThrow();
+
+  server.close();
+});
+
+test("team audit: local key-use events push once (cursor advances) and are visible team-wide", async () => {
+  const server = new TeamServerStore();
+  const f = wire(server);
+  const team = await createTeam("http://s", ADMIN, "acme", { fetch: f });
+  const cfg: TeamConfig = { serverUrl: "http://s", teamToken: team.token, teamId: team.id };
+
+  const src = new FakeStore();
+  src.seedAudit("substitute", "openai", "default", "curl -H 'auth: {{stm:openai:default}}' api");
+  src.seedAudit("policy.deny", "fal", "default", "echo {{stm:fal:default}}");
+
+  const r1 = await pushLocalAudit({ store: asStore(src), cfg, actor: "alice", fetch: f });
+  expect(r1.pushed).toBe(2);
+  expect(r1.cursor).toBe(2);
+
+  const rows = await fetchTeamAudit(r1.cfg, 10, { fetch: f });
+  expect(rows).toHaveLength(2);
+  expect(rows.some((x) => x.actor === "alice")).toBe(true);
+  // The detail is the PLACEHOLDER command — no resolved secret ever left the box.
+  expect(rows.some((x) => String(x.detail).includes("{{stm:openai:default}}"))).toBe(true);
+
+  // Re-pushing with the advanced cursor sends nothing (idempotent).
+  const r2 = await pushLocalAudit({ store: asStore(src), cfg: r1.cfg, actor: "alice", fetch: f });
+  expect(r2.pushed).toBe(0);
+
+  // A new local event pushes just the one.
+  src.seedAudit("substitute", "stripe", "default", "curl {{stm:stripe:default}}");
+  const r3 = await pushLocalAudit({ store: asStore(src), cfg: r1.cfg, actor: "alice", fetch: f });
+  expect(r3.pushed).toBe(1);
+  expect((await fetchTeamAudit(r3.cfg, 10, { fetch: f }))).toHaveLength(3);
 
   server.close();
 });

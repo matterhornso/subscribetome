@@ -30,6 +30,8 @@ export interface TeamConfig {
   teamToken: string;
   teamId?: number;
   teamName?: string;
+  /** Highest local audit-row id already pushed to the team log (sync cursor). */
+  auditCursor?: number;
 }
 
 export interface TeamVaultPayload {
@@ -260,6 +262,63 @@ export async function fetchEnvelope(
   if (r.status === 404) return null;
   if (!r.ok) throw new Error(`fetch envelope failed: HTTP ${r.status} ${await safeText(r)}`);
   return ((await r.json()) as any).envelope ?? null;
+}
+
+// ---- team audit log ------------------------------------------------------
+
+export interface TeamAuditRow {
+  ts: string;
+  actor: string | null;
+  event: string;
+  detail: string | null;
+}
+
+/**
+ * Push local audit rows newer than the config's cursor to the team log, then
+ * advance the cursor. Only placeholder-form commands are sent (never a resolved
+ * key), so nothing secret leaves the machine. Returns how many were pushed and
+ * the new cursor (the caller persists the updated config).
+ */
+export async function pushLocalAudit(deps: {
+  store: Store;
+  cfg: TeamConfig;
+  actor: string;
+  fetch?: Fetch;
+}): Promise<{ pushed: number; cursor: number; cfg: TeamConfig }> {
+  const doFetch = deps.fetch ?? fetch;
+  const since = deps.cfg.auditCursor ?? 0;
+  const local = deps.store.listAuditForSync(since, 1000);
+  if (local.length === 0) return { pushed: 0, cursor: since, cfg: deps.cfg };
+  const rows: TeamAuditRow[] = local.map((r) => ({
+    ts: r.ts,
+    actor: deps.actor,
+    event: r.event,
+    // placeholder-form command only; falls back to the tool:label address
+    detail: r.command ?? `${r.tool ?? ""}:${r.label ?? ""}`,
+  }));
+  const resp = await doFetch(`${trim(deps.cfg.serverUrl)}/v1/audit`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${deps.cfg.teamToken}`, "content-type": "application/json" },
+    body: JSON.stringify({ rows }),
+  });
+  if (!resp.ok) throw new Error(`audit push failed: HTTP ${resp.status} ${await safeText(resp)}`);
+  const cursor = local[local.length - 1].id;
+  const cfg = { ...deps.cfg, auditCursor: cursor };
+  return { pushed: rows.length, cursor, cfg };
+}
+
+/** Fetch the team's combined audit log (most recent first). */
+export async function fetchTeamAudit(
+  cfg: TeamConfig,
+  limit = 100,
+  deps?: { fetch?: Fetch },
+): Promise<TeamAuditRow[]> {
+  const doFetch = deps?.fetch ?? fetch;
+  const r = await doFetch(`${trim(cfg.serverUrl)}/v1/audit?limit=${limit}`, {
+    headers: { authorization: `Bearer ${cfg.teamToken}` },
+  });
+  if (!r.ok) throw new Error(`fetch team audit failed: HTTP ${r.status} ${await safeText(r)}`);
+  return ((await r.json()) as any).rows ?? [];
 }
 
 function trim(u: string): string {

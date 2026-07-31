@@ -1911,6 +1911,34 @@ async function teamsCmd(args: string[]): Promise<void> {
       }
       return;
     }
+    case "audit-push": {
+      const cfg = t.readTeamConfig();
+      if (!cfg) die("teams: not configured.");
+      const store = new Store();
+      try {
+        const actor = kp.hasIdentity() ? kp.ensureIdentity().memberId : process.env.USER || "member";
+        const r = await t.pushLocalAudit({ store, cfg: cfg!, actor });
+        if (r.pushed > 0) t.writeTeamConfig(r.cfg); // advance the cursor
+        out(`pushed ${r.pushed} audit event(s) to the team log.\n`);
+      } finally {
+        store.close();
+      }
+      return;
+    }
+    case "audit": {
+      const cfg = t.readTeamConfig();
+      if (!cfg) die("teams: not configured.");
+      const limit = Number(flag("limit") ?? "50") || 50;
+      const rows = await t.fetchTeamAudit(cfg!, limit);
+      if (rows.length === 0) {
+        out("team audit log is empty.\n");
+        return;
+      }
+      for (const r of rows) {
+        out(`${(r.ts ?? "").slice(0, 19)}  ${(r.actor ?? "?").padEnd(16)}  ${r.event.padEnd(12)}  ${r.detail ?? ""}\n`);
+      }
+      return;
+    }
     case "status": {
       const cfg = t.readTeamConfig();
       if (!cfg) {
@@ -1949,6 +1977,8 @@ async function teamsCmd(args: string[]): Promise<void> {
           `  stm teams passphrase            set a shared team key manually (stdin -> keychain)\n` +
           `  stm teams push                  encrypt local keys + upload the vault\n` +
           `  stm teams pull                  download + decrypt + add any new keys\n` +
+          `  stm teams audit-push            send local key-use events to the team log\n` +
+          `  stm teams audit [--limit N]     view the team's combined key-use log\n` +
           `  stm teams status                show the configured team\n` +
           `  stm teams leave                 clear local team config + passphrase\n\n` +
           `Enrollment is public-key: the team key is sealed to each member's key and\n` +
