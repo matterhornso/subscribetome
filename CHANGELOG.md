@@ -5,17 +5,38 @@ change behaviour. Format follows [Keep a Changelog](https://keepachangelog.com).
 
 ## [Unreleased]
 
-## [1.1.2] - 2026-07-29
+## [1.2.0] - 2026-07-31
 
-Defense-in-depth hardening. Follow-ups from a full-surface internal security
-review whose main finding was reassuring: the core invariant holds — real key
-values live only in the OS keychain (or as AES-256-GCM ciphertext on the
-experimental file tier), never in the model context, transcript, logs, or the
-SQLite inventory. **None of the items below fixed a live key leak;** each closes
-a gap that could expose a secret under an unlucky provider error or a
-pre-existing loose directory. No behavioural change to substitution, resolution,
-or the guardrail hooks. Scope unchanged (macOS + Claude Code; other platforms
-experimental).
+The platform release. STM grows from a personal key manager into an API-security
+platform: a local credential **broker** that injects keys server-side so they
+never touch a command, and **STM Teams** — a self-hostable, zero-knowledge server
+for sharing credentials across a team. It also folds in the defense-in-depth
+hardening that was previously staged for 1.1.2 (so there is no separate 1.1.2
+release). The individual, local workflow is unchanged and fully backward
+compatible; everything new is additive and opt-in. Runtime-hook scope is
+unchanged (macOS + Claude Code; other platforms experimental).
+
+### Added
+
+- **Credential broker.** Instead of substituting a real key into a shell command
+  (visible to `ps`, leakable if the command echoes its own arguments), point the
+  request at the local daemon:
+  `curl http://127.0.0.1:<port>/proxy/openai/default/v1/models`. STM resolves the
+  credential from the keychain and attaches the real auth on the OUTBOUND call to
+  the provider — the key never enters the command's argv, environment, or output.
+  An SSRF guard keeps the key on the target's own origin, the response is scrubbed
+  of the key, and every brokered call is a first-class `broker` audit event.
+  `stm broker` prints the base URL and a loopback-only capability token (separate
+  from the dashboard token — it can't read the inventory or open the dashboard).
+  (#20)
+- **STM Teams — self-hostable, zero-knowledge credential sharing.** Run your own
+  sync server (`stm teams serve`); it stores only ciphertext it cannot decrypt.
+  Credentials are encrypted on a member's machine (AES-256-GCM) with a team key
+  the server never sees. Members enroll by **public key** — an X25519 sealed box,
+  so no shared passphrase is ever passed around: `init` → `join` →
+  `enroll-request` → `enroll <id>` → `accept`. A combined **team audit log**
+  (`stm teams audit`) shows every credential use across members, pushing only
+  placeholder-form commands, never a resolved secret. (#21)
 
 ### Security
 
