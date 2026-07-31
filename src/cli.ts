@@ -1777,10 +1777,12 @@ async function teamsCmd(args: string[]): Promise<void> {
     }
     case "init": {
       const server = flag("server");
-      const admin = flag("admin");
+      // Prefer the env var — an argv token is visible to `ps` and shell history.
+      const admin = flag("admin") ?? process.env.STM_TEAM_ADMIN_TOKEN;
       const name = flag("name") ?? "team";
       if (!server || !admin) {
-        die("usage: stm teams init --server <url> --admin <admin-token> [--name <name>]");
+        die("usage: stm teams init --server <url> --admin <admin-token> [--name <name>]\n" +
+          "(--admin may instead be supplied via the STM_TEAM_ADMIN_TOKEN env var)");
       }
       const created = await t.createTeam(server!, admin!, name);
       const cfg = {
@@ -1859,6 +1861,18 @@ async function teamsCmd(args: string[]): Promise<void> {
       if (!teamKey) die("you don't have the team key on this machine — accept your own enrollment first.");
       const member = await t.getMember(cfg!, memberId!);
       if (!member) die(`no member "${memberId}" — they must run \`stm teams enroll-request\` first.`);
+      // CRITICAL: the server is untrusted in a zero-knowledge system. Verify the
+      // returned public key actually hashes to the member id you were given
+      // out-of-band before sealing the team key to it — otherwise a malicious
+      // server could substitute its own key and unwrap the team key. The member
+      // id IS the fingerprint, so this check is the out-of-band verification.
+      if (!kp.pubkeyMatchesMemberId(member!.pubkey, memberId!)) {
+        die(
+          `refusing to enroll: the server returned a public key that does NOT match\n` +
+            `member id "${memberId}". Either the id is wrong, or the server tampered\n` +
+            `with it. Confirm the exact member id with the person out-of-band.`,
+        );
+      }
       await t.uploadEnvelope(cfg!, memberId!, kp.seal(teamKey!, member!.pubkey));
       out(`enrolled ${memberId}. They can now run \`stm teams accept\`.\n`);
       return;

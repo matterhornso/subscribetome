@@ -51,8 +51,26 @@ function pubToB64(pub: KeyObject): string {
 function pubFromB64(b64: string): KeyObject {
   return createPublicKey({ key: Buffer.from(b64, "base64"), format: "der", type: "spki" });
 }
-function memberIdFor(pubB64: string): string {
-  return createHash("sha256").update(Buffer.from(pubB64, "base64")).digest("hex").slice(0, 16);
+/**
+ * The member id is a fingerprint of the public key — and it is SECURITY-CRITICAL:
+ * enrollment verifies that a server-supplied pubkey hashes to the id an operator
+ * typed, which is what stops a malicious server from substituting its own key.
+ * So the fingerprint must be wide enough to resist a second-preimage grind:
+ * 32 hex chars = 128 bits (was 64 — too short for a value that gates the vault).
+ */
+export function memberIdFor(pubB64: string): string {
+  return createHash("sha256").update(Buffer.from(pubB64, "base64")).digest("hex").slice(0, 32);
+}
+
+/** True iff `pubB64` is the exact public key that `memberId` fingerprints. The
+ *  load-bearing check for enrollment: never seal the team key to a key that
+ *  doesn't hash to the id you were given out-of-band. */
+export function pubkeyMatchesMemberId(pubB64: string, memberId: string): boolean {
+  try {
+    return memberIdFor(pubB64) === memberId;
+  } catch {
+    return false;
+  }
 }
 
 function privFromB64(b64: string): KeyObject {

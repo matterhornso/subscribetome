@@ -54,7 +54,9 @@ export function readTeamConfig(): TeamConfig | null {
 
 export function writeTeamConfig(cfg: TeamConfig): void {
   ensureDataDir();
-  // Create 0600 atomically — the file holds the team bearer token.
+  // Unlink then write with mode 0600 so the file is 0600 from creation (umask
+  // only clears bits). The dir is 0700, so there is no readable window; the file
+  // holds only the shareable team bearer token, never the team key.
   try { unlinkSync(TEAM_CONFIG_FILE); } catch { /* absent */ }
   writeFileSync(TEAM_CONFIG_FILE, JSON.stringify(cfg, null, 2), { mode: 0o600 });
   try { chmodSync(TEAM_CONFIG_FILE, 0o600); } catch { /* non-POSIX */ }

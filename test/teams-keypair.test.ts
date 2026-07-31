@@ -6,7 +6,7 @@
 // keychain) via generateIdentityKeys + seal + openWith.
 
 import { test, expect } from "bun:test";
-import { generateIdentityKeys, seal, openWith } from "../src/teams/keypair.ts";
+import { generateIdentityKeys, seal, openWith, memberIdFor, pubkeyMatchesMemberId } from "../src/teams/keypair.ts";
 
 const TEAM_KEY = "team-key-9f3a2b1c-super-high-entropy-secret";
 
@@ -23,12 +23,23 @@ test("a DIFFERENT private key cannot open the envelope", () => {
   expect(() => openWith(env, mallory.privateKeyB64)).toThrow();
 });
 
-test("memberId is deterministic from the public key", () => {
+test("memberId is a 128-bit (32 hex) fingerprint of the public key", () => {
   const a = generateIdentityKeys();
-  // Re-deriving from the same public key yields the same id (a is stable).
   const again = generateIdentityKeys();
-  expect(a.memberId).toHaveLength(16);
-  expect(a.memberId).not.toBe(again.memberId); // different keypair -> different id
+  expect(a.memberId).toHaveLength(32); // 128-bit — wide enough to be load-bearing
+  expect(a.memberId).toMatch(/^[a-f0-9]{32}$/);
+  expect(a.memberId).toBe(memberIdFor(a.publicKeyB64)); // deterministic
+  expect(a.memberId).not.toBe(again.memberId);
+});
+
+test("pubkeyMatchesMemberId enforces the key<->id binding (blocks substitution)", () => {
+  const alice = generateIdentityKeys();
+  const mallory = generateIdentityKeys();
+  // The genuine pair verifies.
+  expect(pubkeyMatchesMemberId(alice.publicKeyB64, alice.memberId)).toBe(true);
+  // Mallory's key does NOT hash to Alice's id — a substituted key is rejected.
+  expect(pubkeyMatchesMemberId(mallory.publicKeyB64, alice.memberId)).toBe(false);
+  expect(pubkeyMatchesMemberId("garbage", alice.memberId)).toBe(false);
 });
 
 test("sealing the same secret twice yields different envelopes (ephemeral key)", () => {

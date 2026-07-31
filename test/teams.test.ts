@@ -235,6 +235,51 @@ test("public-key enrollment: a new member gets the team key without a shared pas
   server.close();
 });
 
+test("server rejects a pubkey registered under a mismatched member id (identity substitution)", async () => {
+  const server = new TeamServerStore();
+  const f = wire(server);
+  const team = await createTeam("http://s", ADMIN, "acme", { fetch: f });
+  const cfg: TeamConfig = { serverUrl: "http://s", teamToken: team.token };
+  const H = { authorization: `Bearer ${team.token}`, "content-type": "application/json" };
+
+  const alice = generateIdentityKeys();
+  const mallory = generateIdentityKeys();
+  await registerMember(cfg, alice.memberId, alice.publicKeyB64, { fetch: f }); // legit
+
+  // Mallory tries to overwrite Alice's id with HER key -> server refuses (400).
+  const r = await f("http://s/v1/members", {
+    method: "POST", headers: H,
+    body: JSON.stringify({ memberId: alice.memberId, pubkey: mallory.publicKeyB64 }),
+  });
+  expect(r.status).toBe(400);
+  // Alice's stored key is untouched, so a later enroll still seals to Alice.
+  const m = await getMember(cfg, alice.memberId, { fetch: f });
+  expect(m!.pubkey).toBe(alice.publicKeyB64);
+  server.close();
+});
+
+test("server caps oversized pubkey and envelope (DoS)", async () => {
+  const server = new TeamServerStore();
+  const f = wire(server);
+  const team = await createTeam("http://s", ADMIN, "acme", { fetch: f });
+  const cfg: TeamConfig = { serverUrl: "http://s", teamToken: team.token };
+  const H = { authorization: `Bearer ${team.token}`, "content-type": "application/json" };
+
+  const big = await f("http://s/v1/members", {
+    method: "POST", headers: H,
+    body: JSON.stringify({ memberId: "x", pubkey: "A".repeat(3000) }),
+  });
+  expect(big.status).toBe(413);
+
+  const alice = generateIdentityKeys();
+  await registerMember(cfg, alice.memberId, alice.publicKeyB64, { fetch: f });
+  const bigEnv = await f(`http://s/v1/members/${alice.memberId}/envelope`, {
+    method: "POST", headers: H, body: JSON.stringify({ envelope: "B".repeat(70000) }),
+  });
+  expect(bigEnv.status).toBe(413);
+  server.close();
+});
+
 test("team audit: local key-use events push once (cursor advances) and are visible team-wide", async () => {
   const server = new TeamServerStore();
   const f = wire(server);

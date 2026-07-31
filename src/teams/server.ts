@@ -61,9 +61,24 @@ CREATE TABLE IF NOT EXISTS members (
 /** Max encrypted-vault size the server will accept (10 MiB) — a team vault is
  *  a small JSON of key references; this just bounds abuse. */
 const MAX_VAULT_BYTES = 10 * 1024 * 1024;
+/** Overall request-body ceiling (Bun.serve), a hair above the vault cap. */
+const MAX_REQUEST_BODY = 12 * 1024 * 1024;
+/** Per-endpoint bounds so audit/members can't fill the disk or OOM the host. */
+const MAX_AUDIT_ROWS_PER_REQUEST = 1000;
+const MAX_AUDIT_FIELD = 8192; // event / actor / detail / ts
+const MAX_PUBKEY_CHARS = 2048; // SPKI X25519 base64 is ~60 chars; generous
+const MAX_ENVELOPE_CHARS = 65536; // sealed JSON envelope
 
-function sha256hex(s: string): string {
+function sha256hex(s: string | Buffer): string {
   return createHash("sha256").update(s).digest("hex");
+}
+
+/** The member-id fingerprint of a base64 public key. MUST match
+ *  keypair.ts `memberIdFor` (sha256 of the raw key bytes, first 32 hex = 128b).
+ *  The server enforces this binding so a member can't register a pubkey under
+ *  someone else's id. */
+function memberIdForPub(pubB64: string): string {
+  return sha256hex(Buffer.from(pubB64, "base64")).slice(0, 32);
 }
 
 /** Constant-time string compare that never throws on length mismatch. */
@@ -111,17 +126,22 @@ export class TeamServerStore {
   }
 
   putVault(teamId: number, ciphertext: Uint8Array, updatedBy: string | null): number {
-    const row = this.db
-      .query(`SELECT COALESCE(MAX(version), 0) AS v FROM vault_blobs WHERE team_id = ?`)
-      .get(teamId) as { v: number };
-    const version = row.v + 1;
-    this.db
-      .query(
-        `INSERT INTO vault_blobs (team_id, version, ciphertext, updated_at, updated_by)
-         VALUES (?, ?, ?, ?, ?)`,
-      )
-      .run(teamId, version, ciphertext, new Date().toISOString(), updatedBy);
-    return version;
+    // Read-then-write the version in ONE transaction so two concurrent PUTs
+    // can't compute the same version and collide on the PRIMARY KEY.
+    const tx = this.db.transaction((): number => {
+      const row = this.db
+        .query(`SELECT COALESCE(MAX(version), 0) AS v FROM vault_blobs WHERE team_id = ?`)
+        .get(teamId) as { v: number };
+      const version = row.v + 1;
+      this.db
+        .query(
+          `INSERT INTO vault_blobs (team_id, version, ciphertext, updated_at, updated_by)
+           VALUES (?, ?, ?, ?, ?)`,
+        )
+        .run(teamId, version, ciphertext, new Date().toISOString(), updatedBy);
+      return version;
+    });
+    return tx();
   }
 
   getVault(teamId: number): { version: number; ciphertext: Uint8Array; updated_at: string } | null {
@@ -141,11 +161,21 @@ export class TeamServerStore {
     const insert = this.db.query(
       `INSERT INTO team_audit (team_id, ts, actor, event, detail) VALUES (?, ?, ?, ?, ?)`,
     );
+    // Cap rows-per-request and field lengths so a single call can't flood the
+    // table or store multi-MB fields.
+    const clip = (s: unknown): string | null =>
+      typeof s === "string" ? s.slice(0, MAX_AUDIT_FIELD) : null;
     let n = 0;
     const tx = this.db.transaction((rs: typeof rows) => {
-      for (const r of rs) {
+      for (const r of rs.slice(0, MAX_AUDIT_ROWS_PER_REQUEST)) {
         if (!r || typeof r.event !== "string" || !r.event) continue;
-        insert.run(teamId, r.ts ?? new Date().toISOString(), r.actor ?? null, r.event, r.detail ?? null);
+        insert.run(
+          teamId,
+          clip(r.ts) ?? new Date().toISOString(),
+          clip(r.actor),
+          clip(r.event)!,
+          clip(r.detail),
+        );
         n++;
       }
     });
@@ -270,6 +300,14 @@ export function makeTeamServerHandler(
       if (typeof b?.memberId !== "string" || typeof b?.pubkey !== "string" || !b.memberId || !b.pubkey) {
         return json({ error: "memberId and pubkey are required" }, 400);
       }
+      if (b.pubkey.length > MAX_PUBKEY_CHARS) return json({ error: "pubkey too large" }, 413);
+      // Enforce the self-certifying binding: the member id MUST be the fingerprint
+      // of the pubkey. This stops a token-holder from registering their own key
+      // under another member's id (identity substitution → team-key theft). It
+      // also constrains memberId to hex, matching the envelope/GET route charset.
+      if (memberIdForPub(b.pubkey) !== b.memberId) {
+        return json({ error: "memberId does not match sha256(pubkey) — rejected" }, 400);
+      }
       store.registerMember(team!.id, b.memberId, b.pubkey);
       return json({ ok: true });
     }
@@ -285,6 +323,7 @@ export function makeTeamServerHandler(
           if (typeof b?.envelope !== "string" || !b.envelope) {
             return json({ error: "envelope is required" }, 400);
           }
+          if (b.envelope.length > MAX_ENVELOPE_CHARS) return json({ error: "envelope too large" }, 413);
           return store.setMemberEnvelope(team!.id, memberId, b.envelope)
             ? json({ ok: true })
             : json({ error: "no such member — they must enroll-request first" }, 404);
@@ -360,7 +399,9 @@ export async function runTeamServer(config?: {
 
   const store = new TeamServerStore(dbPath);
   const handler = makeTeamServerHandler({ store, adminToken });
-  const server = Bun.serve({ hostname, port, fetch: handler });
+  // Bound the request body at the transport layer so an oversized POST is
+  // refused before it is buffered (defends the vault/audit/member endpoints).
+  const server = Bun.serve({ hostname, port, maxRequestBodySize: MAX_REQUEST_BODY, fetch: handler });
 
   process.stderr.write(
     `stm teams server on http://${hostname}:${server.port}  (db: ${dbPath})\n` +

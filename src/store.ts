@@ -593,7 +593,7 @@ export class Store {
     tool: string;
     label: string;
     value: string;
-    source?: "manual" | "imported";
+    source?: "manual" | "imported" | "team";
     displayName?: string;
   }): KeyView {
     const tool = normalizeSegment(input.tool);
