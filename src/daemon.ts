@@ -434,7 +434,7 @@ async function apiRoute(path: string, req: Request, store: Store): Promise<Respo
     const event = u.searchParams.get("event") || undefined;
     if (
       event !== undefined &&
-      !["substitute", "policy.deny", "policy.warn", "unresolved", "malformed"].includes(event)
+      !["substitute", "policy.deny", "policy.warn", "unresolved", "malformed", "broker"].includes(event)
     ) {
       return json({ error: "unknown event class" }, 400);
     }
@@ -523,14 +523,16 @@ async function brokerRoute(url: URL, req: Request, store: Store): Promise<Respon
     { resolveKey: (t, l) => { try { return store.resolve(t, l); } catch { return null; } } },
   );
 
-  // Best-effort audit of the brokered call — never the key, never the body.
+  // Audit the brokered call as a first-class `broker` event — the method, the
+  // upstream path, and the resulting status. Never the key, never the body.
   try {
     store.recordAudit({
-      event: "substitute",
+      event: "broker",
       tool,
       label,
-      command: `broker ${method} /proxy/${tool}/${label}${rest} -> ${result.status}`,
+      command: `${method} ${rest} -> ${result.status}`,
       agent: "broker",
+      reason: result.error ?? null,
     });
   } catch {
     /* audit is best-effort */

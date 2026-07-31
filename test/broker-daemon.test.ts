@@ -93,4 +93,13 @@ t("broker token gates /proxy only; dashboard token gates everything", async () =
   // And broker token must NOT open the dashboard.
   r = await fetch(`${base}/?token=${info.brokerToken}`);
   expect(r.status).toBe(403);
+
+  // The brokered calls above were logged as first-class `broker` audit events,
+  // queryable via /api/audit (dashboard token). Proves the end-to-end path.
+  r = await fetch(`${base}/api/audit?event=broker`, { headers: hdr(info.token) });
+  expect(r.status).toBe(200);
+  const audit = await r.json();
+  expect(audit.rows.length).toBeGreaterThan(0);
+  expect(audit.rows[0].event).toBe("broker");
+  expect(audit.rows[0].agent).toBe("broker");
 });

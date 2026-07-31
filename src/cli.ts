@@ -789,6 +789,7 @@ const AUDIT_EVENTS = new Set([
   "policy.warn",
   "unresolved",
   "malformed",
+  "broker",
 ]);
 
 function auditHelp(): void {
@@ -798,7 +799,7 @@ function auditHelp(): void {
       `  stm audit --tail N                        last N (max 10000)\n` +
       `  stm audit --event <class>                 filter by event class:\n` +
       `                                            substitute | policy.deny | policy.warn\n` +
-      `                                            | unresolved | malformed\n` +
+      `                                            | unresolved | malformed | broker\n` +
       `  stm audit --tool <name>                   filter by tool, e.g. openai\n` +
       `  stm audit --since <duration>              5m, 1h, 7d\n` +
       `  stm audit prune --before <duration>       drop rows older than 7d, etc.\n` +
