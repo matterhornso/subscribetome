@@ -1755,6 +1755,142 @@ function versionCmd(): void {
   process.stdout.write(`stm ${STM_VERSION}\n`);
 }
 
+async function teamsCmd(args: string[]): Promise<void> {
+  const sub = args[0];
+  const rest = args.slice(1);
+  const flag = (name: string): string | undefined => {
+    const i = rest.indexOf(`--${name}`);
+    return i >= 0 ? rest[i + 1] : undefined;
+  };
+  const t = await import("./teams/client.ts");
+  const out = (s: string) => process.stdout.write(s);
+  const die = (s: string): never => {
+    process.stderr.write(s + "\n");
+    process.exit(1);
+  };
+
+  switch (sub) {
+    case "serve": {
+      const s = await import("./teams/server.ts");
+      return s.runTeamServer();
+    }
+    case "init": {
+      const server = flag("server");
+      const admin = flag("admin");
+      const name = flag("name") ?? "team";
+      if (!server || !admin) {
+        die("usage: stm teams init --server <url> --admin <admin-token> [--name <name>]");
+      }
+      const created = await t.createTeam(server!, admin!, name);
+      t.writeTeamConfig({
+        serverUrl: server!,
+        teamToken: created.token,
+        teamId: created.id,
+        teamName: created.name,
+      });
+      out(
+        `created team "${created.name}" (id ${created.id}); config saved (0600).\n\n` +
+          `  team token : ${created.token}\n\n` +
+          `Share that token AND your shared team passphrase with teammates out-of-band\n` +
+          `(the server never sees the passphrase). Then set the passphrase locally:\n` +
+          `  stm teams passphrase        # reads the passphrase from stdin\n` +
+          `  stm teams push              # encrypt + upload your keys\n`,
+      );
+      return;
+    }
+    case "join": {
+      const server = flag("server");
+      const token = flag("token");
+      if (!server || !token) {
+        die("usage: stm teams join --server <url> --token <team-token>");
+      }
+      t.writeTeamConfig({ serverUrl: server!, teamToken: token! });
+      out(
+        `joined. Set the shared team passphrase (given to you out-of-band), then pull:\n` +
+          `  stm teams passphrase\n` +
+          `  stm teams pull\n`,
+      );
+      return;
+    }
+    case "passphrase": {
+      const p = await readAllStdin();
+      if (!p) die("empty passphrase — nothing stored");
+      t.setTeamPassphrase(p);
+      out("team passphrase stored in the OS keychain (never written to disk).\n");
+      return;
+    }
+    case "push":
+    case "pull": {
+      const cfg = t.readTeamConfig();
+      if (!cfg) die("teams: not configured. Run `stm teams init` or `stm teams join` first.");
+      const pass = t.getTeamPassphrase();
+      if (!pass) die("no team passphrase set. Run `stm teams passphrase` first.");
+      const store = new Store();
+      try {
+        if (sub === "push") {
+          const r = await t.pushVault({
+            store,
+            cfg: cfg!,
+            passphrase: pass!,
+            actor: process.env.USER || "member",
+          });
+          out(`pushed ${r.keyCount} key(s) as vault version ${r.version}.\n`);
+        } else {
+          const r = await t.pullVault({ store, cfg: cfg!, passphrase: pass! });
+          out(
+            r.version == null
+              ? `no team vault on the server yet.\n`
+              : `pulled vault v${r.version}: added ${r.added}, skipped ${r.skipped} (already present).\n`,
+          );
+        }
+      } finally {
+        store.close();
+      }
+      return;
+    }
+    case "status": {
+      const cfg = t.readTeamConfig();
+      if (!cfg) {
+        out("teams: not configured. Run `stm teams init` or `stm teams join`.\n");
+        return;
+      }
+      const hasPass = t.getTeamPassphrase() != null;
+      out(
+        `server : ${cfg.serverUrl}\n` +
+          `team   : ${cfg.teamName ?? "(joined)"}${cfg.teamId ? ` (id ${cfg.teamId})` : ""}\n` +
+          `pass   : ${hasPass ? "set" : "NOT set — run `stm teams passphrase`"}\n`,
+      );
+      return;
+    }
+    case "leave": {
+      t.clearTeam();
+      out("left the team; local config + passphrase cleared.\n");
+      return;
+    }
+    case "help":
+    case "--help":
+    case "-h":
+    case undefined:
+      out(
+        `subscribetome teams — self-hosted, zero-knowledge credential sharing\n\n` +
+          `  stm teams serve                 run the self-hostable sync server\n` +
+          `                                  (env: STM_TEAM_DB, STM_TEAM_HOST, STM_TEAM_PORT,\n` +
+          `                                   STM_TEAM_ADMIN_TOKEN)\n` +
+          `  stm teams init --server <url> --admin <tok> [--name <n>]  create a team\n` +
+          `  stm teams join --server <url> --token <tok>               join an existing team\n` +
+          `  stm teams passphrase            set the shared team passphrase (stdin -> keychain)\n` +
+          `  stm teams push                  encrypt local keys + upload the vault\n` +
+          `  stm teams pull                  download + decrypt + add any new keys\n` +
+          `  stm teams status                show the configured team\n` +
+          `  stm teams leave                 clear local team config + passphrase\n\n` +
+          `The server only ever stores ciphertext — it can never read a credential.\n`,
+      );
+      return;
+    default:
+      die(`stm teams: unknown subcommand "${sub}". Try \`stm teams help\`.`);
+  }
+}
+
 function helpCmd(): void {
   process.stdout.write(
     `subscribetome — AI API key & subscription manager\n\n` +
@@ -1774,6 +1910,7 @@ function helpCmd(): void {
       `  stm vault <unlock|rotate|info>  manage the encrypted-file Tier 3 vault\n` +
       `  stm project <add|list|show|scope|unscope|enforce|rename|remove>  per-project key scope\n` +
       `  stm import [dir...]             scan .env files for importable keys\n` +
+      `  stm teams <serve|init|join|push|pull|status>  self-hosted, zero-knowledge key sharing\n` +
       `  stm dashboard                   open the localhost web dashboard\n` +
       `  stm stop                        stop the dashboard daemon\n` +
       `  stm status                      daemon + inventory summary\n` +
@@ -1842,6 +1979,9 @@ async function main(): Promise<void> {
       const d = await import("./daemon.ts");
       return d.runDaemon();
     }
+    case "teams":
+    case "team":
+      return teamsCmd(rest);
     case "stop": {
       const d = await import("./daemon.ts");
       return d.stopDaemon();

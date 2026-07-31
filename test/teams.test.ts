@@ -1,0 +1,169 @@
+// STM Teams — server auth/zero-knowledge + a full client sync round-trip.
+//
+// The load-bearing property under test: a credential pushed to the team server
+// is END-TO-END encrypted with a team passphrase the server never receives, so
+// the stored blob is ciphertext the server structurally cannot read. A teammate
+// with the passphrase pulls and decrypts locally.
+//
+// The client is driven with an injected `fetch` wired straight to the server
+// handler (no port bind), and an injected in-memory store (no keychain), so the
+// test is fast and platform-independent.
+
+import { test, expect } from "bun:test";
+import { TeamServerStore, makeTeamServerHandler } from "../src/teams/server.ts";
+import { createTeam, pushVault, pullVault, type TeamConfig } from "../src/teams/client.ts";
+import { decryptVault } from "../src/keystores/encrypted-file.ts";
+
+const ADMIN = "admin-token-abc";
+
+/** Wire client fetch straight to a server handler (no network). */
+function wire(store: TeamServerStore) {
+  const handler = makeTeamServerHandler({ store, adminToken: ADMIN });
+  const f = ((url: any, init: any) => handler(new Request(String(url), init))) as typeof fetch;
+  return f;
+}
+
+/** Minimal in-memory stand-in for Store — just what the client touches. */
+class FakeStore {
+  private vals = new Map<string, string>();
+  private meta: { tool: string; label: string; status: string }[] = [];
+  seed(tool: string, label: string, value: string) {
+    this.vals.set(`${tool}:${label}`, value);
+    this.meta.push({ tool, label, status: "active" });
+  }
+  listKeys() {
+    return this.meta.map((m) => ({
+      tool: m.tool, label: m.label, status: m.status,
+      tool_display: m.tool, placeholder: `{{stm:${m.tool}:${m.label}}}`,
+      source: "manual", created_at: "",
+    }));
+  }
+  resolve(tool: string, label: string) {
+    return this.vals.get(`${tool}:${label}`) ?? null;
+  }
+  addKey({ tool, label, value }: { tool: string; label: string; value: string }) {
+    const k = `${tool}:${label}`;
+    if (this.vals.has(k)) throw new Error("already exists");
+    this.vals.set(k, value);
+    this.meta.push({ tool, label, status: "active" });
+    return { placeholder: `{{stm:${tool}:${label}}}` };
+  }
+}
+
+const asStore = (f: FakeStore) => f as unknown as import("../src/store.ts").Store;
+
+test("team creation requires the admin token", async () => {
+  const store = new TeamServerStore();
+  const handler = makeTeamServerHandler({ store, adminToken: ADMIN });
+  const noAuth = await handler(new Request("http://s/v1/teams", {
+    method: "POST", body: JSON.stringify({ name: "x" }),
+  }));
+  expect(noAuth.status).toBe(401);
+  const wrong = await handler(new Request("http://s/v1/teams", {
+    method: "POST", headers: { authorization: "Bearer nope" }, body: JSON.stringify({ name: "x" }),
+  }));
+  expect(wrong.status).toBe(401);
+  store.close();
+});
+
+test("creation is disabled entirely when no admin token is configured", async () => {
+  const store = new TeamServerStore();
+  const handler = makeTeamServerHandler({ store }); // no adminToken
+  const r = await handler(new Request("http://s/v1/teams", {
+    method: "POST", headers: { authorization: "Bearer anything" }, body: JSON.stringify({ name: "x" }),
+  }));
+  expect(r.status).toBe(403);
+  store.close();
+});
+
+test("vault + audit reject a bad/absent team token", async () => {
+  const store = new TeamServerStore();
+  const handler = makeTeamServerHandler({ store, adminToken: ADMIN });
+  for (const path of ["/v1/vault", "/v1/audit"]) {
+    const r = await handler(new Request(`http://s${path}`, { headers: { authorization: "Bearer bad" } }));
+    expect(r.status).toBe(401);
+  }
+  store.close();
+});
+
+test("full round-trip: push encrypted, pull decrypts; server holds only ciphertext", async () => {
+  const server = new TeamServerStore();
+  const f = wire(server);
+  const passphrase = "correct horse battery staple";
+
+  // Admin creates a team.
+  const team = await createTeam("http://s", ADMIN, "acme", { fetch: f });
+  const cfg: TeamConfig = { serverUrl: "http://s", teamToken: team.token, teamId: team.id };
+
+  // Machine A pushes two keys.
+  const SECRET = "sk-live-SUPERSECRET-donotleak-0123456789";
+  const src = new FakeStore();
+  src.seed("openai", "default", "sk-openai-AAAA1111BBBB2222");
+  src.seed("stripe", "default", SECRET);
+  const pushed = await pushVault({ store: asStore(src), cfg, passphrase, actor: "alice", fetch: f });
+  expect(pushed.keyCount).toBe(2);
+  expect(pushed.version).toBe(1);
+
+  // ZERO-KNOWLEDGE: the blob the server stored does NOT contain the plaintext,
+  // and only the right passphrase decrypts it.
+  const stored = server.getVault(team.id)!;
+  const asText = Buffer.from(stored.ciphertext).toString("latin1");
+  expect(asText).not.toContain(SECRET);
+  expect(() => decryptVault(Buffer.from(stored.ciphertext), "wrong-passphrase")).toThrow();
+  const round = JSON.parse(decryptVault(Buffer.from(stored.ciphertext), passphrase));
+  expect(round.keys).toHaveLength(2);
+
+  // Machine B (empty) pulls and gets both keys.
+  const dst = new FakeStore();
+  const pulled = await pullVault({ store: asStore(dst), cfg, passphrase, fetch: f });
+  expect(pulled.added).toBe(2);
+  expect(pulled.skipped).toBe(0);
+  expect(dst.resolve("stripe", "default")).toBe(SECRET);
+
+  // Pulling again is idempotent — both now already exist locally.
+  const again = await pullVault({ store: asStore(dst), cfg, passphrase, fetch: f });
+  expect(again.added).toBe(0);
+  expect(again.skipped).toBe(2);
+
+  server.close();
+});
+
+test("pull with the wrong passphrase fails loudly, adds nothing", async () => {
+  const server = new TeamServerStore();
+  const f = wire(server);
+  const team = await createTeam("http://s", ADMIN, "acme", { fetch: f });
+  const cfg: TeamConfig = { serverUrl: "http://s", teamToken: team.token };
+
+  const src = new FakeStore();
+  src.seed("openai", "default", "sk-openai-value-1234567890");
+  await pushVault({ store: asStore(src), cfg, passphrase: "right", fetch: f });
+
+  const dst = new FakeStore();
+  await expect(
+    pullVault({ store: asStore(dst), cfg, passphrase: "wrong", fetch: f }),
+  ).rejects.toThrow(/passphrase/);
+  expect(dst.listKeys()).toHaveLength(0);
+  server.close();
+});
+
+test("audit rows can be pushed and read back for a team", async () => {
+  const server = new TeamServerStore();
+  const f = wire(server);
+  const team = await createTeam("http://s", ADMIN, "acme", { fetch: f });
+  const H = { authorization: `Bearer ${team.token}`, "content-type": "application/json" };
+
+  const post = await f("http://s/v1/audit", {
+    method: "POST", headers: H,
+    body: JSON.stringify({ rows: [
+      { actor: "alice", event: "broker", detail: "GET /v1/models -> 200" },
+      { actor: "bob", event: "substitute", detail: "openai:default" },
+    ] }),
+  });
+  expect((await post.json()).added).toBe(2);
+
+  const get = await f("http://s/v1/audit?limit=10", { headers: { authorization: `Bearer ${team.token}` } });
+  const rows = (await get.json()).rows;
+  expect(rows).toHaveLength(2);
+  expect(rows[0].event).toBeDefined();
+  server.close();
+});
