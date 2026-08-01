@@ -1765,6 +1765,7 @@ async function teamsCmd(args: string[]): Promise<void> {
   };
   const t = await import("./teams/client.ts");
   const kp = await import("./teams/keypair.ts");
+  const sig = await import("./teams/signing.ts");
   const out = (s: string) => process.stdout.write(s);
   const die = (s: string): never => {
     process.stderr.write(s + "\n");
@@ -1799,8 +1800,8 @@ async function teamsCmd(args: string[]): Promise<void> {
       const teamKey = t.generateTeamKey();
       t.setTeamPassphrase(teamKey);
       const id = kp.ensureIdentity();
-      await t.registerMember(cfg, id.memberId, id.publicKeyB64);
-      await t.uploadEnvelope(cfg, id.memberId, kp.seal(teamKey, id.publicKeyB64));
+      await t.registerMember(cfg, id.memberId, id.sealPublicKeyB64, id.signPublicKeyB64);
+      await t.uploadEnvelope(cfg, id.memberId, kp.seal(teamKey, id.sealPublicKeyB64));
       out(
         `created team "${created.name}" (id ${created.id}); config saved (0600).\n` +
           `you are enrolled (member ${id.memberId}); team key generated + stored in the keychain.\n\n` +
@@ -1832,7 +1833,7 @@ async function teamsCmd(args: string[]): Promise<void> {
       const cfg = t.readTeamConfig();
       if (!cfg) die("teams: not configured. Run `stm teams join` first.");
       const id = kp.ensureIdentity();
-      await t.registerMember(cfg!, id.memberId, id.publicKeyB64);
+      await t.registerMember(cfg!, id.memberId, id.sealPublicKeyB64, id.signPublicKeyB64);
       out(
         `enrollment requested. Give an existing team member your member id:\n\n` +
           `  ${id.memberId}\n\n` +
@@ -1867,9 +1868,9 @@ async function teamsCmd(args: string[]): Promise<void> {
       // out-of-band before sealing the team key to it — otherwise a malicious
       // server could substitute its own key and unwrap the team key. The member
       // id IS the fingerprint, so this check is the out-of-band verification.
-      if (!kp.pubkeyMatchesMemberId(member!.pubkey, memberId!)) {
+      if (!member!.signPubkey || !kp.identityMatchesMemberId(member!.pubkey, member!.signPubkey, memberId!)) {
         die(
-          `refusing to enroll: the server returned a public key that does NOT match\n` +
+          `refusing to enroll: the server returned a key set that does NOT match\n` +
             `member id "${memberId}". Either the id is wrong, or the server tampered\n` +
             `with it. Confirm the exact member id with the person out-of-band.`,
         );
@@ -1931,8 +1932,14 @@ async function teamsCmd(args: string[]): Promise<void> {
       if (!cfg) die("teams: not configured.");
       const store = new Store();
       try {
-        const actor = kp.hasIdentity() ? kp.ensureIdentity().memberId : process.env.USER || "member";
-        const r = await t.pushLocalAudit({ store, cfg: cfg!, actor });
+        if (!kp.hasIdentity() || !sig.hasSigningIdentity()) {
+          die("no signing identity yet — run `stm teams enroll-request` first (usage reports are signed).");
+        }
+        const auth = {
+          memberId: kp.ensureIdentity().memberId,
+          sign: (payload: string) => sig.signWithIdentity(payload),
+        };
+        const r = await t.pushLocalAudit({ store, cfg: cfg!, auth });
         if (r.pushed > 0) t.writeTeamConfig(r.cfg); // advance the cursor
         out(`pushed ${r.pushed} audit event(s) to the team log.\n`);
       } finally {
@@ -1971,6 +1978,7 @@ async function teamsCmd(args: string[]): Promise<void> {
     case "leave": {
       t.clearTeam();
       kp.clearIdentity();
+      sig.clearSigningIdentity();
       out("left the team; local config, team key, and identity cleared.\n");
       return;
     }

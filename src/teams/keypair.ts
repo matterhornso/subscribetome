@@ -24,16 +24,19 @@ import {
   type KeyObject,
 } from "node:crypto";
 import { keychainGet, keychainSet, keychainDelete } from "../keychain.ts";
+import { ensureSigningIdentity, generateSigningKeys } from "./signing.ts";
 
 /** Reserved keychain ref for this member's X25519 private key (PKCS8 DER, b64). */
 const MEMBER_PRIV_REF = "__stm_team_member_privkey__";
 const SEAL_INFO = Buffer.from("stm-team-seal-v1");
 
 export interface Identity {
-  /** Stable id derived from the public key — how the server addresses a member. */
+  /** Stable id fingerprinting BOTH public keys — how the server addresses a member. */
   memberId: string;
-  /** SPKI-DER public key, base64 — shareable, safe to publish. */
-  publicKeyB64: string;
+  /** X25519 sealing public key (receives the team key at enrollment), SPKI-DER b64. */
+  sealPublicKeyB64: string;
+  /** Ed25519 signing public key (attributes usage), SPKI-DER b64. */
+  signPublicKeyB64: string;
 }
 
 interface Envelope {
@@ -52,22 +55,28 @@ function pubFromB64(b64: string): KeyObject {
   return createPublicKey({ key: Buffer.from(b64, "base64"), format: "der", type: "spki" });
 }
 /**
- * The member id is a fingerprint of the public key — and it is SECURITY-CRITICAL:
- * enrollment verifies that a server-supplied pubkey hashes to the id an operator
- * typed, which is what stops a malicious server from substituting its own key.
- * So the fingerprint must be wide enough to resist a second-preimage grind:
- * 32 hex chars = 128 bits (was 64 — too short for a value that gates the vault).
+ * The member id fingerprints BOTH of a member's public keys (sealing + signing)
+ * — and it is SECURITY-CRITICAL: enrollment verifies a server-supplied key set
+ * hashes to the id an operator typed, which stops a malicious server from
+ * substituting its own key for EITHER purpose. 32 hex chars = 128 bits, wide
+ * enough to resist a second-preimage grind. The concatenation is length-free
+ * because both inputs are fixed-size SPKI DER (44 bytes X25519, 44 bytes Ed25519).
  */
-export function memberIdFor(pubB64: string): string {
-  return createHash("sha256").update(Buffer.from(pubB64, "base64")).digest("hex").slice(0, 32);
+export function memberIdFor(sealPubB64: string, signPubB64: string): string {
+  const buf = Buffer.concat([Buffer.from(sealPubB64, "base64"), Buffer.from(signPubB64, "base64")]);
+  return createHash("sha256").update(buf).digest("hex").slice(0, 32);
 }
 
-/** True iff `pubB64` is the exact public key that `memberId` fingerprints. The
- *  load-bearing check for enrollment: never seal the team key to a key that
+/** True iff both public keys are exactly the ones `memberId` fingerprints. The
+ *  load-bearing check for enrollment: never seal the team key to a key set that
  *  doesn't hash to the id you were given out-of-band. */
-export function pubkeyMatchesMemberId(pubB64: string, memberId: string): boolean {
+export function identityMatchesMemberId(
+  sealPubB64: string,
+  signPubB64: string,
+  memberId: string,
+): boolean {
   try {
-    return memberIdFor(pubB64) === memberId;
+    return memberIdFor(sealPubB64, signPubB64) === memberId;
   } catch {
     return false;
   }
@@ -84,16 +93,37 @@ function loadPrivate(): KeyObject | null {
 }
 
 /**
- * Generate a fresh identity keypair WITHOUT touching the keychain. Pure — used
- * by `ensureIdentity` (which then stores the private key) and directly by tests.
+ * Generate a fresh X25519 SEALING keypair WITHOUT touching the keychain. Pure —
+ * used for the raw sealed-box (seal/openWith) and by generateIdentity.
  */
-export function generateIdentityKeys(): { publicKeyB64: string; privateKeyB64: string; memberId: string } {
+export function generateIdentityKeys(): { publicKeyB64: string; privateKeyB64: string } {
   const kp = generateKeyPairSync("x25519");
-  const publicKeyB64 = pubToB64(kp.publicKey);
   return {
-    publicKeyB64,
+    publicKeyB64: pubToB64(kp.publicKey),
     privateKeyB64: Buffer.from(kp.privateKey.export({ type: "pkcs8", format: "der" })).toString("base64"),
-    memberId: memberIdFor(publicKeyB64),
+  };
+}
+
+/**
+ * Generate a full member identity (sealing + signing keypairs + the id that
+ * fingerprints both) WITHOUT touching the keychain. Pure — for tests and for
+ * `ensureIdentity`.
+ */
+export function generateIdentity(): {
+  memberId: string;
+  sealPublicKeyB64: string;
+  sealPrivateKeyB64: string;
+  signPublicKeyB64: string;
+  signPrivateKeyB64: string;
+} {
+  const seal = generateIdentityKeys();
+  const sign = generateSigningKeys();
+  return {
+    memberId: memberIdFor(seal.publicKeyB64, sign.publicKeyB64),
+    sealPublicKeyB64: seal.publicKeyB64,
+    sealPrivateKeyB64: seal.privateKeyB64,
+    signPublicKeyB64: sign.publicKeyB64,
+    signPrivateKeyB64: sign.privateKeyB64,
   };
 }
 
@@ -112,10 +142,15 @@ export function ensureIdentity(): Identity {
   if (!priv) {
     const gen = generateIdentityKeys();
     keychainSet(MEMBER_PRIV_REF, gen.privateKeyB64);
-    return { memberId: gen.memberId, publicKeyB64: gen.publicKeyB64 };
+    priv = loadPrivate()!;
   }
-  const pubB64 = pubToB64(createPublicKey(priv));
-  return { memberId: memberIdFor(pubB64), publicKeyB64: pubB64 };
+  const sealPub = pubToB64(createPublicKey(priv));
+  const signPub = ensureSigningIdentity().publicKeyB64;
+  return {
+    memberId: memberIdFor(sealPub, signPub),
+    sealPublicKeyB64: sealPub,
+    signPublicKeyB64: signPub,
+  };
 }
 
 export function clearIdentity(): void {
