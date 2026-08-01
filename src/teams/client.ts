@@ -10,7 +10,7 @@
 //   - the team passphrase (the actual encryption key) -> the OS keychain, never
 //     on disk in plaintext. Shared between teammates out-of-band (v1).
 import { chmodSync, existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { join } from "node:path";
 import { encryptVault, decryptVault } from "../keystores/encrypted-file.ts";
 import { keychainGet, keychainSet, keychainDelete } from "../keychain.ts";
@@ -192,19 +192,20 @@ export async function pullVault(deps: {
 
 // ---- public-key enrollment -----------------------------------------------
 
-/** Register (or refresh) a member's public key with the team (pending until an
- *  existing member seals the team key to it). */
+/** Register (or refresh) a member's sealing + signing public keys with the team
+ *  (pending until an existing member seals the team key to it). */
 export async function registerMember(
   cfg: TeamConfig,
   memberId: string,
-  pubkey: string,
+  sealPubkey: string,
+  signPubkey: string,
   deps?: { fetch?: Fetch },
 ): Promise<void> {
   const doFetch = deps?.fetch ?? fetch;
   const r = await doFetch(`${trim(cfg.serverUrl)}/v1/members`, {
     method: "POST",
     headers: { authorization: `Bearer ${cfg.teamToken}`, "content-type": "application/json" },
-    body: JSON.stringify({ memberId, pubkey }),
+    body: JSON.stringify({ memberId, pubkey: sealPubkey, signPubkey }),
   });
   if (!r.ok) throw new Error(`enroll-request failed: HTTP ${r.status} ${await safeText(r)}`);
 }
@@ -225,7 +226,7 @@ export async function getMember(
   cfg: TeamConfig,
   memberId: string,
   deps?: { fetch?: Fetch },
-): Promise<{ memberId: string; pubkey: string; enrolled: boolean } | null> {
+): Promise<{ memberId: string; pubkey: string; signPubkey: string | null; enrolled: boolean } | null> {
   const doFetch = deps?.fetch ?? fetch;
   const r = await doFetch(`${trim(cfg.serverUrl)}/v1/members/${encodeURIComponent(memberId)}`, {
     headers: { authorization: `Bearer ${cfg.teamToken}` },
@@ -275,33 +276,61 @@ export interface TeamAuditRow {
   detail: string | null;
 }
 
+/** How a member proves authorship of an attributed request. `sign` returns a
+ *  base64 Ed25519 signature over the canonical payload; the actual signing key
+ *  never leaves the caller (keychain in production, in-memory in tests). */
+export interface MemberAuth {
+  memberId: string;
+  sign: (canonicalPayload: string) => string;
+}
+
+/** Build the signature headers for an attributed request. Canonical payload
+ *  matches the server: method \n path \n timestamp \n nonce \n sha256hex(body). */
+function signedHeaders(auth: MemberAuth, method: string, path: string, body: string): Record<string, string> {
+  const ts = new Date().toISOString();
+  const nonce = randomBytes(12).toString("hex");
+  const bodyHash = createHash("sha256").update(Buffer.from(body, "utf8")).digest("hex");
+  const canonical = `${method}\n${path}\n${ts}\n${nonce}\n${bodyHash}`;
+  return {
+    "x-stm-member": auth.memberId,
+    "x-stm-timestamp": ts,
+    "x-stm-nonce": nonce,
+    "x-stm-signature": auth.sign(canonical),
+  };
+}
+
 /**
- * Push local audit rows newer than the config's cursor to the team log, then
- * advance the cursor. Only placeholder-form commands are sent (never a resolved
- * key), so nothing secret leaves the machine. Returns how many were pushed and
- * the new cursor (the caller persists the updated config).
+ * Push local audit rows newer than the config's cursor to the team log, SIGNED
+ * by the member so the server can attribute them to a verified identity (the
+ * server derives the actor from the signature and ignores anything we claim).
+ * Only placeholder-form commands are sent (never a resolved key). Returns how
+ * many were pushed and the new cursor (the caller persists the updated config).
  */
 export async function pushLocalAudit(deps: {
   store: Store;
   cfg: TeamConfig;
-  actor: string;
+  auth: MemberAuth;
   fetch?: Fetch;
 }): Promise<{ pushed: number; cursor: number; cfg: TeamConfig }> {
   const doFetch = deps.fetch ?? fetch;
   const since = deps.cfg.auditCursor ?? 0;
   const local = deps.store.listAuditForSync(since, 1000);
   if (local.length === 0) return { pushed: 0, cursor: since, cfg: deps.cfg };
-  const rows: TeamAuditRow[] = local.map((r) => ({
+  const rows = local.map((r) => ({
     ts: r.ts,
-    actor: deps.actor,
     event: r.event,
     // placeholder-form command only; falls back to the tool:label address
     detail: r.command ?? `${r.tool ?? ""}:${r.label ?? ""}`,
   }));
+  const body = JSON.stringify({ rows });
   const resp = await doFetch(`${trim(deps.cfg.serverUrl)}/v1/audit`, {
     method: "POST",
-    headers: { authorization: `Bearer ${deps.cfg.teamToken}`, "content-type": "application/json" },
-    body: JSON.stringify({ rows }),
+    headers: {
+      authorization: `Bearer ${deps.cfg.teamToken}`,
+      "content-type": "application/json",
+      ...signedHeaders(deps.auth, "POST", "/v1/audit", body),
+    },
+    body,
   });
   if (!resp.ok) throw new Error(`audit push failed: HTTP ${resp.status} ${await safeText(resp)}`);
   const cursor = local[local.length - 1].id;

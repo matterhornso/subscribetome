@@ -22,7 +22,7 @@
 // The server is transport-agnostic about TLS: run it behind a reverse proxy
 // (caddy/nginx) for HTTPS, or bind localhost for a single-machine trial.
 import { Database } from "bun:sqlite";
-import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import { createHash, createPublicKey, randomBytes, timingSafeEqual, verify as edVerify } from "node:crypto";
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS teams (
@@ -51,7 +51,8 @@ CREATE INDEX IF NOT EXISTS team_audit_idx ON team_audit(team_id, id DESC);
 CREATE TABLE IF NOT EXISTS members (
   team_id     INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
   member_id   TEXT NOT NULL,
-  pubkey      TEXT NOT NULL,
+  pubkey      TEXT NOT NULL,   -- X25519 sealing public key (receives the team key)
+  sign_pubkey TEXT,            -- Ed25519 signing public key (attributes usage)
   wrapped_key TEXT,            -- the sealed team-key envelope; null while pending
   added_at    TEXT NOT NULL,
   PRIMARY KEY (team_id, member_id)
@@ -73,13 +74,29 @@ function sha256hex(s: string | Buffer): string {
   return createHash("sha256").update(s).digest("hex");
 }
 
-/** The member-id fingerprint of a base64 public key. MUST match
- *  keypair.ts `memberIdFor` (sha256 of the raw key bytes, first 32 hex = 128b).
- *  The server enforces this binding so a member can't register a pubkey under
- *  someone else's id. */
-function memberIdForPub(pubB64: string): string {
-  return sha256hex(Buffer.from(pubB64, "base64")).slice(0, 32);
+/** The member-id fingerprint of a member's TWO public keys. MUST match
+ *  keypair.ts `memberIdFor` (sha256 of sealBytes||signBytes, first 32 hex = 128b).
+ *  The server enforces this binding so a member can't register a key set under
+ *  someone else's id — for either the sealing or the signing key. */
+function memberIdForKeys(sealPubB64: string, signPubB64: string): string {
+  return sha256hex(
+    Buffer.concat([Buffer.from(sealPubB64, "base64"), Buffer.from(signPubB64, "base64")]),
+  ).slice(0, 32);
 }
+
+/** Verify an Ed25519 signature (base64) over `payload` with an SPKI-DER pubkey
+ *  (base64). Pure node:crypto — the server has no keychain dependency. */
+function verifyEd25519(payload: Buffer, sigB64: string, pubB64: string): boolean {
+  try {
+    const pub = createPublicKey({ key: Buffer.from(pubB64, "base64"), format: "der", type: "spki" });
+    return edVerify(null, payload, pub, Buffer.from(sigB64, "base64"));
+  } catch {
+    return false;
+  }
+}
+
+/** Signature freshness window + replay-nonce TTL (5 min). */
+const SIG_WINDOW_MS = 5 * 60 * 1000;
 
 /** Constant-time string compare that never throws on length mismatch. */
 function safeEqual(a: string, b: string): boolean {
@@ -102,6 +119,13 @@ export class TeamServerStore {
     this.db.exec("PRAGMA journal_mode = WAL;");
     this.db.exec("PRAGMA foreign_keys = ON;");
     this.db.exec(SCHEMA);
+    // Additive migration: a members table created before signing existed lacks
+    // sign_pubkey. ALTER is idempotent-guarded so fresh DBs (schema already has
+    // it) are untouched.
+    const cols = this.db.query(`PRAGMA table_info(members)`).all() as { name: string }[];
+    if (!cols.some((c) => c.name === "sign_pubkey")) {
+      this.db.exec(`ALTER TABLE members ADD COLUMN sign_pubkey TEXT`);
+    }
   }
 
   /** Create a team; returns its id + a freshly-minted bearer token (shown once).
@@ -192,16 +216,17 @@ export class TeamServerStore {
       .all(teamId, limit) as any[];
   }
 
-  /** Register (or refresh) a member's public key. Leaves any existing sealed
-   *  envelope intact; a brand-new member starts pending (wrapped_key null). */
-  registerMember(teamId: number, memberId: string, pubkey: string): void {
+  /** Register (or refresh) a member's sealing + signing public keys. Leaves any
+   *  existing sealed envelope intact; a brand-new member starts pending. */
+  registerMember(teamId: number, memberId: string, sealPubkey: string, signPubkey: string): void {
     this.db
       .query(
-        `INSERT INTO members (team_id, member_id, pubkey, wrapped_key, added_at)
-         VALUES (?, ?, ?, NULL, ?)
-         ON CONFLICT(team_id, member_id) DO UPDATE SET pubkey = excluded.pubkey`,
+        `INSERT INTO members (team_id, member_id, pubkey, sign_pubkey, wrapped_key, added_at)
+         VALUES (?, ?, ?, ?, NULL, ?)
+         ON CONFLICT(team_id, member_id) DO UPDATE SET
+           pubkey = excluded.pubkey, sign_pubkey = excluded.sign_pubkey`,
       )
-      .run(teamId, memberId, pubkey, new Date().toISOString());
+      .run(teamId, memberId, sealPubkey, signPubkey, new Date().toISOString());
   }
 
   /** Record the sealed team-key envelope for a member (enroll them). */
@@ -212,10 +237,10 @@ export class TeamServerStore {
     return r.changes > 0;
   }
 
-  getMember(teamId: number, memberId: string): { member_id: string; pubkey: string; wrapped_key: string | null } | null {
+  getMember(teamId: number, memberId: string): { member_id: string; pubkey: string; sign_pubkey: string | null; wrapped_key: string | null } | null {
     return (
       (this.db
-        .query(`SELECT member_id, pubkey, wrapped_key FROM members WHERE team_id = ? AND member_id = ?`)
+        .query(`SELECT member_id, pubkey, sign_pubkey, wrapped_key FROM members WHERE team_id = ? AND member_id = ?`)
         .get(teamId, memberId) as any) ?? null
     );
   }
@@ -265,6 +290,45 @@ export function makeTeamServerHandler(
   opts: TeamServerOptions,
 ): (req: Request) => Promise<Response> {
   const { store, adminToken } = opts;
+  // Per-server replay cache: (memberId:nonce) -> expiry. In-memory is fine — the
+  // window is 5 min and a restart only widens the replay gap, never narrows it.
+  const seenNonces = new Map<string, number>();
+
+  /**
+   * Verify a member signature over the request. Returns the VERIFIED memberId
+   * (never client-supplied) or null. Canonical payload:
+   *   method \n path \n timestamp \n nonce \n sha256hex(body)
+   * Requires the member exists with a registered signing key, a fresh timestamp,
+   * and an unused nonce.
+   */
+  function verifyMemberSignature(
+    teamId: number,
+    method: string,
+    path: string,
+    bodyBytes: Buffer,
+    req: Request,
+  ): string | null {
+    const memberId = req.headers.get("x-stm-member") ?? "";
+    const ts = req.headers.get("x-stm-timestamp") ?? "";
+    const nonce = req.headers.get("x-stm-nonce") ?? "";
+    const sig = req.headers.get("x-stm-signature") ?? "";
+    if (!memberId || !ts || !nonce || !sig) return null;
+    const t = Date.parse(ts);
+    if (!Number.isFinite(t) || Math.abs(Date.now() - t) > SIG_WINDOW_MS) return null;
+    const cacheKey = `${memberId}:${nonce}`;
+    const now = Date.now();
+    if (seenNonces.size > 10000) for (const [k, exp] of seenNonces) if (exp < now) seenNonces.delete(k);
+    if (seenNonces.has(cacheKey)) return null; // replay
+    const mem = store.getMember(teamId, memberId);
+    if (!mem || !mem.sign_pubkey) return null;
+    const canonical = Buffer.from(
+      `${method}\n${path}\n${ts}\n${nonce}\n${sha256hex(bodyBytes)}`,
+      "utf8",
+    );
+    if (!verifyEd25519(canonical, sig, mem.sign_pubkey)) return null;
+    seenNonces.set(cacheKey, now + SIG_WINDOW_MS);
+    return memberId;
+  }
 
   return async function handle(req: Request): Promise<Response> {
     const url = new URL(req.url);
@@ -297,18 +361,22 @@ export function makeTeamServerHandler(
     // --- member enrollment (public-key key distribution) ---
     if (path === "/v1/members" && method === "POST") {
       const b: any = await req.json().catch(() => ({}));
-      if (typeof b?.memberId !== "string" || typeof b?.pubkey !== "string" || !b.memberId || !b.pubkey) {
-        return json({ error: "memberId and pubkey are required" }, 400);
+      const sealPubkey = typeof b?.pubkey === "string" ? b.pubkey : "";
+      const signPubkey = typeof b?.signPubkey === "string" ? b.signPubkey : "";
+      if (typeof b?.memberId !== "string" || !b.memberId || !sealPubkey || !signPubkey) {
+        return json({ error: "memberId, pubkey, and signPubkey are required" }, 400);
       }
-      if (b.pubkey.length > MAX_PUBKEY_CHARS) return json({ error: "pubkey too large" }, 413);
+      if (sealPubkey.length > MAX_PUBKEY_CHARS || signPubkey.length > MAX_PUBKEY_CHARS) {
+        return json({ error: "pubkey too large" }, 413);
+      }
       // Enforce the self-certifying binding: the member id MUST be the fingerprint
-      // of the pubkey. This stops a token-holder from registering their own key
-      // under another member's id (identity substitution → team-key theft). It
-      // also constrains memberId to hex, matching the envelope/GET route charset.
-      if (memberIdForPub(b.pubkey) !== b.memberId) {
-        return json({ error: "memberId does not match sha256(pubkey) — rejected" }, 400);
+      // of BOTH keys. This stops a token-holder from registering their own key
+      // under another member's id (identity substitution → team-key theft), for
+      // either the sealing or the signing key. Also constrains memberId to hex.
+      if (memberIdForKeys(sealPubkey, signPubkey) !== b.memberId) {
+        return json({ error: "memberId does not match sha256(sealPubkey||signPubkey) — rejected" }, 400);
       }
-      store.registerMember(team!.id, b.memberId, b.pubkey);
+      store.registerMember(team!.id, b.memberId, sealPubkey, signPubkey);
       return json({ ok: true });
     }
     if (path === "/v1/members" && method === "GET") {
@@ -332,7 +400,7 @@ export function makeTeamServerHandler(
           const mem = store.getMember(team!.id, memberId);
           if (!mem) return json({ error: "no such member" }, 404);
           if (!mem.wrapped_key) return json({ error: "not enrolled yet — ask an admin to enroll you" }, 404);
-          return json({ envelope: mem.wrapped_key, pubkey: mem.pubkey });
+          return json({ envelope: mem.wrapped_key, pubkey: mem.pubkey, signPubkey: mem.sign_pubkey });
         }
       }
     }
@@ -341,7 +409,7 @@ export function makeTeamServerHandler(
       if (m && method === "GET") {
         const mem = store.getMember(team!.id, m[1]);
         return mem
-          ? json({ memberId: mem.member_id, pubkey: mem.pubkey, enrolled: mem.wrapped_key != null })
+          ? json({ memberId: mem.member_id, pubkey: mem.pubkey, signPubkey: mem.sign_pubkey, enrolled: mem.wrapped_key != null })
           : json({ error: "no such member" }, 404);
       }
     }
@@ -369,10 +437,20 @@ export function makeTeamServerHandler(
     }
 
     if (path === "/v1/audit" && method === "POST") {
-      const b: any = await req.json().catch(() => ({}));
+      // Read raw bytes first — the signature is over the exact body.
+      const bytes = Buffer.from(await req.arrayBuffer());
+      // Require a valid member signature; the ACTOR is the verified memberId,
+      // never a client-supplied string. This is what makes "who used which key"
+      // trustworthy instead of forgeable.
+      const actor = verifyMemberSignature(team!.id, "POST", "/v1/audit", bytes, req);
+      if (!actor) return json({ error: "a valid member signature is required (X-STM-Member/Timestamp/Nonce/Signature)" }, 401);
+      let b: any = {};
+      try { b = JSON.parse(bytes.toString("utf8") || "{}"); } catch { b = {}; }
       const rows = Array.isArray(b?.rows) ? b.rows : [];
-      const added = store.appendAudit(team!.id, rows);
-      return json({ ok: true, added });
+      // Stamp every row with the verified actor, overriding anything the client sent.
+      const stamped = rows.map((r: any) => ({ ...r, actor }));
+      const added = store.appendAudit(team!.id, stamped);
+      return json({ ok: true, added, actor });
     }
 
     if (path === "/v1/audit" && method === "GET") {
