@@ -1,0 +1,491 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#0a0b0d">
+
+<title>Security architecture &amp; threat model — subscribetome (stm)</title>
+<meta name="description" content="The subscribetome security model: keychain-only key storage, placeholder + PreToolUse substitution, the four Claude Code hooks, the command-policy engine, trust boundaries, the honest argv limitation, and the Teams cryptography.">
+<meta name="author" content="Matterhorn Labs">
+<meta name="application-name" content="subscribetome">
+<meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
+
+<link rel="canonical" href="https://subscribetome.pro/security.html">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="sitemap" type="application/xml" href="/sitemap.xml">
+
+<meta property="og:site_name" content="subscribetome">
+<meta property="og:title" content="Security architecture &amp; threat model — subscribetome">
+<meta property="og:description" content="Keychain-only keys, PreToolUse substitution, the four hooks, the command-policy engine, trust boundaries, the honest argv limitation, and the Teams cryptography.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://subscribetome.pro/security.html">
+<meta property="og:image" content="https://subscribetome.pro/og.png">
+<meta property="og:locale" content="en_US">
+
+<style>
+  :root {
+    --bg:#0a0b0d; --bg-2:#101114; --bg-3:#15171b;
+    --ink:#ece9e2; --ink-dim:#9a998f; --ink-faint:#62625b;
+    --line:rgba(236,233,226,.10); --line-2:rgba(236,233,226,.18);
+    --acc:#3ddc97; --acc-bright:#74f0bc; --acc-deep:#0d2a1f;
+    --warn:#e8895e; --warn-deep:rgba(232,137,94,.10); --warn-line:rgba(232,137,94,.30);
+    --grain-opacity:.035; --grid-opacity:.5;
+    --serif:"Instrument Serif",Georgia,"Times New Roman",serif;
+    --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    --ease:cubic-bezier(.2,.7,.2,1);
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg:#faf9f5; --bg-2:#f3f1ea; --bg-3:#eae7dd;
+      --ink:#1a1b18; --ink-dim:#55554c; --ink-faint:#86867b;
+      --line:rgba(20,22,16,.12); --line-2:rgba(20,22,16,.20);
+      --acc:#0e9463; --acc-bright:#0b7d53; --acc-deep:#e0f2e8;
+      --warn:#b8592a; --warn-deep:rgba(184,89,42,.09); --warn-line:rgba(184,89,42,.28);
+      --grain-opacity:.02; --grid-opacity:.35;
+    }
+  }
+  *,*::before,*::after { box-sizing:border-box; }
+  html { scroll-behavior:smooth; }
+  body {
+    margin:0; background:var(--bg); color:var(--ink);
+    font-family:var(--mono); font-weight:400; font-size:15px; line-height:1.65;
+    -webkit-font-smoothing:antialiased; overflow-x:hidden;
+  }
+  ::selection { background:var(--acc); color:#04130c; }
+  a { color:inherit; }
+  h1,h2,h3,h4,p,ul,ol { margin:0; }
+
+  .grain {
+    position:fixed; inset:0; z-index:1; pointer-events:none; opacity:var(--grain-opacity);
+    mix-blend-mode:overlay;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+  .gridlines {
+    position:fixed; inset:0; z-index:0; pointer-events:none;
+    background-image:
+      linear-gradient(var(--line) 1px,transparent 1px),
+      linear-gradient(90deg,var(--line) 1px,transparent 1px);
+    background-size:64px 64px;
+    -webkit-mask-image:radial-gradient(ellipse 75% 50% at 50% 0%,#000,transparent 78%);
+            mask-image:radial-gradient(ellipse 75% 50% at 50% 0%,#000,transparent 78%);
+    opacity:var(--grid-opacity);
+  }
+  .wrap { position:relative; z-index:2; }
+  .bound { max-width:980px; margin:0 auto; padding:0 32px; }
+
+  .skip {
+    position:absolute; left:-9999px; top:0; z-index:100;
+    background:var(--acc); color:#04130c; padding:10px 16px; border-radius:8px;
+    font-size:13px; text-decoration:none;
+  }
+  .skip:focus { left:12px; top:12px; }
+
+  header {
+    position:sticky; top:0; z-index:50;
+    border-bottom:1px solid var(--line);
+    background:color-mix(in srgb, var(--bg) 78%, transparent); backdrop-filter:blur(10px);
+  }
+  .nav { display:flex; align-items:center; justify-content:space-between; gap:18px; min-height:62px; flex-wrap:wrap; }
+  .brand { display:flex; align-items:center; gap:11px; font-size:14px; text-decoration:none; flex:none; }
+  .mark {
+    height:25px; padding:0 9px; border-radius:7px; flex:none; display:grid; place-items:center;
+    background:linear-gradient(150deg,var(--acc-bright),var(--acc) 55%,#1f8a63);
+    color:#04130c; font-weight:600; font-size:12.5px; letter-spacing:.6px;
+  }
+  .brand b { font-weight:600; }
+  .brand b i { color:var(--acc); font-style:normal; }
+  .docnav { display:flex; align-items:center; gap:4px; flex-wrap:wrap; }
+  .docnav a {
+    text-decoration:none; font-size:13px; color:var(--ink-dim);
+    padding:7px 11px; border-radius:7px; border:1px solid transparent;
+    transition:color .15s var(--ease),background .15s var(--ease),border-color .15s var(--ease);
+  }
+  .docnav a:hover { color:var(--ink); background:var(--bg-2); }
+  .docnav a[aria-current="page"] { color:var(--acc); border-color:var(--line-2); background:var(--acc-deep); }
+  .docnav a.gh { color:var(--ink); border:1px solid var(--line-2); }
+  .docnav a.gh:hover { border-color:var(--acc); background:var(--acc-deep); }
+
+  main { display:block; }
+  .doc { padding:46px 0 30px; }
+  .kicker {
+    display:inline-flex; align-items:center; gap:8px;
+    font-size:11px; letter-spacing:1.8px; text-transform:uppercase; color:var(--acc);
+    border:1px solid var(--line-2); border-radius:999px; padding:6px 13px; margin-bottom:22px;
+  }
+  .kicker .d { width:6px; height:6px; border-radius:50%; background:currentColor; }
+  .doc h1 {
+    font-family:var(--serif); font-weight:400;
+    font-size:clamp(38px,5.4vw,60px); line-height:1.04; letter-spacing:-.4px; max-width:20ch;
+  }
+  .doc h1 em { font-style:italic; color:var(--acc); }
+  .lead { margin:22px 0 0; max-width:66ch; color:var(--ink-dim); font-size:16px; line-height:1.7; }
+  .lead b { color:var(--ink); font-weight:500; }
+
+  .prose { padding:8px 0 40px; }
+  .prose h2 {
+    font-family:var(--serif); font-weight:400; font-size:clamp(26px,3.4vw,34px);
+    line-height:1.12; letter-spacing:-.3px; margin:52px 0 6px; scroll-margin-top:84px;
+  }
+  .prose h2 em { font-style:italic; color:var(--acc); }
+  .prose h3 {
+    font-size:15px; font-weight:600; letter-spacing:.2px; color:var(--ink);
+    margin:34px 0 4px; scroll-margin-top:84px;
+  }
+  .prose h4 { font-size:13.5px; font-weight:600; color:var(--ink); margin:22px 0 2px; }
+  .prose p { margin:14px 0 0; color:var(--ink-dim); font-size:14.5px; line-height:1.78; max-width:72ch; }
+  .prose p b, .prose li b { color:var(--ink); font-weight:600; }
+  .prose ul, .prose ol { margin:14px 0 0; padding-left:22px; color:var(--ink-dim); font-size:14.5px; line-height:1.78; max-width:72ch; }
+  .prose li { margin:7px 0; }
+  .prose li::marker { color:var(--ink-faint); }
+  .prose a:not(.card-link) { color:var(--acc); text-decoration:underline; text-underline-offset:3px; text-decoration-thickness:1px; text-decoration-color:var(--line-2); }
+  .prose a:not(.card-link):hover { text-decoration-color:var(--acc); }
+  .anchor { color:var(--ink-faint); text-decoration:none; margin-left:10px; font-size:.7em; opacity:0; transition:opacity .15s var(--ease); }
+  .prose h2:hover .anchor, .prose h3:hover .anchor { opacity:1; }
+
+  code {
+    font-family:var(--mono); font-size:.9em;
+    background:var(--bg-2); border:1px solid var(--line);
+    border-radius:5px; padding:1px 6px; color:var(--ink); word-break:break-word;
+  }
+  .prose p code, .prose li code { color:var(--acc); }
+  .ph { color:var(--acc); }
+
+  .copybox { border:1px solid var(--line); border-radius:11px; background:var(--bg); overflow:hidden; margin:18px 0 0; }
+  .copybar {
+    display:flex; align-items:center; justify-content:space-between;
+    padding:8px 8px 8px 13px; border-bottom:1px solid var(--line); background:var(--bg-3);
+  }
+  .copybar span { font-size:10.5px; letter-spacing:1.2px; text-transform:uppercase; color:var(--ink-faint); }
+  .copy-btn {
+    font-family:var(--mono); font-size:12px; cursor:pointer;
+    border:1px solid var(--line-2); border-radius:7px; padding:5px 11px;
+    background:transparent; color:var(--ink);
+    transition:border-color .15s var(--ease),background .15s var(--ease),color .15s var(--ease);
+  }
+  .copy-btn:hover { border-color:var(--acc); background:var(--acc-deep); }
+  .copy-btn.ok { border-color:var(--acc); background:var(--acc); color:#04130c; }
+  .copybox pre {
+    margin:0; padding:14px; font-family:var(--mono); font-size:12.5px; line-height:1.75;
+    white-space:pre; overflow-x:auto; color:var(--ink);
+  }
+  pre.plain {
+    margin:18px 0 0; padding:14px; border:1px solid var(--line); border-radius:11px;
+    background:var(--bg); font-family:var(--mono); font-size:12.5px; line-height:1.75;
+    white-space:pre; overflow-x:auto; color:var(--ink-dim);
+  }
+  .copybox pre .c, pre.plain .c { color:var(--ink-faint); }
+  .copybox pre .p, pre.plain .p { color:var(--acc); }
+  .copybox pre .r, pre.plain .r { color:var(--warn); }
+
+  .toc { border:1px solid var(--line); border-radius:13px; background:var(--bg-2); padding:20px 24px; margin:30px 0 0; }
+  .toc .t { font-size:11px; letter-spacing:1.6px; text-transform:uppercase; color:var(--ink-faint); }
+  .toc ul { list-style:none; margin:12px 0 0; padding:0; columns:2; column-gap:28px; }
+  @media (max-width:640px){ .toc ul { columns:1; } }
+  .toc li { margin:0 0 8px; break-inside:avoid; }
+  .toc a { color:var(--ink-dim); text-decoration:none; font-size:13.5px; }
+  .toc a:hover { color:var(--acc); }
+  .toc a::before { content:"→ "; color:var(--ink-faint); }
+
+  .callout { border:1px solid var(--line-2); border-left-width:3px; border-radius:10px; background:var(--bg-2); padding:16px 18px; margin:20px 0 0; }
+  .callout .h { font-size:11px; letter-spacing:1.4px; text-transform:uppercase; color:var(--ink-dim); margin-bottom:6px; }
+  .callout p { margin:0; font-size:13.5px; color:var(--ink-dim); line-height:1.72; max-width:none; }
+  .callout p + p { margin-top:10px; }
+  .callout.note { border-left-color:var(--acc); }
+  .callout.note .h { color:var(--acc); }
+  .callout.warn { border-left-color:var(--warn); background:var(--warn-deep); }
+  .callout.warn .h { color:var(--warn); }
+
+  .cards { display:grid; grid-template-columns:repeat(2,1fr); gap:18px; margin:16px 0 0; }
+  @media (max-width:720px){ .cards { grid-template-columns:1fr; } }
+  .card-link {
+    border:1px solid var(--line-2); border-radius:14px; background:var(--bg-2);
+    padding:24px; text-decoration:none; color:inherit; display:flex; flex-direction:column; gap:10px;
+    transition:border-color .2s var(--ease), transform .2s var(--ease);
+  }
+  .card-link:hover { border-color:var(--acc); transform:translateY(-2px); }
+  .card-link .ct { font-size:11px; letter-spacing:1.6px; text-transform:uppercase; color:var(--acc); }
+  .card-link h3 { font-family:var(--serif); font-weight:400; font-size:23px; line-height:1.15; letter-spacing:-.2px; }
+  .card-link p { margin:0; color:var(--ink-dim); font-size:13.5px; line-height:1.66; }
+  .card-link .go { font-size:12.5px; color:var(--acc); margin-top:auto; }
+
+  .tbl-wrap { overflow-x:auto; margin:18px 0 0; border:1px solid var(--line); border-radius:11px; }
+  table { border-collapse:collapse; width:100%; font-size:13px; min-width:520px; }
+  th, td { text-align:left; padding:11px 14px; border-bottom:1px solid var(--line); vertical-align:top; line-height:1.6; }
+  th { font-size:11px; letter-spacing:.8px; text-transform:uppercase; color:var(--ink-faint); font-weight:600; background:var(--bg-3); }
+  tr:last-child td { border-bottom:none; }
+  td code { white-space:nowrap; }
+  td b { color:var(--ink); font-weight:600; }
+
+  .badges { display:flex; flex-wrap:wrap; gap:8px; margin:20px 0 0; }
+  .badge {
+    display:inline-flex; align-items:center; gap:7px; font-size:11.5px; color:var(--ink-dim);
+    border:1px solid var(--line-2); border-radius:999px; padding:6px 12px;
+  }
+  .badge .d { width:6px; height:6px; border-radius:50%; background:var(--acc); flex:none; }
+  .badge.exp .d { background:var(--warn); }
+
+  details { border:1px solid var(--line); border-radius:11px; background:var(--bg-2); padding:0 18px; margin:18px 0 0; }
+  details summary { cursor:pointer; padding:15px 0; font-size:14px; font-weight:600; color:var(--ink); list-style:none; }
+  details summary::-webkit-details-marker { display:none; }
+  details summary::before { content:"+ "; color:var(--acc); }
+  details[open] summary::before { content:"– "; }
+  details > *:not(summary) { margin-bottom:16px; }
+
+  :focus-visible { outline:2px solid var(--acc); outline-offset:2px; border-radius:4px; }
+
+  footer { border-top:1px solid var(--line); padding:38px 0 48px; margin-top:60px; }
+  .foot { display:flex; flex-wrap:wrap; gap:22px; justify-content:space-between; align-items:center; }
+  .foot-l { font-size:12.5px; color:var(--ink-faint); max-width:52ch; line-height:1.7; }
+  .foot-l b { color:var(--ink-dim); font-weight:500; }
+  .foot-links { display:flex; flex-wrap:wrap; gap:20px; font-size:13px; }
+  .foot-links a { color:var(--ink-dim); text-decoration:none; transition:color .2s var(--ease); }
+  .foot-links a:hover { color:var(--acc); }
+
+  @media (prefers-reduced-motion:reduce){ html { scroll-behavior:auto; } .card-link:hover { transform:none; } }
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<div class="grain"></div>
+<div class="gridlines"></div>
+<div class="wrap">
+
+<header>
+  <div class="bound nav">
+    <a class="brand" href="/"><span class="mark">stm</span><b>subscribe<i>tome</i></b></a>
+    <nav class="docnav" aria-label="Documentation">
+      <a href="/docs.html">Overview</a>
+      <a href="/security.html" aria-current="page">Security</a>
+      <a href="/broker.html">Broker</a>
+      <a href="/teams.html">Teams</a>
+      <a href="/cli.html">CLI</a>
+      <a class="gh" href="https://github.com/matterhornso/subscribetome">GitHub →</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+<div class="bound doc">
+  <span class="kicker"><span class="d"></span>Security</span>
+  <h1>Security architecture &amp; <em>threat model.</em></h1>
+  <p class="lead">
+    subscribetome has one core invariant: <b>a real API key value lives only in the OS keychain</b> — the model,
+    the chat transcript, and your logs never hold it. This page explains how that holds, what it protects you
+    against, and — with equal weight — <b>what it does not</b>.
+  </p>
+</div>
+
+<div class="bound prose">
+
+  <nav class="toc" aria-label="On this page">
+    <div class="t">On this page</div>
+    <ul>
+      <li><a href="#principles">Design principles</a></li>
+      <li><a href="#assets">What is protected, and where</a></li>
+      <li><a href="#substitution">Placeholder &amp; PreToolUse substitution</a></li>
+      <li><a href="#hooks">The four Claude Code hooks</a></li>
+      <li><a href="#policy">The command-policy engine</a></li>
+      <li><a href="#boundaries">Trust boundaries</a></li>
+      <li><a href="#failsafe">Fail-safe behaviour</a></li>
+      <li><a href="#limits">Honest limitations (out of scope)</a></li>
+      <li><a href="#broker">How the broker closes the argv gap</a></li>
+      <li><a href="#teams">Teams cryptography</a></li>
+    </ul>
+  </nav>
+
+  <h2 id="principles">Design <em>principles</em><a class="anchor" href="#principles" aria-label="Link to this section">#</a></h2>
+  <ul>
+    <li><b>The secret is not ours to hold.</b> A key value is written straight to the OS keychain out-of-band, and read only at the moment it is needed. subscribetome's own database never stores a value.</li>
+    <li><b>The conversation is the thing being protected.</b> An API key pasted into a chat is logged in that transcript forever — in every backup, screen-share, and shared session. The design keeps the value out of the conversation by construction, not by redaction after the fact.</li>
+    <li><b>No backend.</b> There is no server, no cloud, no telemetry, no sign-up. There is nothing to breach on our side because nothing of yours is on our side.</li>
+    <li><b>Fail safe, never fail open.</b> On any internal error a hook exits <em>without</em> substituting; the worst case is a command that runs with an un-substituted placeholder and simply fails.</li>
+    <li><b>Be honest about the edges.</b> The limitations below are documented as plainly as the guarantees. A security tool that hides its edges is worse than one that names them.</li>
+  </ul>
+
+  <h2 id="assets">What is protected, <em>and where</em><a class="anchor" href="#assets" aria-label="Link to this section">#</a></h2>
+  <p>The asset is the <b>API key value</b>. It can exist in exactly one of three forms, and the design controls all three:</p>
+  <div class="tbl-wrap">
+  <table>
+    <thead><tr><th>Form</th><th>Where it lives</th><th>Who can read it</th></tr></thead>
+    <tbody>
+      <tr><td><b>Real value</b></td><td>OS keychain (macOS Keychain; Linux Secret Service / <code>pass</code> / opt-in encrypted file; Windows Credential Manager)</td><td>Your OS, gated by the local user account. Read only inside a hook, at the moment of use.</td></tr>
+      <tr><td><b>Placeholder</b></td><td>The chat transcript, files, and the SQLite inventory</td><td>Anyone who can read the chat — but it is <code class="ph">{{stm:openai:default}}</code>, an address, not a secret.</td></tr>
+      <tr><td><b>Ciphertext</b></td><td>An encrypted vault snapshot, or a self-hosted Teams server</td><td>Only a holder of the vault passphrase / team key. The server stores ciphertext it cannot decrypt.</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p>The SQLite inventory (<code>~/.subscribetome/</code>) holds only a <code>keychain_ref</code> UUID plus metadata (tool, label, plan, cost) — never a key value.</p>
+
+  <h2 id="substitution">Placeholder &amp; PreToolUse <em>substitution</em><a class="anchor" href="#substitution" aria-label="Link to this section">#</a></h2>
+  <p>
+    In chat, a key is referenced only by a placeholder: <code class="ph">{{stm:&lt;tool&gt;:&lt;label&gt;}}</code>.
+    <code>&lt;tool&gt;</code> and <code>&lt;label&gt;</code> are lowercase <code>[a-z0-9-]</code>, 1–64 characters each; the
+    <code>(tool, label)</code> pair is the global address of a key. Substitution is an <b>exact</b> match — a malformed
+    placeholder is never substituted; it is blocked with a did-you-mean suggestion.
+  </p>
+  <p>The load-bearing mechanism is the <b>PreToolUse</b> hook. When Claude Code is about to run a Bash command, the hook
+  rewrites that one command via <code>updatedInput</code>, replacing the placeholder with the real key the instant before
+  execution. The model proposes the placeholder; the shell receives the value; the transcript keeps the placeholder.</p>
+  <pre class="plain"><span class="c">model writes:   </span>curl -H "Authorization: Bearer <span class="p">{{stm:openai:default}}</span>" ...
+                       │
+       PreToolUse hook │  resolves the key from the keychain, rewrites this one command
+                       ▼
+<span class="c">shell runs:     </span>curl -H "Authorization: Bearer <span class="r">sk-…real…</span>" ...</pre>
+  <div class="callout note">
+    <div class="h">Bash only — never a file</div>
+    <p>The hook substitutes a key only into <b>Bash</b> commands, never into a file. A placeholder written to a file
+    stays the harmless token; what the hook blocks in a <code>Write</code>/<code>Edit</code> is a <em>raw key</em> about
+    to be persisted to disk.</p>
+  </div>
+
+  <h2 id="hooks">The four Claude Code <em>hooks</em><a class="anchor" href="#hooks" aria-label="Link to this section">#</a></h2>
+  <div class="tbl-wrap">
+  <table>
+    <thead><tr><th>Hook</th><th>What it does</th></tr></thead>
+    <tbody>
+      <tr><td><b>PreToolUse</b></td><td>The load-bearing one. Substitutes the placeholder with the real key into a Bash command the instant before it runs, via <code>updatedInput</code>. The model never sees the value.</td></tr>
+      <tr><td><b>UserPromptSubmit</b></td><td>Blocks a prompt that contains a raw key shape <em>or</em> any managed secret matched by exact value — including a plain password with no key shape. Secrets must never enter the chat.</td></tr>
+      <tr><td><b>PostToolUse</b></td><td>Flags command output that surfaced a managed key (e.g. a command that echoed its own input) so you can rotate. It detects a leak after the fact; it cannot un-leak it.</td></tr>
+      <tr><td><b>SessionStart</b></td><td>Injects usage guidance so every new session knows how to use stm-managed keys with zero per-project setup.</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h2 id="policy">The command-policy <em>engine</em><a class="anchor" href="#policy" aria-label="Link to this section">#</a></h2>
+  <p>
+    Before a key is ever resolved from the keychain, PreToolUse evaluates a set of allow / deny / warn rules over the
+    tuple <b>(key, command, agent, project)</b>. Rules are glob-matched; you can test a command against the active rules
+    before you save one. Because policy runs <em>before</em> keychain resolution, a denied command never causes a key to
+    be read at all. Every decision is written to the audit log as one of
+    <code>substitute</code> · <code>policy.deny</code> · <code>policy.warn</code> · <code>unresolved</code> ·
+    <code>malformed</code> · <code>broker</code> — and the audit log never holds a real key value.
+  </p>
+
+  <h2 id="boundaries">Trust <em>boundaries</em><a class="anchor" href="#boundaries" aria-label="Link to this section">#</a></h2>
+  <p>Naming the untrusted parties explicitly, and what separates each:</p>
+  <div class="tbl-wrap">
+  <table>
+    <thead><tr><th>Party</th><th>Trusted with the key?</th><th>What separates it</th></tr></thead>
+    <tbody>
+      <tr><td>The AI model / chat transcript</td><td><b>No</b></td><td>Sees only placeholders; substitution happens after the model has produced the command.</td></tr>
+      <tr><td>The local dashboard</td><td>Entry only</td><td>Bound to <code>127.0.0.1</code>, per-run auth token, Host/Origin allowlist (DNS-rebinding defense). No remote host can reach it.</td></tr>
+      <tr><td>subscribetome's SQLite inventory</td><td><b>No</b></td><td>Stores a keychain reference + metadata; the value stays in the OS keychain.</td></tr>
+      <tr><td>Provider APIs</td><td>Yes (they issued the key)</td><td>The broker attaches auth only on the outbound call to the target's own origin.</td></tr>
+      <tr><td>A self-hosted Teams server</td><td><b>No</b></td><td>Zero-knowledge: it stores ciphertext it cannot decrypt, and team tokens only as SHA-256 hashes.</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h2 id="failsafe">Fail-safe <em>behaviour</em><a class="anchor" href="#failsafe" aria-label="Link to this section">#</a></h2>
+  <p>
+    Hooks fail closed on the secret. If a keychain read fails, a passphrase is missing on a non-TTY host, or any internal
+    error occurs, the hook exits <b>without</b> substituting — so a failure can never leak a key. At worst a command runs
+    with the placeholder intact and fails harmlessly. On the encrypted-file backend, when neither a cached passphrase nor
+    <code>STM_FILE_PASSPHRASE</code> is available and stdin is not a TTY, the resolver returns null rather than prompting
+    or leaking.
+  </p>
+
+  <h2 id="limits">Honest limitations <em>(out of scope)</em><a class="anchor" href="#limits" aria-label="Link to this section">#</a></h2>
+  <div class="callout warn">
+    <div class="h">Read this section</div>
+    <p>These are real, and inherent to injecting a secret into a shell command. subscribetome keeps a key out of the
+    <em>conversation</em>; it does not claim to keep it out of the local process table.</p>
+  </div>
+  <ul>
+    <li><b>The substituted key is a real argv element.</b> At the moment of execution the key is an argument of the shell
+    command — briefly visible to a local <code>ps</code>, and to any other process running as your user.</li>
+    <li><b>A command that echoes its own arguments can still print it.</b> <code>set -x</code>, verbose modes, or an error
+    message that embeds the command can surface the substituted key in that command's output. PostToolUse flags this
+    <em>after the fact</em> and tells you to rotate — it cannot prevent the leak.</li>
+    <li><b>Output redaction is impossible.</b> A hook can only <em>block</em> a tool result that contains a key, not
+    silently scrub it. Flagging is reliable for keys subscribetome manages and best-effort for others.</li>
+    <li><b>Endpoint trust is assumed.</b> A compromised machine, malware inspecting process memory, a maliciously replaced
+    binary, or a hostile local user are out of scope — the same boundary every local secret manager has.</li>
+    <li><b>Platform scope.</b> The per-command rewrite guarantee is strongest on <b>macOS + Claude Code</b>. Linux and
+    Windows keystores work but the runtime surface is experimental; Codex has weaker or MCP-mediated modes. See
+    <a href="https://github.com/matterhornso/subscribetome/blob/main/DOCS.md">DOCS.md</a>.</li>
+  </ul>
+
+  <h2 id="broker">How the broker <em>closes the argv gap</em><a class="anchor" href="#broker" aria-label="Link to this section">#</a></h2>
+  <p>
+    The argv limitation above is inherent to putting a secret <em>into</em> a command. For the common case — HTTP APIs —
+    the <b>credential broker</b> removes it entirely. Instead of substituting the key into the command, the agent points
+    its request at a local daemon, and the daemon injects the real auth on the <em>outbound</em> call to the provider:
+  </p>
+  <pre class="plain">curl http://127.0.0.1:&lt;port&gt;/proxy/openai/default/v1/chat/completions \
+  -H "x-stm-token: &lt;broker-token&gt;"</pre>
+  <p>
+    The key never enters the command's argv, environment, or output. The command carries only a loopback-only capability
+    token that exposes no secret. The broker enforces an SSRF guard, refuses to auto-follow redirects, scrubs the key
+    from the response, and caps the response size. See the <a href="/broker.html">broker guide</a> for the full set of
+    invariants.
+  </p>
+
+  <h2 id="teams">Teams <em>cryptography</em><a class="anchor" href="#teams" aria-label="Link to this section">#</a></h2>
+  <p>STM Teams extends the keychain-only principle across a team without the server ever seeing a plaintext secret. Three primitives:</p>
+  <ul>
+    <li><b>Vault encryption.</b> The shared credential vault is <b>AES-256-GCM</b> with a key derived by <b>PBKDF2-SHA512</b> from the team key. Credentials are encrypted on a member's machine; the server receives only the ciphertext blob.</li>
+    <li><b>Member enrollment (sealed box).</b> Distributing the team key uses an <b>X25519 sealed box</b>: ephemeral-static ECDH → <b>HKDF-SHA256</b> → AES-256-GCM. An existing member seals the team key to a joiner's public key; only the joiner's private key can open it. No shared passphrase is ever transmitted.</li>
+    <li><b>Usage attribution (signatures).</b> Audit reports are signed with each member's <b>Ed25519</b> key. The server verifies the signature and attributes the event to the cryptographically-verified member id — a client cannot forge who it is. A member id is <code>sha256(sealPub‖signPub)</code> truncated to 128 bits, binding both public keys so neither can be substituted.</li>
+  </ul>
+  <div class="callout note">
+    <div class="h">Zero-knowledge server</div>
+    <p>A fully-compromised Teams server (stolen database, malicious host) yields no key: it holds only ciphertext it
+    cannot decrypt and token hashes it cannot reverse. Usage <em>metadata</em> (tool, label, counts) is plaintext to the
+    server you host — see the <a href="/teams.html#limits">Teams limits</a> for what that means.</p>
+  </div>
+
+  <div class="callout note">
+    <div class="h">Reporting a vulnerability</div>
+    <p>Found something? See <a href="https://github.com/matterhornso/subscribetome/blob/main/SECURITY.md">SECURITY.md</a>
+    for the private disclosure process.</p>
+  </div>
+
+</div>
+</main>
+
+<footer>
+  <div class="bound foot">
+    <div class="foot-l">
+      <b>subscribetome</b> — open-source AI API key manager. Keys live in your OS keychain; the agent uses them
+      without ever seeing one. MIT licensed.
+    </div>
+    <div class="foot-links">
+      <a href="/">Home</a>
+      <a href="/docs.html">Docs</a>
+      <a href="https://github.com/matterhornso/subscribetome">GitHub</a>
+      <a href="https://github.com/matterhornso/subscribetome/blob/main/CHANGELOG.md">Changelog</a>
+      <a href="https://github.com/matterhornso/subscribetome/blob/main/LICENSE">License</a>
+    </div>
+  </div>
+</footer>
+
+</div>
+
+<script>
+  document.querySelectorAll(".copy-btn").forEach(function(btn){
+    btn.addEventListener("click",function(){
+      var box=btn.closest(".copybox"); if(!box) return;
+      var pre=box.querySelector("pre"); if(!pre) return;
+      var text=(pre.innerText||pre.textContent).trim();
+      function done(){
+        btn.classList.add("ok"); btn.textContent="Copied ✓";
+        setTimeout(function(){ btn.classList.remove("ok"); btn.textContent="Copy"; },1700);
+      }
+      function fallback(){
+        var t=document.createElement("textarea"); t.value=text;
+        t.style.position="fixed"; t.style.opacity="0";
+        document.body.appendChild(t); t.select();
+        try{ document.execCommand("copy"); done(); }catch(e){}
+        document.body.removeChild(t);
+      }
+      if(navigator.clipboard&&navigator.clipboard.writeText){
+        navigator.clipboard.writeText(text).then(done,fallback);
+      }else{ fallback(); }
+    });
+  });
+</script>
+</body>
+</html>

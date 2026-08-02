@@ -1,0 +1,415 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#0a0b0d">
+
+<title>Documentation — subscribetome (stm)</title>
+<meta name="description" content="Technical documentation for subscribetome (stm): the security architecture and threat model, the credential broker, self-hosting STM Teams, and the full CLI reference.">
+<meta name="author" content="Matterhorn Labs">
+<meta name="application-name" content="subscribetome">
+<meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
+
+<link rel="canonical" href="https://subscribetome.pro/docs.html">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="sitemap" type="application/xml" href="/sitemap.xml">
+
+<meta property="og:site_name" content="subscribetome">
+<meta property="og:title" content="Documentation — subscribetome (stm)">
+<meta property="og:description" content="Security architecture, the credential broker, self-hosting STM Teams, and the full CLI reference.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://subscribetome.pro/docs.html">
+<meta property="og:image" content="https://subscribetome.pro/og.png">
+<meta property="og:locale" content="en_US">
+
+<style>
+  :root {
+    --bg:#0a0b0d; --bg-2:#101114; --bg-3:#15171b;
+    --ink:#ece9e2; --ink-dim:#9a998f; --ink-faint:#62625b;
+    --line:rgba(236,233,226,.10); --line-2:rgba(236,233,226,.18);
+    --acc:#3ddc97; --acc-bright:#74f0bc; --acc-deep:#0d2a1f;
+    --warn:#e8895e; --warn-deep:rgba(232,137,94,.10); --warn-line:rgba(232,137,94,.30);
+    --grain-opacity:.035; --grid-opacity:.5;
+    --serif:"Instrument Serif",Georgia,"Times New Roman",serif;
+    --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    --ease:cubic-bezier(.2,.7,.2,1);
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg:#faf9f5; --bg-2:#f3f1ea; --bg-3:#eae7dd;
+      --ink:#1a1b18; --ink-dim:#55554c; --ink-faint:#86867b;
+      --line:rgba(20,22,16,.12); --line-2:rgba(20,22,16,.20);
+      --acc:#0e9463; --acc-bright:#0b7d53; --acc-deep:#e0f2e8;
+      --warn:#b8592a; --warn-deep:rgba(184,89,42,.09); --warn-line:rgba(184,89,42,.28);
+      --grain-opacity:.02; --grid-opacity:.35;
+    }
+  }
+  *,*::before,*::after { box-sizing:border-box; }
+  html { scroll-behavior:smooth; }
+  body {
+    margin:0; background:var(--bg); color:var(--ink);
+    font-family:var(--mono); font-weight:400; font-size:15px; line-height:1.65;
+    -webkit-font-smoothing:antialiased; overflow-x:hidden;
+  }
+  ::selection { background:var(--acc); color:#04130c; }
+  a { color:inherit; }
+  h1,h2,h3,h4,p,ul,ol { margin:0; }
+
+  /* atmosphere (mirrors the landing page) */
+  .grain {
+    position:fixed; inset:0; z-index:1; pointer-events:none; opacity:var(--grain-opacity);
+    mix-blend-mode:overlay;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+  .gridlines {
+    position:fixed; inset:0; z-index:0; pointer-events:none;
+    background-image:
+      linear-gradient(var(--line) 1px,transparent 1px),
+      linear-gradient(90deg,var(--line) 1px,transparent 1px);
+    background-size:64px 64px;
+    -webkit-mask-image:radial-gradient(ellipse 75% 50% at 50% 0%,#000,transparent 78%);
+            mask-image:radial-gradient(ellipse 75% 50% at 50% 0%,#000,transparent 78%);
+    opacity:var(--grid-opacity);
+  }
+  .wrap { position:relative; z-index:2; }
+  .bound { max-width:980px; margin:0 auto; padding:0 32px; }
+
+  /* skip link */
+  .skip {
+    position:absolute; left:-9999px; top:0; z-index:100;
+    background:var(--acc); color:#04130c; padding:10px 16px; border-radius:8px;
+    font-size:13px; text-decoration:none;
+  }
+  .skip:focus { left:12px; top:12px; }
+
+  /* header + docs nav */
+  header {
+    position:sticky; top:0; z-index:50;
+    border-bottom:1px solid var(--line);
+    background:color-mix(in srgb, var(--bg) 78%, transparent); backdrop-filter:blur(10px);
+  }
+  .nav { display:flex; align-items:center; justify-content:space-between; gap:18px; min-height:62px; flex-wrap:wrap; }
+  .brand { display:flex; align-items:center; gap:11px; font-size:14px; text-decoration:none; flex:none; }
+  .mark {
+    height:25px; padding:0 9px; border-radius:7px; flex:none; display:grid; place-items:center;
+    background:linear-gradient(150deg,var(--acc-bright),var(--acc) 55%,#1f8a63);
+    color:#04130c; font-weight:600; font-size:12.5px; letter-spacing:.6px;
+  }
+  .brand b { font-weight:600; }
+  .brand b i { color:var(--acc); font-style:normal; }
+  .docnav { display:flex; align-items:center; gap:4px; flex-wrap:wrap; }
+  .docnav a {
+    text-decoration:none; font-size:13px; color:var(--ink-dim);
+    padding:7px 11px; border-radius:7px; border:1px solid transparent;
+    transition:color .15s var(--ease),background .15s var(--ease),border-color .15s var(--ease);
+  }
+  .docnav a:hover { color:var(--ink); background:var(--bg-2); }
+  .docnav a[aria-current="page"] { color:var(--acc); border-color:var(--line-2); background:var(--acc-deep); }
+  .docnav a.gh { color:var(--ink); border:1px solid var(--line-2); }
+  .docnav a.gh:hover { border-color:var(--acc); background:var(--acc-deep); }
+
+  /* doc layout */
+  main { display:block; }
+  .doc { padding:46px 0 30px; }
+  .kicker {
+    display:inline-flex; align-items:center; gap:8px;
+    font-size:11px; letter-spacing:1.8px; text-transform:uppercase; color:var(--acc);
+    border:1px solid var(--line-2); border-radius:999px; padding:6px 13px; margin-bottom:22px;
+  }
+  .kicker .d { width:6px; height:6px; border-radius:50%; background:currentColor; }
+  .doc h1 {
+    font-family:var(--serif); font-weight:400;
+    font-size:clamp(38px,5.4vw,60px); line-height:1.04; letter-spacing:-.4px; max-width:20ch;
+  }
+  .doc h1 em { font-style:italic; color:var(--acc); }
+  .lead { margin:22px 0 0; max-width:66ch; color:var(--ink-dim); font-size:16px; line-height:1.7; }
+  .lead b { color:var(--ink); font-weight:500; }
+
+  .prose { padding:8px 0 40px; }
+  .prose h2 {
+    font-family:var(--serif); font-weight:400; font-size:clamp(26px,3.4vw,34px);
+    line-height:1.12; letter-spacing:-.3px; margin:52px 0 6px; scroll-margin-top:84px;
+  }
+  .prose h2 em { font-style:italic; color:var(--acc); }
+  .prose h3 {
+    font-size:15px; font-weight:600; letter-spacing:.2px; color:var(--ink);
+    margin:34px 0 4px; scroll-margin-top:84px;
+  }
+  .prose h4 { font-size:13.5px; font-weight:600; color:var(--ink); margin:22px 0 2px; }
+  .prose p { margin:14px 0 0; color:var(--ink-dim); font-size:14.5px; line-height:1.78; max-width:72ch; }
+  .prose p b, .prose li b { color:var(--ink); font-weight:600; }
+  .prose ul, .prose ol { margin:14px 0 0; padding-left:22px; color:var(--ink-dim); font-size:14.5px; line-height:1.78; max-width:72ch; }
+  .prose li { margin:7px 0; }
+  .prose li::marker { color:var(--ink-faint); }
+  .prose a:not(.card-link) { color:var(--acc); text-decoration:underline; text-underline-offset:3px; text-decoration-thickness:1px; text-decoration-color:var(--line-2); }
+  .prose a:not(.card-link):hover { text-decoration-color:var(--acc); }
+  .anchor { color:var(--ink-faint); text-decoration:none; margin-left:10px; font-size:.7em; opacity:0; transition:opacity .15s var(--ease); }
+  .prose h2:hover .anchor, .prose h3:hover .anchor { opacity:1; }
+
+  code {
+    font-family:var(--mono); font-size:.9em;
+    background:var(--bg-2); border:1px solid var(--line);
+    border-radius:5px; padding:1px 6px; color:var(--ink); word-break:break-word;
+  }
+  .prose p code, .prose li code { color:var(--acc); }
+  .ph { color:var(--acc); }
+
+  /* code blocks — reuse the landing page's copybox */
+  .copybox { border:1px solid var(--line); border-radius:11px; background:var(--bg); overflow:hidden; margin:18px 0 0; }
+  .copybar {
+    display:flex; align-items:center; justify-content:space-between;
+    padding:8px 8px 8px 13px; border-bottom:1px solid var(--line); background:var(--bg-3);
+  }
+  .copybar span { font-size:10.5px; letter-spacing:1.2px; text-transform:uppercase; color:var(--ink-faint); }
+  .copy-btn {
+    font-family:var(--mono); font-size:12px; cursor:pointer;
+    border:1px solid var(--line-2); border-radius:7px; padding:5px 11px;
+    background:transparent; color:var(--ink);
+    transition:border-color .15s var(--ease),background .15s var(--ease),color .15s var(--ease);
+  }
+  .copy-btn:hover { border-color:var(--acc); background:var(--acc-deep); }
+  .copy-btn.ok { border-color:var(--acc); background:var(--acc); color:#04130c; }
+  .copybox pre {
+    margin:0; padding:14px; font-family:var(--mono); font-size:12.5px; line-height:1.75;
+    white-space:pre; overflow-x:auto; color:var(--ink);
+  }
+  pre.plain {
+    margin:18px 0 0; padding:14px; border:1px solid var(--line); border-radius:11px;
+    background:var(--bg); font-family:var(--mono); font-size:12.5px; line-height:1.75;
+    white-space:pre; overflow-x:auto; color:var(--ink-dim);
+  }
+  .copybox pre .c, pre.plain .c { color:var(--ink-faint); }
+  .copybox pre .p, pre.plain .p { color:var(--acc); }
+  .copybox pre .r, pre.plain .r { color:var(--warn); }
+
+  /* TOC */
+  .toc { border:1px solid var(--line); border-radius:13px; background:var(--bg-2); padding:20px 24px; margin:30px 0 0; }
+  .toc .t { font-size:11px; letter-spacing:1.6px; text-transform:uppercase; color:var(--ink-faint); }
+  .toc ul { list-style:none; margin:12px 0 0; padding:0; columns:2; column-gap:28px; }
+  @media (max-width:640px){ .toc ul { columns:1; } }
+  .toc li { margin:0 0 8px; break-inside:avoid; }
+  .toc a { color:var(--ink-dim); text-decoration:none; font-size:13.5px; }
+  .toc a:hover { color:var(--acc); }
+  .toc a::before { content:"→ "; color:var(--ink-faint); }
+
+  /* callouts */
+  .callout { border:1px solid var(--line-2); border-left-width:3px; border-radius:10px; background:var(--bg-2); padding:16px 18px; margin:20px 0 0; }
+  .callout .h { font-size:11px; letter-spacing:1.4px; text-transform:uppercase; color:var(--ink-dim); margin-bottom:6px; }
+  .callout p { margin:0; font-size:13.5px; color:var(--ink-dim); line-height:1.72; max-width:none; }
+  .callout p + p { margin-top:10px; }
+  .callout.note { border-left-color:var(--acc); }
+  .callout.note .h { color:var(--acc); }
+  .callout.warn { border-left-color:var(--warn); background:var(--warn-deep); }
+  .callout.warn .h { color:var(--warn); }
+
+  /* index cards (docs home) */
+  .cards { display:grid; grid-template-columns:repeat(2,1fr); gap:18px; margin:16px 0 0; }
+  @media (max-width:720px){ .cards { grid-template-columns:1fr; } }
+  .card-link {
+    border:1px solid var(--line-2); border-radius:14px; background:var(--bg-2);
+    padding:24px; text-decoration:none; color:inherit; display:flex; flex-direction:column; gap:10px;
+    transition:border-color .2s var(--ease), transform .2s var(--ease);
+  }
+  .card-link:hover { border-color:var(--acc); transform:translateY(-2px); }
+  .card-link .ct { font-size:11px; letter-spacing:1.6px; text-transform:uppercase; color:var(--acc); }
+  .card-link h3 { font-family:var(--serif); font-weight:400; font-size:23px; line-height:1.15; letter-spacing:-.2px; }
+  .card-link p { margin:0; color:var(--ink-dim); font-size:13.5px; line-height:1.66; }
+  .card-link .go { font-size:12.5px; color:var(--acc); margin-top:auto; }
+
+  /* tables */
+  .tbl-wrap { overflow-x:auto; margin:18px 0 0; border:1px solid var(--line); border-radius:11px; }
+  table { border-collapse:collapse; width:100%; font-size:13px; min-width:520px; }
+  th, td { text-align:left; padding:11px 14px; border-bottom:1px solid var(--line); vertical-align:top; line-height:1.6; }
+  th { font-size:11px; letter-spacing:.8px; text-transform:uppercase; color:var(--ink-faint); font-weight:600; background:var(--bg-3); }
+  tr:last-child td { border-bottom:none; }
+  td code { white-space:nowrap; }
+  td b { color:var(--ink); font-weight:600; }
+
+  /* scope badges */
+  .badges { display:flex; flex-wrap:wrap; gap:8px; margin:20px 0 0; }
+  .badge {
+    display:inline-flex; align-items:center; gap:7px; font-size:11.5px; color:var(--ink-dim);
+    border:1px solid var(--line-2); border-radius:999px; padding:6px 12px;
+  }
+  .badge .d { width:6px; height:6px; border-radius:50%; background:var(--acc); flex:none; }
+  .badge.exp .d { background:var(--warn); }
+
+  details { border:1px solid var(--line); border-radius:11px; background:var(--bg-2); padding:0 18px; margin:18px 0 0; }
+  details summary { cursor:pointer; padding:15px 0; font-size:14px; font-weight:600; color:var(--ink); list-style:none; }
+  details summary::-webkit-details-marker { display:none; }
+  details summary::before { content:"+ "; color:var(--acc); }
+  details[open] summary::before { content:"– "; }
+  details > *:not(summary) { margin-bottom:16px; }
+
+  :focus-visible { outline:2px solid var(--acc); outline-offset:2px; border-radius:4px; }
+
+  /* footer (mirrors the landing page) */
+  footer { border-top:1px solid var(--line); padding:38px 0 48px; margin-top:60px; }
+  .foot { display:flex; flex-wrap:wrap; gap:22px; justify-content:space-between; align-items:center; }
+  .foot-l { font-size:12.5px; color:var(--ink-faint); max-width:52ch; line-height:1.7; }
+  .foot-l b { color:var(--ink-dim); font-weight:500; }
+  .foot-links { display:flex; flex-wrap:wrap; gap:20px; font-size:13px; }
+  .foot-links a { color:var(--ink-dim); text-decoration:none; transition:color .2s var(--ease); }
+  .foot-links a:hover { color:var(--acc); }
+
+  @media (prefers-reduced-motion:reduce){ html { scroll-behavior:auto; } .card-link:hover { transform:none; } }
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<div class="grain"></div>
+<div class="gridlines"></div>
+<div class="wrap">
+
+<header>
+  <div class="bound nav">
+    <a class="brand" href="/"><span class="mark">stm</span><b>subscribe<i>tome</i></b></a>
+    <nav class="docnav" aria-label="Documentation">
+      <a href="/docs.html" aria-current="page">Overview</a>
+      <a href="/security.html">Security</a>
+      <a href="/broker.html">Broker</a>
+      <a href="/teams.html">Teams</a>
+      <a href="/cli.html">CLI</a>
+      <a class="gh" href="https://github.com/matterhornso/subscribetome">GitHub →</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+<div class="bound doc">
+  <span class="kicker"><span class="d"></span>Documentation</span>
+  <h1>How subscribetome <em>actually works.</em></h1>
+  <p class="lead">
+    <b>subscribetome</b> (CLI: <code>stm</code>) keeps every API key in the OS keychain and lets an AI
+    coding agent <b>use</b> your keys without the model, the chat transcript, or your logs ever holding one.
+    This section is the technical reference: the security model, the credential broker, self-hosting the
+    Teams server, and the full command list. It is <b>reference, not a pitch</b> — every command and
+    guarantee below is drawn from the source.
+  </p>
+</div>
+
+<div class="bound prose">
+
+  <h2 id="model">The model in <em>one paragraph</em><a class="anchor" href="#model" aria-label="Link to this section">#</a></h2>
+  <p>
+    A real key value lives only in your <b>OS keychain</b>. In chat you refer to a key by a placeholder like
+    <code class="ph">{{stm:openai:default}}</code>. When Claude Code is about to run a shell command that contains a
+    placeholder, a <b>PreToolUse hook</b> substitutes the real key into that one command the instant before it runs —
+    so the model never sees the value and the transcript keeps only the placeholder. Three more hooks back this up
+    (blocking pasted secrets, flagging leaked output, teaching each new session). For HTTP APIs, the
+    <b>credential broker</b> goes further: the request is routed through a local daemon that injects the real auth on
+    the <em>outbound</em> call, so the key never enters the command at all. <b>STM Teams</b> extends the same
+    keychain-only principle to a team with a zero-knowledge, self-hostable server that stores only ciphertext.
+  </p>
+
+  <div class="callout note">
+    <div class="h">No backend, by design</div>
+    <p>The core plugin has no server, no cloud, no telemetry, and no sign-up. Keys live only in your OS keychain;
+    a SQLite inventory stores metadata and a keychain reference, never a key value. The only optionally-networked
+    pieces are <code>stm sync</code> (spend, outbound to providers you configured) and — if you run one — a Teams
+    server you host yourself.</p>
+  </div>
+
+  <h2 id="start">Where to <em>start</em><a class="anchor" href="#start" aria-label="Link to this section">#</a></h2>
+  <p>Pick the page that matches what you need. Each is self-contained.</p>
+
+  <div class="cards">
+    <a class="card-link" href="/security.html">
+      <span class="ct">Security</span>
+      <h3>Architecture &amp; threat model</h3>
+      <p>Keychain-only keys, the placeholder + PreToolUse substitution, the four hooks, the command-policy engine,
+      the honest argv limitation, and the Teams cryptography — with an equal-weight list of what is out of scope.</p>
+      <span class="go">Read the security model →</span>
+    </a>
+    <a class="card-link" href="/broker.html">
+      <span class="ct">Broker</span>
+      <h3>The credential broker</h3>
+      <p>Route HTTP API calls through a local daemon that injects the real key on the outbound request. The
+      <code>/proxy</code> model, a curl example, the loopback capability token, and the SSRF / redirect / scrub /
+      size-cap invariants.</p>
+      <span class="go">Read the broker guide →</span>
+    </a>
+    <a class="card-link" href="/teams.html">
+      <span class="ct">Teams</span>
+      <h3>Self-hosting STM Teams</h3>
+      <p>Run the zero-knowledge server, create a team, push and pull an encrypted vault, enroll members by public
+      key with no shared passphrase, and read a cryptographically-attributed team audit log.</p>
+      <span class="go">Read the self-hosting guide →</span>
+    </a>
+    <a class="card-link" href="/cli.html">
+      <span class="ct">CLI</span>
+      <h3>Command reference</h3>
+      <p>Every <code>stm</code> command grouped by task — keys, policy, audit, projects, vault, broker, and teams —
+      each with a one-line purpose and usage pattern.</p>
+      <span class="go">Read the CLI reference →</span>
+    </a>
+  </div>
+
+  <h2 id="scope">Platform <em>scope</em><a class="anchor" href="#scope" aria-label="Link to this section">#</a></h2>
+  <p>
+    The runtime hooks that rewrite commands are strongest on <b>macOS + Claude Code</b>; other platforms and agents
+    are experimental (see the security page and <a href="https://github.com/matterhornso/subscribetome/blob/main/DOCS.md">DOCS.md</a>).
+    The <b>credential broker</b> and the <b>Teams server</b> are plain Bun programs and run anywhere Bun does.
+  </p>
+  <div class="badges">
+    <span class="badge"><span class="d"></span>Runtime hooks: macOS + Claude Code</span>
+    <span class="badge exp"><span class="d"></span>Linux / Windows / Codex: experimental</span>
+    <span class="badge"><span class="d"></span>Broker &amp; Teams server: anywhere Bun runs</span>
+  </div>
+
+  <h2 id="more">Beyond these <em>pages</em><a class="anchor" href="#more" aria-label="Link to this section">#</a></h2>
+  <ul>
+    <li><a href="https://github.com/matterhornso/subscribetome/blob/main/DOCS.md">DOCS.md</a> — the long-form reference for keystores, platforms, and the Codex surface.</li>
+    <li><a href="https://github.com/matterhornso/subscribetome/blob/main/SECURITY.md">SECURITY.md</a> — the threat model and how to report a vulnerability privately.</li>
+    <li><a href="https://github.com/matterhornso/subscribetome/blob/main/CHANGELOG.md">CHANGELOG.md</a> — release history.</li>
+    <li><a href="https://github.com/matterhornso/subscribetome">GitHub</a> — source, MIT licensed.</li>
+  </ul>
+
+</div>
+</main>
+
+<footer>
+  <div class="bound foot">
+    <div class="foot-l">
+      <b>subscribetome</b> — open-source AI API key manager. Keys live in your OS keychain; the agent uses them
+      without ever seeing one. MIT licensed.
+    </div>
+    <div class="foot-links">
+      <a href="/">Home</a>
+      <a href="/docs.html">Docs</a>
+      <a href="https://github.com/matterhornso/subscribetome">GitHub</a>
+      <a href="https://github.com/matterhornso/subscribetome/blob/main/CHANGELOG.md">Changelog</a>
+      <a href="https://github.com/matterhornso/subscribetome/blob/main/LICENSE">License</a>
+    </div>
+  </div>
+</footer>
+
+</div>
+
+<script>
+  document.querySelectorAll(".copy-btn").forEach(function(btn){
+    btn.addEventListener("click",function(){
+      var box=btn.closest(".copybox"); if(!box) return;
+      var pre=box.querySelector("pre"); if(!pre) return;
+      var text=(pre.innerText||pre.textContent).trim();
+      function done(){
+        btn.classList.add("ok"); btn.textContent="Copied ✓";
+        setTimeout(function(){ btn.classList.remove("ok"); btn.textContent="Copy"; },1700);
+      }
+      function fallback(){
+        var t=document.createElement("textarea"); t.value=text;
+        t.style.position="fixed"; t.style.opacity="0";
+        document.body.appendChild(t); t.select();
+        try{ document.execCommand("copy"); done(); }catch(e){}
+        document.body.removeChild(t);
+      }
+      if(navigator.clipboard&&navigator.clipboard.writeText){
+        navigator.clipboard.writeText(text).then(done,fallback);
+      }else{ fallback(); }
+    });
+  });
+</script>
+</body>
+</html>
