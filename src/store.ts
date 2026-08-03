@@ -638,7 +638,7 @@ export class Store {
     tool: string;
     label: string;
     value: string;
-    source?: "manual" | "imported";
+    source?: "manual" | "imported" | "team";
     displayName?: string;
   }): KeyView {
     const tool = normalizeSegment(input.tool);
@@ -955,6 +955,19 @@ export class Store {
     return this.db
       .query(`SELECT * FROM audit_log ${where} ORDER BY id DESC LIMIT ?`)
       .all(...(params as any[])) as AuditRow[];
+  }
+
+  /**
+   * Audit rows with id > sinceId, OLDEST first — for incremental push to a
+   * Teams server. `command` carries placeholders only (never a resolved key),
+   * so these rows are safe to send off-machine. Returns the rows plus the
+   * highest id seen so the caller can advance its cursor.
+   */
+  listAuditForSync(sinceId: number, limit = 500): AuditRow[] {
+    const cap = Math.max(1, Math.min(limit, 5000));
+    return this.db
+      .query(`SELECT * FROM audit_log WHERE id > ? ORDER BY id ASC LIMIT ?`)
+      .all(sinceId, cap) as AuditRow[];
   }
 
   auditCount(): number {
