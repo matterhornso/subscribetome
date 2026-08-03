@@ -17,7 +17,8 @@ import {
   pushLocalAudit, fetchTeamAudit,
   type TeamConfig,
 } from "../src/teams/client.ts";
-import { generateIdentityKeys, seal, openWith } from "../src/teams/keypair.ts";
+import { generateIdentity, seal, openWith } from "../src/teams/keypair.ts";
+import { sign as edSign } from "../src/teams/signing.ts";
 import { decryptVault } from "../src/keystores/encrypted-file.ts";
 
 const ADMIN = "admin-token-abc";
@@ -67,6 +68,16 @@ class FakeStore {
 }
 
 const asStore = (f: FakeStore) => f as unknown as import("../src/store.ts").Store;
+
+/** A full member: identity (seal + sign keys) + a signer over its Ed25519 key
+ *  (no keychain — the private key is held in-test). */
+function makeMember() {
+  const id = generateIdentity();
+  return { id, auth: { memberId: id.memberId, sign: (p: string) => edSign(p, id.signPrivateKeyB64) } };
+}
+async function register(cfg: TeamConfig, id: ReturnType<typeof generateIdentity>, f: typeof fetch) {
+  await registerMember(cfg, id.memberId, id.sealPublicKeyB64, id.signPublicKeyB64, { fetch: f });
+}
 
 test("team creation requires the admin token", async () => {
   const store = new TeamServerStore();
@@ -162,25 +173,42 @@ test("pull with the wrong passphrase fails loudly, adds nothing", async () => {
   server.close();
 });
 
-test("audit rows can be pushed and read back for a team", async () => {
+test("audit POST requires a valid member signature; actor is the VERIFIED member", async () => {
   const server = new TeamServerStore();
   const f = wire(server);
   const team = await createTeam("http://s", ADMIN, "acme", { fetch: f });
+  const cfg: TeamConfig = { serverUrl: "http://s", teamToken: team.token };
   const H = { authorization: `Bearer ${team.token}`, "content-type": "application/json" };
 
-  const post = await f("http://s/v1/audit", {
+  // Unsigned post is rejected (the forgeable-actor gap is closed).
+  const unsigned = await f("http://s/v1/audit", {
     method: "POST", headers: H,
-    body: JSON.stringify({ rows: [
-      { actor: "alice", event: "broker", detail: "GET /v1/models -> 200" },
-      { actor: "bob", event: "substitute", detail: "openai:default" },
-    ] }),
+    body: JSON.stringify({ rows: [{ event: "broker", detail: "x" }] }),
   });
-  expect((await post.json()).added).toBe(2);
+  expect(unsigned.status).toBe(401);
 
-  const get = await f("http://s/v1/audit?limit=10", { headers: { authorization: `Bearer ${team.token}` } });
-  const rows = (await get.json()).rows;
-  expect(rows).toHaveLength(2);
-  expect(rows[0].event).toBeDefined();
+  // A registered member signs a report; the server attributes it to THEM even
+  // though the row claims a different actor.
+  const { id, auth } = makeMember();
+  await register(cfg, id, f);
+  const body = JSON.stringify({ rows: [{ event: "broker", actor: "i-am-mallory", detail: "GET /v1/models -> 200" }] });
+  const ts = new Date().toISOString();
+  const nonce = "n1";
+  const { createHash } = await import("node:crypto");
+  const bodyHash = createHash("sha256").update(Buffer.from(body, "utf8")).digest("hex");
+  const sigHdrs = {
+    "x-stm-member": id.memberId,
+    "x-stm-timestamp": ts,
+    "x-stm-nonce": nonce,
+    "x-stm-signature": auth.sign(`POST\n/v1/audit\n${ts}\n${nonce}\n${bodyHash}`),
+  };
+  const post = await f("http://s/v1/audit", { method: "POST", headers: { ...H, ...sigHdrs }, body });
+  const pj = await post.json();
+  expect(pj.added).toBe(1);
+  expect(pj.actor).toBe(id.memberId);
+
+  const rows = (await (await f("http://s/v1/audit?limit=10", { headers: { authorization: `Bearer ${team.token}` } })).json()).rows;
+  expect(rows[0].actor).toBe(id.memberId); // verified id, NOT "i-am-mallory"
   server.close();
 });
 
@@ -193,32 +221,32 @@ test("public-key enrollment: a new member gets the team key without a shared pas
 
   // Admin: generate the team key, self-enroll, push an encrypted vault.
   const teamKey = generateTeamKey();
-  const admin = generateIdentityKeys();
-  await registerMember(cfg, admin.memberId, admin.publicKeyB64, df);
-  await uploadEnvelope(cfg, admin.memberId, seal(teamKey, admin.publicKeyB64), df);
+  const admin = generateIdentity();
+  await register(cfg, admin, f);
+  await uploadEnvelope(cfg, admin.memberId, seal(teamKey, admin.sealPublicKeyB64), df);
   const src = new FakeStore();
   src.seed("openai", "default", "sk-openai-shared-team-key-000111");
   await pushVault({ store: asStore(src), cfg, passphrase: teamKey, fetch: f });
 
-  // New member: request enrollment (publishes only a PUBLIC key).
-  const member = generateIdentityKeys();
-  await registerMember(cfg, member.memberId, member.publicKeyB64, df);
+  // New member: request enrollment (publishes only PUBLIC keys).
+  const member = generateIdentity();
+  await register(cfg, member, f);
 
   // Server shows the member pending (no wrapped key yet).
   let members = await listMembers(cfg, df);
   expect(members.find((m) => m.memberId === member.memberId)!.enrolled).toBe(false);
   expect(await fetchEnvelope(cfg, member.memberId, df)).toBeNull(); // nothing to accept yet
 
-  // Admin enrolls the member: seal the team key to THEIR public key + upload.
+  // Admin enrolls the member: seal the team key to THEIR sealing key + upload.
   const theirPub = (await getMember(cfg, member.memberId, df))!.pubkey;
   await uploadEnvelope(cfg, member.memberId, seal(teamKey, theirPub), df);
 
   members = await listMembers(cfg, df);
   expect(members.find((m) => m.memberId === member.memberId)!.enrolled).toBe(true);
 
-  // Member accepts: unwrap with THEIR private key -> the same team key.
+  // Member accepts: unwrap with THEIR sealing private key -> the same team key.
   const envelope = (await fetchEnvelope(cfg, member.memberId, df))!;
-  const recovered = openWith(envelope, member.privateKeyB64);
+  const recovered = openWith(envelope, member.sealPrivateKeyB64);
   expect(recovered).toBe(teamKey);
 
   // And with it, the member can pull + decrypt the vault.
@@ -229,8 +257,8 @@ test("public-key enrollment: a new member gets the team key without a shared pas
 
   // The team key was NEVER sent in the clear: every envelope is ciphertext that
   // only the addressed private key opens.
-  const outsider = generateIdentityKeys();
-  expect(() => openWith(envelope, outsider.privateKeyB64)).toThrow();
+  const outsider = generateIdentity();
+  expect(() => openWith(envelope, outsider.sealPrivateKeyB64)).toThrow();
 
   server.close();
 });
@@ -242,19 +270,19 @@ test("server rejects a pubkey registered under a mismatched member id (identity 
   const cfg: TeamConfig = { serverUrl: "http://s", teamToken: team.token };
   const H = { authorization: `Bearer ${team.token}`, "content-type": "application/json" };
 
-  const alice = generateIdentityKeys();
-  const mallory = generateIdentityKeys();
-  await registerMember(cfg, alice.memberId, alice.publicKeyB64, { fetch: f }); // legit
+  const alice = generateIdentity();
+  const mallory = generateIdentity();
+  await register(cfg, alice, f); // legit
 
-  // Mallory tries to overwrite Alice's id with HER key -> server refuses (400).
+  // Mallory tries to overwrite Alice's id with HER keys -> server refuses (400).
   const r = await f("http://s/v1/members", {
     method: "POST", headers: H,
-    body: JSON.stringify({ memberId: alice.memberId, pubkey: mallory.publicKeyB64 }),
+    body: JSON.stringify({ memberId: alice.memberId, pubkey: mallory.sealPublicKeyB64, signPubkey: mallory.signPublicKeyB64 }),
   });
   expect(r.status).toBe(400);
   // Alice's stored key is untouched, so a later enroll still seals to Alice.
   const m = await getMember(cfg, alice.memberId, { fetch: f });
-  expect(m!.pubkey).toBe(alice.publicKeyB64);
+  expect(m!.pubkey).toBe(alice.sealPublicKeyB64);
   server.close();
 });
 
@@ -267,12 +295,12 @@ test("server caps oversized pubkey and envelope (DoS)", async () => {
 
   const big = await f("http://s/v1/members", {
     method: "POST", headers: H,
-    body: JSON.stringify({ memberId: "x", pubkey: "A".repeat(3000) }),
+    body: JSON.stringify({ memberId: "x", pubkey: "A".repeat(3000), signPubkey: "B" }),
   });
   expect(big.status).toBe(413);
 
-  const alice = generateIdentityKeys();
-  await registerMember(cfg, alice.memberId, alice.publicKeyB64, { fetch: f });
+  const alice = generateIdentity();
+  await register(cfg, alice, f);
   const bigEnv = await f(`http://s/v1/members/${alice.memberId}/envelope`, {
     method: "POST", headers: H, body: JSON.stringify({ envelope: "B".repeat(70000) }),
   });
@@ -286,27 +314,32 @@ test("team audit: local key-use events push once (cursor advances) and are visib
   const team = await createTeam("http://s", ADMIN, "acme", { fetch: f });
   const cfg: TeamConfig = { serverUrl: "http://s", teamToken: team.token, teamId: team.id };
 
+  // A registered member with a signing identity pushes their local events.
+  const { id: alice, auth } = makeMember();
+  await register(cfg, alice, f);
+
   const src = new FakeStore();
   src.seedAudit("substitute", "openai", "default", "curl -H 'auth: {{stm:openai:default}}' api");
   src.seedAudit("policy.deny", "fal", "default", "echo {{stm:fal:default}}");
 
-  const r1 = await pushLocalAudit({ store: asStore(src), cfg, actor: "alice", fetch: f });
+  const r1 = await pushLocalAudit({ store: asStore(src), cfg, auth, fetch: f });
   expect(r1.pushed).toBe(2);
   expect(r1.cursor).toBe(2);
 
   const rows = await fetchTeamAudit(r1.cfg, 10, { fetch: f });
   expect(rows).toHaveLength(2);
-  expect(rows.some((x) => x.actor === "alice")).toBe(true);
+  // The actor is the VERIFIED member id (derived from the signature), not claimed.
+  expect(rows.every((x) => x.actor === alice.memberId)).toBe(true);
   // The detail is the PLACEHOLDER command — no resolved secret ever left the box.
   expect(rows.some((x) => String(x.detail).includes("{{stm:openai:default}}"))).toBe(true);
 
   // Re-pushing with the advanced cursor sends nothing (idempotent).
-  const r2 = await pushLocalAudit({ store: asStore(src), cfg: r1.cfg, actor: "alice", fetch: f });
+  const r2 = await pushLocalAudit({ store: asStore(src), cfg: r1.cfg, auth, fetch: f });
   expect(r2.pushed).toBe(0);
 
   // A new local event pushes just the one.
   src.seedAudit("substitute", "stripe", "default", "curl {{stm:stripe:default}}");
-  const r3 = await pushLocalAudit({ store: asStore(src), cfg: r1.cfg, actor: "alice", fetch: f });
+  const r3 = await pushLocalAudit({ store: asStore(src), cfg: r1.cfg, auth, fetch: f });
   expect(r3.pushed).toBe(1);
   expect((await fetchTeamAudit(r3.cfg, 10, { fetch: f }))).toHaveLength(3);
 
