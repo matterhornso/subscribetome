@@ -1,5 +1,5 @@
 import { test, expect, afterAll, beforeAll } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -42,6 +42,70 @@ test("scanEnv suggests a clean tool name and masks the value", () => {
   const openai = scanEnv([dir]).find((c) => c.varName === "OPENAI_API_KEY");
   expect(openai?.suggestedTool).toBe("openai");
   expect(openai?.valueMasked).not.toContain("abcdefghij1234567890");
+});
+
+const canSymlink = process.platform !== "win32";
+const symTest = canSymlink ? test : test.skip;
+
+symTest("scanEnv does NOT follow a symlinked .env or dir (no escape out of the tree)", () => {
+  const root = mkdtempSync(join(tmpdir(), "stm-imp-sym-"));
+  const outside = mkdtempSync(join(tmpdir(), "stm-imp-out-"));
+  try {
+    // A secret file OUTSIDE the scanned tree...
+    writeFileSync(
+      join(outside, "creds"),
+      "AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMIK7MDENGbPxRfiCYEXAMPLEKEY\n",
+    );
+    // ...reachable only via a .env-named file symlink and a dir symlink.
+    symlinkSync(join(outside, "creds"), join(root, ".env.evil"));
+    symlinkSync(outside, join(root, "sub"));
+    expect(scanEnv([root])).toHaveLength(0);
+  } finally {
+    rmSync(outside, { recursive: true, force: true });
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("scanEnv skips a .env larger than the size cap", () => {
+  const root = mkdtempSync(join(tmpdir(), "stm-imp-big-"));
+  try {
+    writeFileSync(
+      join(root, ".env"),
+      "OPENAI_API_KEY=sk-abcdefghij1234567890klmnopqrst\n" + "x".repeat(1024 * 1024 + 10),
+    );
+    expect(scanEnv([root])).toHaveLength(0);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("mask reveals no edge chars for a short (<24) secret", () => {
+  const root = mkdtempSync(join(tmpdir(), "stm-imp-mask-"));
+  try {
+    writeFileSync(join(root, ".env"), "API_TOKEN=abcdefghij0123\n"); // 14-char value
+    const c = scanEnv([root]).find((x) => x.varName === "API_TOKEN");
+    expect(c).toBeTruthy();
+    expect(c!.valueMasked).toMatch(/^\*+$/); // all stars, no revealed edges
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("importSelected refuses a selection whose file is not a .env (confinement)", () => {
+  const root = mkdtempSync(join(tmpdir(), "stm-imp-conf-"));
+  const db = join(root, "c.sqlite");
+  try {
+    // A real secret in a NON-.env file — a crafted selection must not read it.
+    writeFileSync(join(root, "credentials"), "TOKEN=sk-abcdefghij1234567890klmnopqrst\n");
+    const r = importSelected(
+      [{ file: join(root, "credentials"), varName: "TOKEN", tool: "x", label: "default" }],
+      { dbPath: db },
+    );
+    expect(r.imported).toBe(0);
+    expect(r.errors).toHaveLength(1);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 // ---- Phase 3 of session-and-project-scope: scope auto-suggest ----------

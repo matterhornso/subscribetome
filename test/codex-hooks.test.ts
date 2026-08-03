@@ -14,6 +14,7 @@ import {
   doctor,
   renderManagedBlock,
   hookScriptPaths,
+  tomlEscape,
   STM_MARKER_CURRENT,
   STM_END_MARKER,
   STM_MARKER_PREFIX,
@@ -21,6 +22,20 @@ import {
 
 const SCRATCH = mkdtempSync(join(tmpdir(), "stm-codex-hooks-"));
 const FAKE_NOW = () => 1700000000000;
+
+test("tomlEscape escapes backslash, quote, and control chars (no TOML breakout)", () => {
+  expect(tomlEscape("/plain/path")).toBe("/plain/path");
+  expect(tomlEscape('a"b')).toBe('a\\"b');
+  // backslash escaped first, so it doesn't double-escape the quote's backslash
+  expect(tomlEscape("a\\b")).toBe("a\\\\b");
+  expect(tomlEscape("a\nb")).toBe("a\\nb");
+  expect(tomlEscape("a\tb")).toBe("a\\tb");
+  // A newline-injection attempt stays inside the string instead of starting a
+  // new TOML line like `command = "evil"`.
+  const evil = 'x"\ncommand = "evil';
+  expect(tomlEscape(evil)).not.toContain("\n");
+  expect(tomlEscape(evil)).toBe('x\\"\\ncommand = \\"evil');
+});
 
 afterAll(() => {
   try {

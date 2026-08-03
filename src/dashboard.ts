@@ -767,8 +767,11 @@ var lastInv = null;
 var editingTool = null;
 var toastTimer = null;
 
-function esc(s){return String(s).replace(/[&<>"]/g,function(c){
-  return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];});}
+// Escapes &<>" AND ' so a value is safe in both element text and either
+// single- or double-quoted attributes (don't rely on which delimiter a caller
+// used).
+function esc(s){return String(s).replace(/[&<>"']/g,function(c){
+  return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];});}
 function val(id){return document.getElementById(id).value.trim();}
 function el(id){return document.getElementById(id);}
 function setMsg(id,text,cls){var m=el(id);m.textContent=text;m.className="msg"+(cls?" "+cls:"");}
@@ -846,7 +849,7 @@ function renderAudit(rows,total){
     }
     return '<tr>'
       +'<td class="t-time">'+esc(fmtTs(r.ts))+'</td>'
-      +'<td><span class="'+evClass(r.event)+'">'+esc(r.event)+'</span></td>'
+      +'<td><span class="'+esc(evClass(r.event))+'">'+esc(r.event)+'</span></td>'
       +'<td class="t-key">'+key+'</td>'
       +'<td>'+info+'</td></tr>';
   }).join("");
@@ -1255,7 +1258,7 @@ function renderTools(tools){
         +'<td><input class="ed-plan" value="'+esc(t.plan||"")+'" placeholder="Pro" '
         +'autocomplete="off" style="height:30px"></td>'
         +'<td><input class="ed-cost" type="number" min="0" step="0.01" '
-        +'value="'+(t.monthly_cost!=null?t.monthly_cost:"")+'" placeholder="20" style="height:30px"></td>'
+        +'value="'+esc(t.monthly_cost!=null?t.monthly_cost:"")+'" placeholder="20" style="height:30px"></td>'
         +'<td style="white-space:nowrap"><input class="ed-card-nick" value="'+esc(t.card_nickname||"")+'" '
         +'placeholder="Personal Amex" autocomplete="off" style="height:30px;width:110px"> '
         +'<input class="ed-card-last4" value="'+esc(t.card_last4||"")+'" placeholder="4321" '
@@ -1280,11 +1283,11 @@ function renderTools(tools){
         +'<span class="spend-tag fetched" title="Fetched '+esc(sp.fetched_at||"")
         +' from the provider via stm sync">fetched</span>';
     } else if (sp && sp.source === "error" && t.monthly_cost != null) {
-      monthlyHTML = '<span class="num">$'+t.monthly_cost+'</span>'
+      monthlyHTML = '<span class="num">$'+esc(t.monthly_cost)+'</span>'
         +'<span class="spend-tag error" title="Last sync failed: '+esc(sp.last_error||"")
         +'">sync failed</span>';
     } else if (t.monthly_cost != null) {
-      monthlyHTML = '<span class="num">$'+t.monthly_cost+'</span>';
+      monthlyHTML = '<span class="num">$'+esc(t.monthly_cost)+'</span>';
     } else {
       monthlyHTML = '<span style="color:var(--text-dim)">\\u2014</span>';
     }

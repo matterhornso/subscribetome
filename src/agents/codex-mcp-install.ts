@@ -17,6 +17,7 @@ import {
   defaultCodexConfigPath,
   rewriteOrAppendBlock,
   removeBlock,
+  tomlEscape,
   type InstallResult,
 } from "./codex-hooks.ts";
 
@@ -52,8 +53,8 @@ export function renderMcpBlock(opts: {
   bunPath: string;
   cliPath: string;
 }): string {
-  const bun = opts.bunPath.replace(/"/g, '\\"');
-  const cli = opts.cliPath.replace(/"/g, '\\"');
+  const bun = tomlEscape(opts.bunPath);
+  const cli = tomlEscape(opts.cliPath);
   return [
     STM_MCP_MARKER_CURRENT,
     "# Managed by `stm codex install-mcp`. Do not edit between the markers —",

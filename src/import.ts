@@ -4,7 +4,7 @@
 // arbitrary third-party keys is deferred — `security dump-keychain` is
 // intrusive (prompts per item) and noisy. subscribetome's own keychain
 // entries are already in the inventory, so there is nothing to rediscover.
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { lstatSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
 import { Store } from "./store.ts";
@@ -24,11 +24,15 @@ export interface Candidate {
 const ENV_NAME = /(^|\/)\.env(\.[A-Za-z0-9_.-]+)?$/;
 const KEYISH_NAME = /(KEY|TOKEN|SECRET|API|PASSWORD|PASSWD|AUTH|CREDENTIAL)/i;
 const KEYISH_GLOBAL = /(KEY|TOKEN|SECRET|API|PASSWORD|PASSWD|AUTH|CREDENTIAL)/gi;
+// .env files are tiny; cap the read so a symlink to a huge or endless file
+// (e.g. /dev/zero) can't OOM/hang the scan.
+const MAX_ENV_BYTES = 1024 * 1024; // 1 MiB
 
 function mask(v: string): string {
-  // Reveal at most two edge characters, and only when the value is long
-  // enough that those characters are a small fraction of the secret.
-  if (v.length < 16) return "*".repeat(Math.min(v.length, 12));
+  // Reveal two edge characters only when the value is long enough that they are
+  // a small fraction of it. Below 24 chars, reveal nothing — for a ~16-char key
+  // two edges each end is 25% of the secret, too much to show in a preview.
+  if (v.length < 24) return "*".repeat(Math.min(v.length, 12));
   return v.slice(0, 2) + "*".repeat(Math.min(20, v.length - 4)) + v.slice(-2);
 }
 
@@ -55,13 +59,18 @@ function listEnvFiles(dir: string, depth = 2): string[] {
     const full = join(dir, e);
     let st;
     try {
-      st = statSync(full);
+      // lstat, NOT stat: never follow a symlink. A hostile repo can ship a
+      // `.env.bak -> ~/.aws/credentials` file symlink or a `sub -> /` directory
+      // symlink; following either lets the scan read/recurse OUTSIDE the
+      // requested tree. We skip symlinks entirely rather than resolve-and-check.
+      st = lstatSync(full);
     } catch {
       continue;
     }
+    if (st.isSymbolicLink()) continue;
     if (st.isDirectory()) {
       if (depth > 0) out.push(...listEnvFiles(full, depth - 1));
-    } else if (ENV_NAME.test(full)) {
+    } else if (st.isFile() && st.size <= MAX_ENV_BYTES && ENV_NAME.test(full)) {
       out.push(full);
     }
   }
@@ -118,6 +127,20 @@ export function scanEnv(dirs: string[]): Candidate[] {
 /** Re-read a candidate's real value from its source file (server-side only).
  *  Internal: only importSelected needs it. */
 function readCandidateValue(file: string, varName: string): string | null {
+  // Confinement against a confused-deputy caller: importSelected trusts a
+  // client-supplied `file` path, so re-validate here instead of reading any
+  // path the daemon user can. Only re-read something that is an actual .env
+  // file, is not a symlink, and is within the size cap — blocks importing an
+  // arbitrary readable file (or a symlink to ~/.aws/credentials) by crafting a
+  // selection that never came from scanEnv.
+  let st;
+  try {
+    st = lstatSync(file);
+  } catch {
+    return null;
+  }
+  if (st.isSymbolicLink() || !st.isFile() || st.size > MAX_ENV_BYTES) return null;
+  if (!ENV_NAME.test(file)) return null;
   let text: string;
   try {
     text = readFileSync(file, "utf8");
