@@ -143,8 +143,12 @@ const HOP_BY_HOP = [
 function scrub(text: string, secret: string): string {
   if (!secret) return text;
   let out = text.split(secret).join("[stm:redacted]");
-  const enc = encodeURIComponent(secret);
-  if (enc !== secret) out = out.split(enc).join("[stm:redacted]");
+  // Strip both URL-encoded forms a query-auth key can take in a reflected URL:
+  // encodeURIComponent (space -> %20) and application/x-www-form-urlencoded, the
+  // form URLSearchParams actually emits (space -> +, and other divergences).
+  for (const enc of [encodeURIComponent(secret), new URLSearchParams([["x", secret]]).toString().slice(2)]) {
+    if (enc && enc !== secret) out = out.split(enc).join("[stm:redacted]");
+  }
   // Defense in depth: also mask any OTHER key-shaped token the upstream echoed.
   for (const hit of detectKeys(out)) out = out.split(hit.value).join("[stm:redacted]");
   return out;
@@ -256,7 +260,9 @@ export async function brokerRequest(
   const body = scrub(rawBody, key);
   const headers: Record<string, string> = {};
   resp.headers.forEach((v, k) => {
-    headers[k] = scrub(v, key);
+    // Scrub the header NAME too: a hostile/misconfigured upstream can return a
+    // header whose *name* is the key (API-key charsets are valid HTTP tokens).
+    headers[scrub(k, key)] = scrub(v, key);
   });
 
   return { ok: resp.ok, status: resp.status, headers, body };

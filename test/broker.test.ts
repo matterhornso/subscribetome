@@ -71,6 +71,21 @@ test("query-auth error scrub also strips the percent-ENCODED key", async () => {
   );
   expect(r.error).not.toContain(weirdKey);
   expect(r.error).not.toContain(encodeURIComponent(weirdKey));
+  // The URL actually carries the application/x-www-form-urlencoded form (space ->
+  // '+'), which differs from encodeURIComponent — it must be scrubbed too. A
+  // distinctive middle fragment must not survive in ANY encoding.
+  expect(r.error).not.toContain(new URLSearchParams([["api_key", weirdKey]]).toString());
+  expect(r.error).not.toContain("special");
+});
+
+test("a response header whose NAME is the key is scrubbed (not just values)", async () => {
+  const lowerKey = "sk-lowercase-key-that-survives-header-name-lowercasing";
+  const { fn } = recordingFetch({ headers: { [lowerKey]: "1" } });
+  const r = await brokerRequest(
+    { tool: "openai", label: "default", path: "/v1/x", method: "GET", headers: {} },
+    { resolveKey: () => lowerKey, fetch: fn },
+  );
+  expect(Object.keys(r.headers)).not.toContain(lowerKey);
 });
 
 test("the key is NEVER present in the returned body (upstream echoes it back)", async () => {

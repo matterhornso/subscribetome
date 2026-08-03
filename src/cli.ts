@@ -1787,27 +1787,34 @@ async function teamsCmd(args: string[]): Promise<void> {
           "(--admin may instead be supplied via the STM_TEAM_ADMIN_TOKEN env var)");
       }
       const created = await t.createTeam(server!, admin!, name);
+      // Generate the team key first so its fingerprint can be persisted in the
+      // config from the start. The team key never leaves this machine except
+      // sealed to a member's public key; the fingerprint is public (commits to
+      // the key, reveals nothing) so it's fine on disk.
+      const teamKey = t.generateTeamKey();
+      t.setTeamPassphrase(teamKey);
+      const fp = t.teamKeyFingerprint(teamKey);
       const cfg = {
         serverUrl: server!,
         teamToken: created.token,
         teamId: created.id,
         teamName: created.name,
+        teamKeyFp: fp,
       };
       t.writeTeamConfig(cfg);
-      // Generate the team key, keep it locally, and self-enroll by sealing it to
-      // this machine's own identity key. The team key never leaves this machine
-      // except sealed to a specific member's public key.
-      const teamKey = t.generateTeamKey();
-      t.setTeamPassphrase(teamKey);
+      // Self-enroll by sealing the team key to this machine's own identity key.
       const id = kp.ensureIdentity();
       await t.registerMember(cfg, id.memberId, id.sealPublicKeyB64, id.signPublicKeyB64);
       await t.uploadEnvelope(cfg, id.memberId, kp.seal(teamKey, id.sealPublicKeyB64));
       out(
         `created team "${created.name}" (id ${created.id}); config saved (0600).\n` +
           `you are enrolled (member ${id.memberId}); team key generated + stored in the keychain.\n\n` +
-          `  team token : ${created.token}\n\n` +
+          `  team token       : ${created.token}\n` +
+          `  team-key fingerprint : ${fp}\n\n` +
           `Give teammates the SERVER URL + TEAM TOKEN (safe to share — it decrypts nothing).\n` +
-          `They run:  stm teams join --server ${server} --token <token>\n` +
+          `Also give them the FINGERPRINT out-of-band; they verify it on accept so a\n` +
+          `compromised server can't slip them a key it knows.\n` +
+          `They run:  stm teams join --server ${server} --token <token> --fingerprint ${fp}\n` +
           `then:      stm teams enroll-request     (sends you their public key)\n` +
           `you run:   stm teams enroll <their-member-id>\n` +
           `they run:  stm teams accept  &&  stm teams pull\n\n` +
@@ -1818,12 +1825,17 @@ async function teamsCmd(args: string[]): Promise<void> {
     case "join": {
       const server = flag("server");
       const token = flag("token");
+      const fp = flag("fingerprint");
       if (!server || !token) {
-        die("usage: stm teams join --server <url> --token <team-token>");
+        die("usage: stm teams join --server <url> --token <team-token> [--fingerprint <fp>]");
       }
-      t.writeTeamConfig({ serverUrl: server!, teamToken: token! });
+      t.writeTeamConfig({ serverUrl: server!, teamToken: token!, teamKeyFp: fp });
       out(
-        `joined "${server}". Now request enrollment (sends your public key to the team):\n` +
+        `joined "${server}".` +
+          (fp ? ` Team-key fingerprint recorded — accept will verify it.\n` : `\n`) +
+          (fp ? `` : `NOTE: no --fingerprint given. Get it out-of-band from an existing member so\n` +
+            `\`accept\` can confirm the server didn't substitute the team key.\n`) +
+          `Now request enrollment (sends your public key to the team):\n` +
           `  stm teams enroll-request\n` +
           `An existing member enrolls you, then:  stm teams accept  &&  stm teams pull\n`,
       );
@@ -1876,7 +1888,13 @@ async function teamsCmd(args: string[]): Promise<void> {
         );
       }
       await t.uploadEnvelope(cfg!, memberId!, kp.seal(teamKey!, member!.pubkey));
-      out(`enrolled ${memberId}. They can now run \`stm teams accept\`.\n`);
+      const efp = t.teamKeyFingerprint(teamKey!);
+      out(
+        `enrolled ${memberId}.\n` +
+          `Tell them the team-key fingerprint out-of-band so accept can verify it:\n\n` +
+          `  ${efp}\n\n` +
+          `They run:  stm teams accept --fingerprint ${efp}   (then: stm teams pull)\n`,
+      );
       return;
     }
     case "accept": {
@@ -1887,8 +1905,38 @@ async function teamsCmd(args: string[]): Promise<void> {
       const envelope = await t.fetchEnvelope(cfg!, id.memberId);
       if (!envelope) die("not enrolled yet — ask an existing member to run `stm teams enroll " + id.memberId + "`.");
       const teamKey = kp.open(envelope);
+      // The server is UNTRUSTED. `open` only proves the envelope was sealed to us,
+      // NOT that it wraps the real team key — a malicious server can seal a key it
+      // chose to our public key. Verify the unwrapped key against the fingerprint
+      // we got out-of-band before trusting it; otherwise our next `push` would
+      // encrypt under a key the server knows.
+      const expectedFp = flag("fingerprint") ?? cfg!.teamKeyFp;
+      if (expectedFp) {
+        if (!t.teamKeyMatchesFingerprint(teamKey, expectedFp)) {
+          die(
+            `refusing to accept: the unwrapped team key does NOT match the fingerprint\n` +
+              `"${expectedFp}". The server may have substituted a key it controls.\n` +
+              `Re-confirm the fingerprint out-of-band with an existing member.`,
+          );
+        }
+      } else if (!rest.includes("--unverified")) {
+        die(
+          `refusing to accept without a fingerprint to verify the team key against.\n` +
+            `A malicious server can seal a key it knows to your public key, so an\n` +
+            `unverified accept can leak everything you push afterward.\n\n` +
+            `Get the fingerprint out-of-band from an existing member (they see it when\n` +
+            `they run \`stm teams enroll\`), then:  stm teams accept --fingerprint <fp>\n` +
+            `To proceed anyway (NOT recommended):  stm teams accept --unverified`,
+        );
+      }
       t.setTeamPassphrase(teamKey);
-      out("accepted — team key unwrapped and stored in the keychain. Now: stm teams pull\n");
+      // Record the now-verified fingerprint so later reads have it.
+      if (expectedFp) { cfg!.teamKeyFp = t.teamKeyFingerprint(teamKey); t.writeTeamConfig(cfg!); }
+      out(
+        (expectedFp ? "accepted — fingerprint verified; team key stored in the keychain.\n"
+          : "accepted (UNVERIFIED — fingerprint not checked); team key stored in the keychain.\n") +
+          "Now: stm teams pull\n",
+      );
       return;
     }
     case "passphrase": {

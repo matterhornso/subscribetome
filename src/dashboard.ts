@@ -840,7 +840,7 @@ function renderAudit(rows,total){
   tb.innerHTML=rows.map(function(r){
     var key=r.tool&&r.label
       ? "{{stm:"+esc(r.tool)+":"+esc(r.label)+"}}"
-      : (r.tool||r.label||"\\u2014");
+      : esc(r.tool||r.label||"\\u2014");
     var info="";
     if(r.policy_id){
       info='rule #'+r.policy_id+(r.reason?': '+esc(r.reason):'');

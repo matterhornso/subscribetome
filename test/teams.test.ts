@@ -15,6 +15,7 @@ import {
   createTeam, pushVault, pullVault, generateTeamKey,
   registerMember, listMembers, getMember, uploadEnvelope, fetchEnvelope,
   pushLocalAudit, fetchTeamAudit,
+  teamKeyFingerprint, teamKeyMatchesFingerprint,
   type TeamConfig,
 } from "../src/teams/client.ts";
 import { generateIdentity, seal, openWith } from "../src/teams/keypair.ts";
@@ -261,6 +262,35 @@ test("public-key enrollment: a new member gets the team key without a shared pas
   expect(() => openWith(envelope, outsider.sealPrivateKeyB64)).toThrow();
 
   server.close();
+});
+
+test("team-key fingerprint: deterministic, key-binding, format-tolerant", () => {
+  const key = generateTeamKey();
+  const fp = teamKeyFingerprint(key);
+  expect(teamKeyFingerprint(key)).toBe(fp);              // deterministic
+  expect(fp).toMatch(/^[0-9a-f]{4}(-[0-9a-f]{4}){7}$/);  // 128-bit, grouped
+  expect(teamKeyFingerprint(generateTeamKey())).not.toBe(fp); // binds the key
+  expect(teamKeyMatchesFingerprint(key, fp)).toBe(true);
+  // accepts a re-typed fingerprint regardless of spaces/dashes/case
+  expect(teamKeyMatchesFingerprint(key, fp.replace(/-/g, " ").toUpperCase())).toBe(true);
+  expect(teamKeyMatchesFingerprint(key, teamKeyFingerprint(generateTeamKey()))).toBe(false);
+});
+
+test("fingerprint catches a malicious-server key substitution that `open` alone cannot", () => {
+  // The exact HIGH: a compromised server seals a key IT chose to the victim's
+  // real public key. `open` succeeds (it WAS sealed to them), so decryption is no
+  // defense — only the out-of-band fingerprint reveals the swap.
+  const realKey = generateTeamKey();
+  const realFp = teamKeyFingerprint(realKey);            // shared out-of-band, not via the server
+  const victim = generateIdentity();
+
+  const evilKey = generateTeamKey();                     // server-known
+  const evilEnvelope = seal(evilKey, victim.sealPublicKeyB64);
+  const unwrapped = openWith(evilEnvelope, victim.sealPrivateKeyB64);
+
+  expect(unwrapped).toBe(evilKey);                       // open() is happily fooled
+  expect(unwrapped).not.toBe(realKey);
+  expect(teamKeyMatchesFingerprint(unwrapped, realFp)).toBe(false); // accept refuses
 });
 
 test("server rejects a pubkey registered under a mismatched member id (identity substitution)", async () => {
