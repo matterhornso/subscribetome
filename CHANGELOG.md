@@ -5,6 +5,78 @@ change behaviour. Format follows [Keep a Changelog](https://keepachangelog.com).
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-08-03
+
+The platform release. STM grows from a personal key manager into an API-security
+platform: a local credential **broker** that injects keys server-side so they
+never touch a command, and **STM Teams** — a self-hostable, zero-knowledge server
+for sharing credentials across a team. It also folds in the defense-in-depth
+hardening that was previously staged for 1.1.2 (so there is no separate 1.1.2
+release). The individual, local workflow is unchanged and fully backward
+compatible; everything new is additive and opt-in. Runtime-hook scope is
+unchanged (macOS + Claude Code; other platforms experimental).
+
+### Added
+
+- **Credential broker.** Instead of substituting a real key into a shell command
+  (visible to `ps`, leakable if the command echoes its own arguments), point the
+  request at the local daemon:
+  `curl http://127.0.0.1:<port>/proxy/openai/default/v1/models`. STM resolves the
+  credential from the keychain and attaches the real auth on the OUTBOUND call to
+  the provider — the key never enters the command's argv, environment, or output.
+  An SSRF guard keeps the key on the target's own origin, the response is scrubbed
+  of the key, and every brokered call is a first-class `broker` audit event.
+  `stm broker` prints the base URL and a loopback-only capability token (separate
+  from the dashboard token — it can't read the inventory or open the dashboard).
+  (#20)
+- **STM Teams — self-hostable, zero-knowledge credential sharing.** Run your own
+  sync server (`stm teams serve`); it stores only ciphertext it cannot decrypt.
+  Credentials are encrypted on a member's machine (AES-256-GCM) with a team key
+  the server never sees. Members enroll by **public key** — an X25519 sealed box,
+  so no shared passphrase is ever passed around: `init` → `join` →
+  `enroll-request` → `enroll <id>` → `accept`. A combined **team audit log**
+  (`stm teams audit`) shows every credential use across members, pushing only
+  placeholder-form commands, never a resolved secret. (#21)
+
+### Security
+
+- **Provider sync errors are now scrubbed before they touch disk or the
+  dashboard.** `syncOne` passes a provider's usage credential into its
+  `current()` call; on failure the raw error was persisted to the `spend` table
+  and rendered in the dashboard. If a provider SDK or the `fetch`/undici layer
+  ever folded the credential into an exception message or a failing request URL,
+  that secret would land on disk in cleartext. `redactSyncError` now removes both
+  the exact credential (literal replace, any shape) and any other key-shaped
+  token before the message is stored or returned. (#16)
+- **At-rest file permissions tightened.** The vault snapshot temp file and the
+  restored inventory DB are now created `0600` atomically instead of `0644`
+  then narrowed by a later `chmod` (closing the open-window); the encrypted-file
+  vault directory is created `0700`; and `ensureDataDir` re-tightens the data
+  dir to `0700` even when it already exists, protecting the SQLite WAL/SHM
+  sidecars that carry audit-log command text and card last-4. (#16)
+- **`.env` scanner confined to the requested tree.** The importer followed
+  symlinks (`statSync`), so a hostile repo's `.env.bak -> ~/.aws/credentials`
+  (or a `subdir -> /` symlink) could make the scan read outside the requested
+  directory. It now skips symlinks (`lstatSync`), caps the read size, confines
+  `importSelected` to real `.env` files (blocking a crafted selection from
+  reading an arbitrary path into the keychain), and reveals mask edges only on
+  longer secrets. Plus dashboard-escaping consistency (`esc()` covers `'`;
+  `monthly_cost` and the audit event-class escaped) and a hardened TOML escape
+  for the Codex config writer. (#19)
+
+### Fixed
+
+- **Brace-malformed placeholders now get a "did you mean" instead of failing
+  opaquely.** The near-miss detector matched a `{{...}}` blob via a regex whose
+  character class could not cross a brace, so a placeholder with a stray inner
+  brace (`{{stm:fal:de{fault}}`) or a missing closing brace (`{{stm:fal:default}`)
+  was matched by neither the exact nor the near-miss path. This was fail-safe —
+  no key was ever substituted for it — but the command ran with a broken literal
+  and no suggestion. Replaced with an opener scan: every `{{stm` that is not a
+  valid placeholder is surfaced as a near-miss, so PreToolUse blocks with a
+  suggestion rather than passing a silent literal through. Strictly widens
+  near-miss coverage; never resolves a malformed form. (#17)
+
 ## [1.1.1] - 2026-07-27
 
 Security patch. Closes a fail-open in the command-policy engine and quiets the
