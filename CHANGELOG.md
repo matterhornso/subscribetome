@@ -5,7 +5,7 @@ change behaviour. Format follows [Keep a Changelog](https://keepachangelog.com).
 
 ## [Unreleased]
 
-## [1.2.0] - 2026-07-31
+## [1.2.0] - 2026-08-03
 
 The platform release. STM grows from a personal key manager into an API-security
 platform: a local credential **broker** that injects keys server-side so they
