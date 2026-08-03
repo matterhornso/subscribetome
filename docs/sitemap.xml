@@ -8,4 +8,39 @@
     <priority>1.0</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://subscribetome.pro/"/>
   </url>
+  <url>
+    <loc>https://subscribetome.pro/docs.html</loc>
+    <lastmod>2026-08-02T00:00:00Z</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://subscribetome.pro/docs.html"/>
+  </url>
+  <url>
+    <loc>https://subscribetome.pro/security.html</loc>
+    <lastmod>2026-08-02T00:00:00Z</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://subscribetome.pro/security.html"/>
+  </url>
+  <url>
+    <loc>https://subscribetome.pro/broker.html</loc>
+    <lastmod>2026-08-02T00:00:00Z</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://subscribetome.pro/broker.html"/>
+  </url>
+  <url>
+    <loc>https://subscribetome.pro/teams.html</loc>
+    <lastmod>2026-08-02T00:00:00Z</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://subscribetome.pro/teams.html"/>
+  </url>
+  <url>
+    <loc>https://subscribetome.pro/cli.html</loc>
+    <lastmod>2026-08-02T00:00:00Z</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://subscribetome.pro/cli.html"/>
+  </url>
 </urlset>

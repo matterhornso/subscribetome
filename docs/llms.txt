@@ -92,6 +92,77 @@ HTTPS request. v0.7.0 launch set: OpenAI, Anthropic, Stripe,
 GitHub, Resend. Adding a provider is one entry in
 `src/agents/codex-mcp-providers.ts`.
 
+The **credential broker** removes the argv limitation for HTTP APIs.
+Instead of substituting a key INTO a shell command, the agent routes
+the request through STM's local daemon, which injects the real auth on
+the OUTBOUND call to the provider. `stm broker [tool] [label]` prints a
+base URL and a loopback-only capability token; a request is made as
+`curl http://127.0.0.1:<port>/proxy/<tool>/<label>/<upstream-path> -H
+"x-stm-token: <broker-token>"`. STM resolves `<tool>:<label>` from the
+keychain and attaches the real auth to the request it makes to the
+provider, so the key never enters the command's argv, environment, or
+output. The broker token authorizes `/proxy` only (it cannot read the
+inventory or open the dashboard) and resets on daemon restart. Security
+invariants: an SSRF guard keeps the key on the target's own origin;
+redirects are not auto-followed (`redirect: manual`); the response body
+and headers are scrubbed of the key; client-supplied auth for the
+injected scheme is dropped; the response size is capped (16 MiB); every
+brokered call is a `broker` audit event (method, path, status — never
+the key). Built-in targets: openai, anthropic, groq, openrouter,
+replicate, fal, stripe (a data-driven, extensible registry).
+
+**STM Teams** is self-hostable, zero-knowledge credential sharing plus
+usage attribution across a team. A team hosts the server with
+`stm teams serve`, configured by env: `STM_TEAM_DB`, `STM_TEAM_HOST`
+(bind; `0.0.0.0` only behind a TLS reverse proxy), `STM_TEAM_PORT`, and
+`STM_TEAM_ADMIN_TOKEN` (required to create teams — creation is disabled
+when unset). The server stores only ciphertext it cannot decrypt and
+keeps team bearer tokens as SHA-256 hashes. An admin creates a team with
+`stm teams init --server <url> --admin <admin-token> --name <name>`
+(generates the team key, self-enrolls, prints the team token).
+Credentials are encrypted on a member's machine with the team key the
+server never sees (vault: AES-256-GCM keyed by PBKDF2-SHA512);
+`stm teams push` uploads the ciphertext and `stm teams pull` downloads
+and decrypts it locally. Public-key enrollment needs no shared
+passphrase: each member has an X25519 sealing key and an Ed25519 signing
+key, and `memberId = sha256(sealPub||signPub)[:32]` (128-bit,
+self-certifying). Flow: `stm teams join` → `stm teams enroll-request`
+(publishes only public keys) → an existing member `stm teams enroll
+<member-id>` (seals the team key to that member via an X25519 sealed box:
+ephemeral ECDH → HKDF-SHA256 → AES-256-GCM; the CLI verifies the key set
+matches the id before sealing) → `stm teams accept` → `stm teams pull`.
+Usage attribution: `stm teams audit-push` sends local key-use events
+(placeholder commands only, never a resolved key) SIGNED with the
+member's Ed25519 key; the server verifies the signature and attributes
+each event to the verified member id, so a client cannot forge who it is.
+`stm teams audit` shows the combined log. Honest limits: the audit actor
+is cryptographically verified, but usage metadata (tool, label, counts)
+is plaintext to the self-hosted server (credentials are not), and
+per-member dollar cost is an estimate (providers bill per key, not per
+caller). The broker and the Teams server run anywhere Bun does; the
+runtime hooks are macOS + Claude Code (other platforms experimental).
+
+## Documentation
+
+- [Documentation home](https://subscribetome.pro/docs.html): Overview of
+  the model and an index of the technical reference pages.
+- [Security architecture & threat model](https://subscribetome.pro/security.html):
+  Keychain-only keys, placeholder + PreToolUse substitution, the four
+  hooks, the command-policy engine, trust boundaries, the honest argv
+  limitation, and the Teams cryptography — with an equal-weight list of
+  what is out of scope.
+- [Credential broker](https://subscribetome.pro/broker.html): The
+  `stm broker` command, the `/proxy/<tool>/<label>/<path>` model with a
+  curl example, the loopback capability token, the SSRF / redirect /
+  scrub / size-cap invariants, and the built-in targets.
+- [Self-hosting STM Teams](https://subscribetome.pro/teams.html): Run the
+  zero-knowledge server (env vars), create a team, push/pull the
+  encrypted vault, enroll members by public key, read the signed audit
+  log, and the honest limits.
+- [CLI reference](https://subscribetome.pro/cli.html): Every `stm`
+  command grouped by task, each with a one-line purpose and usage
+  pattern.
+
 ## Project
 
 - [Website](https://subscribetome.pro): The landing page with the install

@@ -1,0 +1,507 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#0a0b0d">
+
+<title>CLI reference — subscribetome (stm)</title>
+<meta name="description" content="The subscribetome (stm) command reference, grouped by task: keys and inventory, access policy, audit, projects, vault, the credential broker, STM Teams, Codex, and daemon lifecycle. Each command has a one-line purpose and usage pattern.">
+<meta name="author" content="Matterhorn Labs">
+<meta name="application-name" content="subscribetome">
+<meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
+
+<link rel="canonical" href="https://subscribetome.pro/cli.html">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="sitemap" type="application/xml" href="/sitemap.xml">
+
+<meta property="og:site_name" content="subscribetome">
+<meta property="og:title" content="CLI reference — subscribetome (stm)">
+<meta property="og:description" content="Every stm command grouped by task, each with a one-line purpose and usage pattern.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://subscribetome.pro/cli.html">
+<meta property="og:image" content="https://subscribetome.pro/og.png">
+<meta property="og:locale" content="en_US">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet"><style>
+  :root {
+    --bg:#0a0b0d; --bg-2:#101114; --bg-3:#15171b;
+    --ink:#ece9e2; --ink-dim:#9a998f; --ink-faint:#62625b;
+    --line:rgba(236,233,226,.10); --line-2:rgba(236,233,226,.18);
+    --acc:#3ddc97; --acc-bright:#74f0bc; --acc-deep:#0d2a1f;
+    --warn:#e8895e; --warn-deep:rgba(232,137,94,.10); --warn-line:rgba(232,137,94,.30);
+    --grain-opacity:.035; --grid-opacity:.5;
+    --serif:"Instrument Serif",Georgia,"Times New Roman",serif;
+    --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    --ease:cubic-bezier(.2,.7,.2,1);
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg:#faf9f5; --bg-2:#f3f1ea; --bg-3:#eae7dd;
+      --ink:#1a1b18; --ink-dim:#55554c; --ink-faint:#86867b;
+      --line:rgba(20,22,16,.12); --line-2:rgba(20,22,16,.20);
+      --acc:#0e9463; --acc-bright:#0b7d53; --acc-deep:#e0f2e8;
+      --warn:#b8592a; --warn-deep:rgba(184,89,42,.09); --warn-line:rgba(184,89,42,.28);
+      --grain-opacity:.02; --grid-opacity:.35;
+    }
+  }
+  *,*::before,*::after { box-sizing:border-box; }
+  html { scroll-behavior:smooth; }
+  body {
+    margin:0; background:var(--bg); color:var(--ink);
+    font-family:var(--mono); font-weight:400; font-size:15px; line-height:1.65;
+    -webkit-font-smoothing:antialiased; overflow-x:hidden;
+  }
+  ::selection { background:var(--acc); color:#04130c; }
+  a { color:inherit; }
+  h1,h2,h3,h4,p,ul,ol { margin:0; }
+
+  .grain {
+    position:fixed; inset:0; z-index:1; pointer-events:none; opacity:var(--grain-opacity);
+    mix-blend-mode:overlay;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+  .gridlines {
+    position:fixed; inset:0; z-index:0; pointer-events:none;
+    background-image:
+      linear-gradient(var(--line) 1px,transparent 1px),
+      linear-gradient(90deg,var(--line) 1px,transparent 1px);
+    background-size:64px 64px;
+    -webkit-mask-image:radial-gradient(ellipse 75% 50% at 50% 0%,#000,transparent 78%);
+            mask-image:radial-gradient(ellipse 75% 50% at 50% 0%,#000,transparent 78%);
+    opacity:var(--grid-opacity);
+  }
+  .wrap { position:relative; z-index:2; }
+  .bound { max-width:980px; margin:0 auto; padding:0 32px; }
+
+  .skip {
+    position:absolute; left:-9999px; top:0; z-index:100;
+    background:var(--acc); color:#04130c; padding:10px 16px; border-radius:8px;
+    font-size:13px; text-decoration:none;
+  }
+  .skip:focus { left:12px; top:12px; }
+
+  header {
+    position:sticky; top:0; z-index:50;
+    border-bottom:1px solid var(--line);
+    background:color-mix(in srgb, var(--bg) 78%, transparent); backdrop-filter:blur(10px);
+  }
+  .nav { display:flex; align-items:center; justify-content:space-between; gap:18px; min-height:62px; flex-wrap:wrap; }
+  .brand { display:flex; align-items:center; gap:11px; font-size:14px; text-decoration:none; flex:none; }
+  .mark {
+    height:25px; padding:0 9px; border-radius:7px; flex:none; display:grid; place-items:center;
+    background:linear-gradient(150deg,var(--acc-bright),var(--acc) 55%,#1f8a63);
+    color:#04130c; font-weight:600; font-size:12.5px; letter-spacing:.6px;
+  }
+  .brand b { font-weight:600; }
+  .brand b i { color:var(--acc); font-style:normal; }
+  .docnav { display:flex; align-items:center; gap:4px; flex-wrap:wrap; }
+  .docnav a {
+    text-decoration:none; font-size:13px; color:var(--ink-dim);
+    padding:7px 11px; border-radius:7px; border:1px solid transparent;
+    transition:color .15s var(--ease),background .15s var(--ease),border-color .15s var(--ease);
+  }
+  .docnav a:hover { color:var(--ink); background:var(--bg-2); }
+  .docnav a[aria-current="page"] { color:var(--acc); border-color:var(--line-2); background:var(--acc-deep); }
+  .docnav a.gh { color:var(--ink); border:1px solid var(--line-2); }
+  .docnav a.gh:hover { border-color:var(--acc); background:var(--acc-deep); }
+
+  main { display:block; }
+  .doc { padding:46px 0 30px; }
+  .kicker {
+    display:inline-flex; align-items:center; gap:8px;
+    font-size:11px; letter-spacing:1.8px; text-transform:uppercase; color:var(--acc);
+    border:1px solid var(--line-2); border-radius:999px; padding:6px 13px; margin-bottom:22px;
+  }
+  .kicker .d { width:6px; height:6px; border-radius:50%; background:currentColor; }
+  .doc h1 {
+    font-family:var(--serif); font-weight:400;
+    font-size:clamp(38px,5.4vw,60px); line-height:1.04; letter-spacing:-.4px; max-width:20ch;
+  }
+  .doc h1 em { font-style:italic; color:var(--acc); }
+  .lead { margin:22px 0 0; max-width:66ch; color:var(--ink-dim); font-size:16px; line-height:1.7; }
+  .lead b { color:var(--ink); font-weight:500; }
+
+  .prose { padding:8px 0 40px; }
+  .prose h2 {
+    font-family:var(--serif); font-weight:400; font-size:clamp(26px,3.4vw,34px);
+    line-height:1.12; letter-spacing:-.3px; margin:52px 0 6px; scroll-margin-top:84px;
+  }
+  .prose h2 em { font-style:italic; color:var(--acc); }
+  .prose h3 {
+    font-size:15px; font-weight:600; letter-spacing:.2px; color:var(--ink);
+    margin:34px 0 4px; scroll-margin-top:84px;
+  }
+  .prose h4 { font-size:13.5px; font-weight:600; color:var(--ink); margin:22px 0 2px; }
+  .prose p { margin:14px 0 0; color:var(--ink-dim); font-size:14.5px; line-height:1.78; max-width:72ch; }
+  .prose p b, .prose li b { color:var(--ink); font-weight:600; }
+  .prose ul, .prose ol { margin:14px 0 0; padding-left:22px; color:var(--ink-dim); font-size:14.5px; line-height:1.78; max-width:72ch; }
+  .prose li { margin:7px 0; }
+  .prose li::marker { color:var(--ink-faint); }
+  .prose a:not(.card-link) { color:var(--acc); text-decoration:underline; text-underline-offset:3px; text-decoration-thickness:1px; text-decoration-color:var(--line-2); }
+  .prose a:not(.card-link):hover { text-decoration-color:var(--acc); }
+  .anchor { color:var(--ink-faint); text-decoration:none; margin-left:10px; font-size:.7em; opacity:0; transition:opacity .15s var(--ease); }
+  .prose h2:hover .anchor, .prose h3:hover .anchor { opacity:1; }
+
+  code {
+    font-family:var(--mono); font-size:.9em;
+    background:var(--bg-2); border:1px solid var(--line);
+    border-radius:5px; padding:1px 6px; color:var(--ink); word-break:break-word;
+  }
+  .prose p code, .prose li code { color:var(--acc); }
+  .ph { color:var(--acc); }
+
+  .copybox { border:1px solid var(--line); border-radius:11px; background:var(--bg); overflow:hidden; margin:18px 0 0; }
+  .copybar {
+    display:flex; align-items:center; justify-content:space-between;
+    padding:8px 8px 8px 13px; border-bottom:1px solid var(--line); background:var(--bg-3);
+  }
+  .copybar span { font-size:10.5px; letter-spacing:1.2px; text-transform:uppercase; color:var(--ink-faint); }
+  .copy-btn {
+    font-family:var(--mono); font-size:12px; cursor:pointer;
+    border:1px solid var(--line-2); border-radius:7px; padding:5px 11px;
+    background:transparent; color:var(--ink);
+    transition:border-color .15s var(--ease),background .15s var(--ease),color .15s var(--ease);
+  }
+  .copy-btn:hover { border-color:var(--acc); background:var(--acc-deep); }
+  .copy-btn.ok { border-color:var(--acc); background:var(--acc); color:#04130c; }
+  .copybox pre {
+    margin:0; padding:14px; font-family:var(--mono); font-size:12.5px; line-height:1.75;
+    white-space:pre; overflow-x:auto; color:var(--ink);
+  }
+  pre.plain {
+    margin:18px 0 0; padding:14px; border:1px solid var(--line); border-radius:11px;
+    background:var(--bg); font-family:var(--mono); font-size:12.5px; line-height:1.75;
+    white-space:pre; overflow-x:auto; color:var(--ink-dim);
+  }
+  .copybox pre .c, pre.plain .c { color:var(--ink-faint); }
+  .copybox pre .p, pre.plain .p { color:var(--acc); }
+  .copybox pre .r, pre.plain .r { color:var(--warn); }
+
+  .toc { border:1px solid var(--line); border-radius:13px; background:var(--bg-2); padding:20px 24px; margin:30px 0 0; }
+  .toc .t { font-size:11px; letter-spacing:1.6px; text-transform:uppercase; color:var(--ink-faint); }
+  .toc ul { list-style:none; margin:12px 0 0; padding:0; columns:2; column-gap:28px; }
+  @media (max-width:640px){ .toc ul { columns:1; } }
+  .toc li { margin:0 0 8px; break-inside:avoid; }
+  .toc a { color:var(--ink-dim); text-decoration:none; font-size:13.5px; }
+  .toc a:hover { color:var(--acc); }
+  .toc a::before { content:"→ "; color:var(--ink-faint); }
+
+  .callout { border:1px solid var(--line-2); border-left-width:3px; border-radius:10px; background:var(--bg-2); padding:16px 18px; margin:20px 0 0; }
+  .callout .h { font-size:11px; letter-spacing:1.4px; text-transform:uppercase; color:var(--ink-dim); margin-bottom:6px; }
+  .callout p { margin:0; font-size:13.5px; color:var(--ink-dim); line-height:1.72; max-width:none; }
+  .callout p + p { margin-top:10px; }
+  .callout.note { border-left-color:var(--acc); }
+  .callout.note .h { color:var(--acc); }
+  .callout.warn { border-left-color:var(--warn); background:var(--warn-deep); }
+  .callout.warn .h { color:var(--warn); }
+
+  .cards { display:grid; grid-template-columns:repeat(2,1fr); gap:18px; margin:16px 0 0; }
+  @media (max-width:720px){ .cards { grid-template-columns:1fr; } }
+  .card-link {
+    border:1px solid var(--line-2); border-radius:14px; background:var(--bg-2);
+    padding:24px; text-decoration:none; color:inherit; display:flex; flex-direction:column; gap:10px;
+    transition:border-color .2s var(--ease), transform .2s var(--ease);
+  }
+  .card-link:hover { border-color:var(--acc); transform:translateY(-2px); }
+  .card-link .ct { font-size:11px; letter-spacing:1.6px; text-transform:uppercase; color:var(--acc); }
+  .card-link h3 { font-family:var(--serif); font-weight:400; font-size:23px; line-height:1.15; letter-spacing:-.2px; }
+  .card-link p { margin:0; color:var(--ink-dim); font-size:13.5px; line-height:1.66; }
+  .card-link .go { font-size:12.5px; color:var(--acc); margin-top:auto; }
+
+  .tbl-wrap { overflow-x:auto; margin:18px 0 0; border:1px solid var(--line); border-radius:11px; }
+  table { border-collapse:collapse; width:100%; font-size:13px; min-width:560px; }
+  th, td { text-align:left; padding:11px 14px; border-bottom:1px solid var(--line); vertical-align:top; line-height:1.6; }
+  th { font-size:11px; letter-spacing:.8px; text-transform:uppercase; color:var(--ink-faint); font-weight:600; background:var(--bg-3); }
+  tr:last-child td { border-bottom:none; }
+  td.cmd { white-space:nowrap; }
+  td.cmd code { color:var(--acc); background:transparent; border:none; padding:0; white-space:nowrap; }
+  td b { color:var(--ink); font-weight:600; }
+
+  .badges { display:flex; flex-wrap:wrap; gap:8px; margin:20px 0 0; }
+  .badge {
+    display:inline-flex; align-items:center; gap:7px; font-size:11.5px; color:var(--ink-dim);
+    border:1px solid var(--line-2); border-radius:999px; padding:6px 12px;
+  }
+  .badge .d { width:6px; height:6px; border-radius:50%; background:var(--acc); flex:none; }
+  .badge.exp .d { background:var(--warn); }
+
+  details { border:1px solid var(--line); border-radius:11px; background:var(--bg-2); padding:0 18px; margin:18px 0 0; }
+  details summary { cursor:pointer; padding:15px 0; font-size:14px; font-weight:600; color:var(--ink); list-style:none; }
+  details summary::-webkit-details-marker { display:none; }
+  details summary::before { content:"+ "; color:var(--acc); }
+  details[open] summary::before { content:"– "; }
+  details > *:not(summary) { margin-bottom:16px; }
+
+  :focus-visible { outline:2px solid var(--acc); outline-offset:2px; border-radius:4px; }
+
+  footer { border-top:1px solid var(--line); padding:38px 0 48px; margin-top:60px; }
+  .foot { display:flex; flex-wrap:wrap; gap:22px; justify-content:space-between; align-items:center; }
+  .foot-l { font-size:12.5px; color:var(--ink-faint); max-width:52ch; line-height:1.7; }
+  .foot-l b { color:var(--ink-dim); font-weight:500; }
+  .foot-links { display:flex; flex-wrap:wrap; gap:20px; font-size:13px; }
+  .foot-links a { color:var(--ink-dim); text-decoration:none; transition:color .2s var(--ease); }
+  .foot-links a:hover { color:var(--acc); }
+
+  @media (prefers-reduced-motion:reduce){ html { scroll-behavior:auto; } .card-link:hover { transform:none; } }
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<div class="grain"></div>
+<div class="gridlines"></div>
+<div class="wrap">
+
+<header>
+  <div class="bound nav">
+    <a class="brand" href="/"><span class="mark">stm</span><b>subscribe<i>tome</i></b></a>
+    <nav class="docnav" aria-label="Documentation">
+      <a href="/docs.html">Overview</a>
+      <a href="/security.html">Security</a>
+      <a href="/broker.html">Broker</a>
+      <a href="/teams.html">Teams</a>
+      <a href="/cli.html" aria-current="page">CLI</a>
+      <a class="gh" href="https://github.com/matterhornso/subscribetome">GitHub →</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+<div class="bound doc">
+  <span class="kicker"><span class="d"></span>CLI reference</span>
+  <h1>The <em>stm</em> command reference.</h1>
+  <p class="lead">
+    Every <code>stm</code> command, grouped by task. Each has a one-line purpose and a usage pattern. A key <b>value</b>
+    is never passed on the command line — <code>stm add</code> reads it from stdin — so a secret never lands in your
+    shell history.
+  </p>
+</div>
+
+<div class="bound prose">
+
+  <div class="badges">
+    <span class="badge"><span class="d"></span>Runtime hooks: macOS + Claude Code</span>
+    <span class="badge exp"><span class="d"></span>Linux / Windows / Codex: experimental</span>
+    <span class="badge"><span class="d"></span>Broker &amp; Teams server: anywhere Bun runs</span>
+  </div>
+
+  <nav class="toc" aria-label="On this page">
+    <div class="t">Command groups</div>
+    <ul>
+      <li><a href="#keys">Keys &amp; inventory</a></li>
+      <li><a href="#policy">Access policy</a></li>
+      <li><a href="#audit">Audit</a></li>
+      <li><a href="#projects">Projects</a></li>
+      <li><a href="#vault">Vault</a></li>
+      <li><a href="#broker">Broker</a></li>
+      <li><a href="#teams">Teams</a></li>
+      <li><a href="#codex">Codex (experimental)</a></li>
+      <li><a href="#lifecycle">Daemon &amp; lifecycle</a></li>
+    </ul>
+  </nav>
+
+  <h2 id="keys">Keys &amp; <em>inventory</em><a class="anchor" href="#keys" aria-label="Link to this section">#</a></h2>
+  <div class="tbl-wrap">
+  <table>
+    <thead><tr><th>Command</th><th>Purpose</th></tr></thead>
+    <tbody>
+      <tr><td class="cmd"><code>stm add --tool &lt;t&gt; [--label &lt;l&gt;] [--plan] [--cost] [--renews]</code></td><td>Add a key. The <b>value is read from stdin</b>, never the CLI. Optional flags record the plan, monthly cost, and renewal date alongside it.</td></tr>
+      <tr><td class="cmd"><code>stm list</code></td><td>List keys, subscriptions, funding cards (last-4), monthly spend, and renewals due.</td></tr>
+      <tr><td class="cmd"><code>stm subscription &lt;tool&gt; [...]</code></td><td>Set the plan, cost, renewal date, and funding card (nickname + last-4 only) behind a tool.</td></tr>
+      <tr><td class="cmd"><code>stm resolve {{stm:t:l}}</code></td><td>Resolve a placeholder to its value <b>locally</b> (local-only; for debugging on your own machine).</td></tr>
+      <tr><td class="cmd"><code>stm revoke &lt;tool&gt; &lt;label&gt;</code></td><td>Mark a key revoked in the inventory (a metadata flag — it does not call a provider API).</td></tr>
+      <tr><td class="cmd"><code>stm rotate &lt;tool&gt; &lt;label&gt;</code></td><td>Open the provider dashboard and swap a new value in place; the placeholder address stays the same.</td></tr>
+      <tr><td class="cmd"><code>stm import [dir...]</code></td><td>Scan <code>.env</code> files for keys to import into the inventory.</td></tr>
+      <tr><td class="cmd"><code>stm sync [provider]</code></td><td>Fetch real spend from configured providers. The only feature that makes outbound calls — only when you run it, only to providers you configured.</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p>The key value goes straight to the OS keychain. Read the <a href="/security.html#substitution">placeholder grammar</a> for how <code class="ph">{{stm:tool:label}}</code> is matched.</p>
+
+  <h2 id="policy">Access <em>policy</em><a class="anchor" href="#policy" aria-label="Link to this section">#</a></h2>
+  <div class="tbl-wrap">
+  <table>
+    <thead><tr><th>Command</th><th>Purpose</th></tr></thead>
+    <tbody>
+      <tr><td class="cmd"><code>stm policy list</code></td><td>Show the active allow / deny / warn rules.</td></tr>
+      <tr><td class="cmd"><code>stm policy add</code></td><td>Add a rule over the tuple (key, command, agent, project).</td></tr>
+      <tr><td class="cmd"><code>stm policy remove</code></td><td>Remove a rule.</td></tr>
+      <tr><td class="cmd"><code>stm policy test</code></td><td>Test a command against the active rules before you save one.</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p>Rules are glob-matched and evaluated at <b>PreToolUse, before</b> keychain resolution — a denied command never causes a key to be read. See the <a href="/security.html#policy">policy engine</a>.</p>
+
+  <h2 id="audit"><em>Audit</em><a class="anchor" href="#audit" aria-label="Link to this section">#</a></h2>
+  <div class="tbl-wrap">
+  <table>
+    <thead><tr><th>Command</th><th>Purpose</th></tr></thead>
+    <tbody>
+      <tr><td class="cmd"><code>stm audit [--tail N] [--event &lt;class&gt;] [--tool] [--since]</code></td><td>Print the forensic log of PreToolUse and broker decisions. Filter by count, event class, tool, or time.</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p>Event classes: <code>substitute</code> · <code>policy.deny</code> · <code>policy.warn</code> · <code>unresolved</code> · <code>malformed</code> · <code>broker</code>. The audit log <b>never holds a real key value</b>.</p>
+
+  <h2 id="projects"><em>Projects</em><a class="anchor" href="#projects" aria-label="Link to this section">#</a></h2>
+  <div class="tbl-wrap">
+  <table>
+    <thead><tr><th>Command</th><th>Purpose</th></tr></thead>
+    <tbody>
+      <tr><td class="cmd"><code>stm project add</code></td><td>Register a project (path + name).</td></tr>
+      <tr><td class="cmd"><code>stm project list</code></td><td>List registered projects.</td></tr>
+      <tr><td class="cmd"><code>stm project show</code></td><td>Show a project's in-scope keys and settings.</td></tr>
+      <tr><td class="cmd"><code>stm project scope</code></td><td>Add a key to a project's scope.</td></tr>
+      <tr><td class="cmd"><code>stm project unscope</code></td><td>Remove a key from a project's scope.</td></tr>
+      <tr><td class="cmd"><code>stm project enforce</code></td><td>Make PreToolUse refuse out-of-scope substitutions for that project.</td></tr>
+      <tr><td class="cmd"><code>stm project rename</code></td><td>Rename a project.</td></tr>
+      <tr><td class="cmd"><code>stm project remove</code></td><td>Unregister a project.</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p>Scope matching is a longest-prefix match on <code>cwd</code>. SessionStart only advertises the in-scope keys when a session opens inside that path.</p>
+
+  <h2 id="vault"><em>Vault</em><a class="anchor" href="#vault" aria-label="Link to this section">#</a></h2>
+  <div class="tbl-wrap">
+  <table>
+    <thead><tr><th>Command</th><th>Purpose</th></tr></thead>
+    <tbody>
+      <tr><td class="cmd"><code>stm vault info</code></td><td>Show the local vault's path, mode, magic, and KDF id.</td></tr>
+      <tr><td class="cmd"><code>stm vault unlock</code></td><td>Cache the encrypted-file passphrase for this process.</td></tr>
+      <tr><td class="cmd"><code>stm vault rotate-passphrase</code></td><td>Rotate the Tier-3 vault passphrase (decrypt under the old, re-encrypt under the new).</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p>These manage the opt-in encrypted-file keystore (Tier 3: PBKDF2-SHA512 + AES-256-GCM) used on headless Linux hosts. For non-interactive use set <code>STM_FILE_PASSPHRASE</code>. See <a href="https://github.com/matterhornso/subscribetome/blob/main/DOCS.md">DOCS.md</a> for the full keystore tier chain and snapshot export/import.</p>
+
+  <h2 id="broker"><em>Broker</em><a class="anchor" href="#broker" aria-label="Link to this section">#</a></h2>
+  <div class="tbl-wrap">
+  <table>
+    <thead><tr><th>Command</th><th>Purpose</th></tr></thead>
+    <tbody>
+      <tr><td class="cmd"><code>stm broker [tool] [label]</code></td><td>Ensure the daemon is up and print the broker base URL, the loopback capability token, and a ready curl example. Route HTTP API calls so the real key is injected on the outbound request — never in the command.</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p>Full details, the <code>/proxy</code> model, and the security invariants are on the <a href="/broker.html">broker page</a>.</p>
+
+  <h2 id="teams"><em>Teams</em><a class="anchor" href="#teams" aria-label="Link to this section">#</a></h2>
+  <div class="tbl-wrap">
+  <table>
+    <thead><tr><th>Command</th><th>Purpose</th></tr></thead>
+    <tbody>
+      <tr><td class="cmd"><code>stm teams serve</code></td><td>Run the self-hostable, zero-knowledge Teams server (configured via <code>STM_TEAM_*</code> env vars).</td></tr>
+      <tr><td class="cmd"><code>stm teams init</code></td><td>Create a team (admin). Generates the team key, self-enrolls, prints the team token. <code>--server &lt;url&gt; --admin &lt;token&gt; [--name &lt;name&gt;]</code>.</td></tr>
+      <tr><td class="cmd"><code>stm teams join</code></td><td>Join a team from a member machine. <code>--server &lt;url&gt; --token &lt;team-token&gt;</code>.</td></tr>
+      <tr><td class="cmd"><code>stm teams enroll-request</code></td><td>Publish your public keys and request enrollment (nothing secret is sent).</td></tr>
+      <tr><td class="cmd"><code>stm teams members</code></td><td>List team members and their enrollment status.</td></tr>
+      <tr><td class="cmd"><code>stm teams enroll &lt;member-id&gt;</code></td><td>(Existing member) seal the team key to a joiner's key. The CLI verifies the key set matches the id before sealing.</td></tr>
+      <tr><td class="cmd"><code>stm teams accept</code></td><td>Unwrap the sealed team key locally into your keychain.</td></tr>
+      <tr><td class="cmd"><code>stm teams passphrase</code></td><td>Set the team passphrase directly (the shared-passphrase alternative to public-key enrollment).</td></tr>
+      <tr><td class="cmd"><code>stm teams push</code></td><td>Encrypt local active keys with the team key and upload the vault blob.</td></tr>
+      <tr><td class="cmd"><code>stm teams pull</code></td><td>Download the vault, decrypt locally, and add new keys.</td></tr>
+      <tr><td class="cmd"><code>stm teams audit-push</code></td><td>Send local key-use events (placeholder commands only), signed with your Ed25519 key.</td></tr>
+      <tr><td class="cmd"><code>stm teams audit</code></td><td>Show the combined team log, attributed to the verified member.</td></tr>
+      <tr><td class="cmd"><code>stm teams status</code></td><td>Show this machine's team configuration.</td></tr>
+      <tr><td class="cmd"><code>stm teams leave</code></td><td>Remove this machine's team config.</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p>The full self-hosting walkthrough is on the <a href="/teams.html">Teams page</a>.</p>
+
+  <h2 id="codex">Codex <em>(experimental)</em><a class="anchor" href="#codex" aria-label="Link to this section">#</a></h2>
+  <div class="tbl-wrap">
+  <table>
+    <thead><tr><th>Command</th><th>Purpose</th></tr></thead>
+    <tbody>
+      <tr><td class="cmd"><code>stm codex [...]</code></td><td>Launch or wire up the OpenAI Codex CLI with stm keys (session-env mode, guardrail hooks, or MCP-wrapped mode). Experimental. Run <code>stm codex --help</code> for subcommands.</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p>Codex is smoke-tested against external contracts only; Claude Code is the strongest supported surface. See the Codex section of <a href="https://github.com/matterhornso/subscribetome/blob/main/DOCS.md">DOCS.md</a>.</p>
+
+  <h2 id="lifecycle">Daemon &amp; <em>lifecycle</em><a class="anchor" href="#lifecycle" aria-label="Link to this section">#</a></h2>
+  <div class="tbl-wrap">
+  <table>
+    <thead><tr><th>Command</th><th>Purpose</th></tr></thead>
+    <tbody>
+      <tr><td class="cmd"><code>stm dashboard</code></td><td>Open the localhost dashboard (add keys out-of-band, bound to <code>127.0.0.1</code>).</td></tr>
+      <tr><td class="cmd"><code>stm status</code></td><td>Daemon + inventory summary, active agents, and the active keystore backend.</td></tr>
+      <tr><td class="cmd"><code>stm doctor</code></td><td>Diagnose which keystore tier is active and how to reach the next-stronger tier.</td></tr>
+      <tr><td class="cmd"><code>stm stop</code></td><td>Stop the dashboard daemon.</td></tr>
+      <tr><td class="cmd"><code>stm uninstall</code></td><td>Remove all stm data (and any Codex blocks) from this host.</td></tr>
+      <tr><td class="cmd"><code>stm --version</code></td><td>Print the installed stm version.</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <div class="callout note">
+    <div class="h">Slash commands</div>
+    <p>Inside Claude Code the common actions also have slash commands: <code>/stm:dashboard</code>,
+    <code>/stm:inventory</code>, <code>/stm:import</code>, and <code>/stm:revoke</code>.</p>
+  </div>
+
+  <div class="cards">
+    <a class="card-link" href="/security.html">
+      <span class="ct">Security</span>
+      <h3>How these commands stay safe</h3>
+      <p>The keychain-only model, the four hooks, the policy engine, and the honest limits behind the CLI.</p>
+      <span class="go">Read the security model →</span>
+    </a>
+    <a class="card-link" href="https://github.com/matterhornso/subscribetome/blob/main/DOCS.md">
+      <span class="ct">Reference</span>
+      <h3>DOCS.md — the long form</h3>
+      <p>Keystore tiers, platform details, subscriptions and funding cards, and the full Codex surface.</p>
+      <span class="go">Open DOCS.md →</span>
+    </a>
+  </div>
+
+</div>
+</main>
+
+<footer>
+  <div class="bound foot">
+    <div class="foot-l">
+      <b>subscribetome</b> — open-source AI API key manager. Keys live in your OS keychain; the agent uses them
+      without ever seeing one. MIT licensed.
+    </div>
+    <div class="foot-links">
+      <a href="/">Home</a>
+      <a href="/docs.html">Docs</a>
+      <a href="https://github.com/matterhornso/subscribetome">GitHub</a>
+      <a href="https://github.com/matterhornso/subscribetome/blob/main/CHANGELOG.md">Changelog</a>
+      <a href="https://github.com/matterhornso/subscribetome/blob/main/LICENSE">License</a>
+    </div>
+  </div>
+</footer>
+
+</div>
+
+<script>
+  document.querySelectorAll(".copy-btn").forEach(function(btn){
+    btn.addEventListener("click",function(){
+      var box=btn.closest(".copybox"); if(!box) return;
+      var pre=box.querySelector("pre"); if(!pre) return;
+      var text=(pre.innerText||pre.textContent).trim();
+      function done(){
+        btn.classList.add("ok"); btn.textContent="Copied ✓";
+        setTimeout(function(){ btn.classList.remove("ok"); btn.textContent="Copy"; },1700);
+      }
+      function fallback(){
+        var t=document.createElement("textarea"); t.value=text;
+        t.style.position="fixed"; t.style.opacity="0";
+        document.body.appendChild(t); t.select();
+        try{ document.execCommand("copy"); done(); }catch(e){}
+        document.body.removeChild(t);
+      }
+      if(navigator.clipboard&&navigator.clipboard.writeText){
+        navigator.clipboard.writeText(text).then(done,fallback);
+      }else{ fallback(); }
+    });
+  });
+</script>
+</body>
+</html>

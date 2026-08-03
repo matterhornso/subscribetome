@@ -10,8 +10,10 @@ import { chmodSync, mkdirSync } from "node:fs";
 export const DATA_DIR = join(homedir(), ".subscribetome");
 /** SQLite inventory path. Override with $STM_DB (used by the test suite). */
 export const DB_PATH = process.env.STM_DB || join(DATA_DIR, "db.sqlite");
-/** Daemon descriptor: { port, token, pid } — written 0600 while the daemon runs. */
-export const DAEMON_FILE = join(DATA_DIR, "daemon.json");
+/** Daemon descriptor: { port, token, brokerToken, pid } — written 0600 while
+ *  the daemon runs. Override with $STM_DAEMON_FILE (used by the test suite so
+ *  an integration test never clobbers the user's real daemon). */
+export const DAEMON_FILE = process.env.STM_DAEMON_FILE || join(DATA_DIR, "daemon.json");
 
 /**
  * Keychain service name. Override with $STM_KEYCHAIN_SERVICE (used by tests).

@@ -1,0 +1,511 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#0a0b0d">
+
+<title>Self-hosting STM Teams — subscribetome (stm)</title>
+<meta name="description" content="Self-host STM Teams: run the zero-knowledge server (environment variables), create a team, push and pull an encrypted credential vault, enroll members by public key with no shared passphrase, and read a cryptographically-signed team audit log.">
+<meta name="author" content="Matterhorn Labs">
+<meta name="application-name" content="subscribetome">
+<meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
+
+<link rel="canonical" href="https://subscribetome.pro/teams.html">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="sitemap" type="application/xml" href="/sitemap.xml">
+
+<meta property="og:site_name" content="subscribetome">
+<meta property="og:title" content="Self-hosting STM Teams — subscribetome">
+<meta property="og:description" content="Run the zero-knowledge server, create a team, sync an encrypted vault, and enroll members by public key.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://subscribetome.pro/teams.html">
+<meta property="og:image" content="https://subscribetome.pro/og.png">
+<meta property="og:locale" content="en_US">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet"><style>
+  :root {
+    --bg:#0a0b0d; --bg-2:#101114; --bg-3:#15171b;
+    --ink:#ece9e2; --ink-dim:#9a998f; --ink-faint:#62625b;
+    --line:rgba(236,233,226,.10); --line-2:rgba(236,233,226,.18);
+    --acc:#3ddc97; --acc-bright:#74f0bc; --acc-deep:#0d2a1f;
+    --warn:#e8895e; --warn-deep:rgba(232,137,94,.10); --warn-line:rgba(232,137,94,.30);
+    --grain-opacity:.035; --grid-opacity:.5;
+    --serif:"Instrument Serif",Georgia,"Times New Roman",serif;
+    --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    --ease:cubic-bezier(.2,.7,.2,1);
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg:#faf9f5; --bg-2:#f3f1ea; --bg-3:#eae7dd;
+      --ink:#1a1b18; --ink-dim:#55554c; --ink-faint:#86867b;
+      --line:rgba(20,22,16,.12); --line-2:rgba(20,22,16,.20);
+      --acc:#0e9463; --acc-bright:#0b7d53; --acc-deep:#e0f2e8;
+      --warn:#b8592a; --warn-deep:rgba(184,89,42,.09); --warn-line:rgba(184,89,42,.28);
+      --grain-opacity:.02; --grid-opacity:.35;
+    }
+  }
+  *,*::before,*::after { box-sizing:border-box; }
+  html { scroll-behavior:smooth; }
+  body {
+    margin:0; background:var(--bg); color:var(--ink);
+    font-family:var(--mono); font-weight:400; font-size:15px; line-height:1.65;
+    -webkit-font-smoothing:antialiased; overflow-x:hidden;
+  }
+  ::selection { background:var(--acc); color:#04130c; }
+  a { color:inherit; }
+  h1,h2,h3,h4,p,ul,ol { margin:0; }
+
+  .grain {
+    position:fixed; inset:0; z-index:1; pointer-events:none; opacity:var(--grain-opacity);
+    mix-blend-mode:overlay;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+  .gridlines {
+    position:fixed; inset:0; z-index:0; pointer-events:none;
+    background-image:
+      linear-gradient(var(--line) 1px,transparent 1px),
+      linear-gradient(90deg,var(--line) 1px,transparent 1px);
+    background-size:64px 64px;
+    -webkit-mask-image:radial-gradient(ellipse 75% 50% at 50% 0%,#000,transparent 78%);
+            mask-image:radial-gradient(ellipse 75% 50% at 50% 0%,#000,transparent 78%);
+    opacity:var(--grid-opacity);
+  }
+  .wrap { position:relative; z-index:2; }
+  .bound { max-width:980px; margin:0 auto; padding:0 32px; }
+
+  .skip {
+    position:absolute; left:-9999px; top:0; z-index:100;
+    background:var(--acc); color:#04130c; padding:10px 16px; border-radius:8px;
+    font-size:13px; text-decoration:none;
+  }
+  .skip:focus { left:12px; top:12px; }
+
+  header {
+    position:sticky; top:0; z-index:50;
+    border-bottom:1px solid var(--line);
+    background:color-mix(in srgb, var(--bg) 78%, transparent); backdrop-filter:blur(10px);
+  }
+  .nav { display:flex; align-items:center; justify-content:space-between; gap:18px; min-height:62px; flex-wrap:wrap; }
+  .brand { display:flex; align-items:center; gap:11px; font-size:14px; text-decoration:none; flex:none; }
+  .mark {
+    height:25px; padding:0 9px; border-radius:7px; flex:none; display:grid; place-items:center;
+    background:linear-gradient(150deg,var(--acc-bright),var(--acc) 55%,#1f8a63);
+    color:#04130c; font-weight:600; font-size:12.5px; letter-spacing:.6px;
+  }
+  .brand b { font-weight:600; }
+  .brand b i { color:var(--acc); font-style:normal; }
+  .docnav { display:flex; align-items:center; gap:4px; flex-wrap:wrap; }
+  .docnav a {
+    text-decoration:none; font-size:13px; color:var(--ink-dim);
+    padding:7px 11px; border-radius:7px; border:1px solid transparent;
+    transition:color .15s var(--ease),background .15s var(--ease),border-color .15s var(--ease);
+  }
+  .docnav a:hover { color:var(--ink); background:var(--bg-2); }
+  .docnav a[aria-current="page"] { color:var(--acc); border-color:var(--line-2); background:var(--acc-deep); }
+  .docnav a.gh { color:var(--ink); border:1px solid var(--line-2); }
+  .docnav a.gh:hover { border-color:var(--acc); background:var(--acc-deep); }
+
+  main { display:block; }
+  .doc { padding:46px 0 30px; }
+  .kicker {
+    display:inline-flex; align-items:center; gap:8px;
+    font-size:11px; letter-spacing:1.8px; text-transform:uppercase; color:var(--acc);
+    border:1px solid var(--line-2); border-radius:999px; padding:6px 13px; margin-bottom:22px;
+  }
+  .kicker .d { width:6px; height:6px; border-radius:50%; background:currentColor; }
+  .doc h1 {
+    font-family:var(--serif); font-weight:400;
+    font-size:clamp(38px,5.4vw,60px); line-height:1.04; letter-spacing:-.4px; max-width:20ch;
+  }
+  .doc h1 em { font-style:italic; color:var(--acc); }
+  .lead { margin:22px 0 0; max-width:66ch; color:var(--ink-dim); font-size:16px; line-height:1.7; }
+  .lead b { color:var(--ink); font-weight:500; }
+
+  .prose { padding:8px 0 40px; }
+  .prose h2 {
+    font-family:var(--serif); font-weight:400; font-size:clamp(26px,3.4vw,34px);
+    line-height:1.12; letter-spacing:-.3px; margin:52px 0 6px; scroll-margin-top:84px;
+  }
+  .prose h2 em { font-style:italic; color:var(--acc); }
+  .prose h3 {
+    font-size:15px; font-weight:600; letter-spacing:.2px; color:var(--ink);
+    margin:34px 0 4px; scroll-margin-top:84px;
+  }
+  .prose h4 { font-size:13.5px; font-weight:600; color:var(--ink); margin:22px 0 2px; }
+  .prose p { margin:14px 0 0; color:var(--ink-dim); font-size:14.5px; line-height:1.78; max-width:72ch; }
+  .prose p b, .prose li b { color:var(--ink); font-weight:600; }
+  .prose ul, .prose ol { margin:14px 0 0; padding-left:22px; color:var(--ink-dim); font-size:14.5px; line-height:1.78; max-width:72ch; }
+  .prose li { margin:7px 0; }
+  .prose li::marker { color:var(--ink-faint); }
+  .prose a:not(.card-link) { color:var(--acc); text-decoration:underline; text-underline-offset:3px; text-decoration-thickness:1px; text-decoration-color:var(--line-2); }
+  .prose a:not(.card-link):hover { text-decoration-color:var(--acc); }
+  .anchor { color:var(--ink-faint); text-decoration:none; margin-left:10px; font-size:.7em; opacity:0; transition:opacity .15s var(--ease); }
+  .prose h2:hover .anchor, .prose h3:hover .anchor { opacity:1; }
+
+  code {
+    font-family:var(--mono); font-size:.9em;
+    background:var(--bg-2); border:1px solid var(--line);
+    border-radius:5px; padding:1px 6px; color:var(--ink); word-break:break-word;
+  }
+  .prose p code, .prose li code { color:var(--acc); }
+  .ph { color:var(--acc); }
+
+  .copybox { border:1px solid var(--line); border-radius:11px; background:var(--bg); overflow:hidden; margin:18px 0 0; }
+  .copybar {
+    display:flex; align-items:center; justify-content:space-between;
+    padding:8px 8px 8px 13px; border-bottom:1px solid var(--line); background:var(--bg-3);
+  }
+  .copybar span { font-size:10.5px; letter-spacing:1.2px; text-transform:uppercase; color:var(--ink-faint); }
+  .copy-btn {
+    font-family:var(--mono); font-size:12px; cursor:pointer;
+    border:1px solid var(--line-2); border-radius:7px; padding:5px 11px;
+    background:transparent; color:var(--ink);
+    transition:border-color .15s var(--ease),background .15s var(--ease),color .15s var(--ease);
+  }
+  .copy-btn:hover { border-color:var(--acc); background:var(--acc-deep); }
+  .copy-btn.ok { border-color:var(--acc); background:var(--acc); color:#04130c; }
+  .copybox pre {
+    margin:0; padding:14px; font-family:var(--mono); font-size:12.5px; line-height:1.75;
+    white-space:pre; overflow-x:auto; color:var(--ink);
+  }
+  pre.plain {
+    margin:18px 0 0; padding:14px; border:1px solid var(--line); border-radius:11px;
+    background:var(--bg); font-family:var(--mono); font-size:12.5px; line-height:1.75;
+    white-space:pre; overflow-x:auto; color:var(--ink-dim);
+  }
+  .copybox pre .c, pre.plain .c { color:var(--ink-faint); }
+  .copybox pre .p, pre.plain .p { color:var(--acc); }
+  .copybox pre .r, pre.plain .r { color:var(--warn); }
+
+  .toc { border:1px solid var(--line); border-radius:13px; background:var(--bg-2); padding:20px 24px; margin:30px 0 0; }
+  .toc .t { font-size:11px; letter-spacing:1.6px; text-transform:uppercase; color:var(--ink-faint); }
+  .toc ul { list-style:none; margin:12px 0 0; padding:0; columns:2; column-gap:28px; }
+  @media (max-width:640px){ .toc ul { columns:1; } }
+  .toc li { margin:0 0 8px; break-inside:avoid; }
+  .toc a { color:var(--ink-dim); text-decoration:none; font-size:13.5px; }
+  .toc a:hover { color:var(--acc); }
+  .toc a::before { content:"→ "; color:var(--ink-faint); }
+
+  .callout { border:1px solid var(--line-2); border-left-width:3px; border-radius:10px; background:var(--bg-2); padding:16px 18px; margin:20px 0 0; }
+  .callout .h { font-size:11px; letter-spacing:1.4px; text-transform:uppercase; color:var(--ink-dim); margin-bottom:6px; }
+  .callout p { margin:0; font-size:13.5px; color:var(--ink-dim); line-height:1.72; max-width:none; }
+  .callout p + p { margin-top:10px; }
+  .callout.note { border-left-color:var(--acc); }
+  .callout.note .h { color:var(--acc); }
+  .callout.warn { border-left-color:var(--warn); background:var(--warn-deep); }
+  .callout.warn .h { color:var(--warn); }
+
+  .cards { display:grid; grid-template-columns:repeat(2,1fr); gap:18px; margin:16px 0 0; }
+  @media (max-width:720px){ .cards { grid-template-columns:1fr; } }
+  .card-link {
+    border:1px solid var(--line-2); border-radius:14px; background:var(--bg-2);
+    padding:24px; text-decoration:none; color:inherit; display:flex; flex-direction:column; gap:10px;
+    transition:border-color .2s var(--ease), transform .2s var(--ease);
+  }
+  .card-link:hover { border-color:var(--acc); transform:translateY(-2px); }
+  .card-link .ct { font-size:11px; letter-spacing:1.6px; text-transform:uppercase; color:var(--acc); }
+  .card-link h3 { font-family:var(--serif); font-weight:400; font-size:23px; line-height:1.15; letter-spacing:-.2px; }
+  .card-link p { margin:0; color:var(--ink-dim); font-size:13.5px; line-height:1.66; }
+  .card-link .go { font-size:12.5px; color:var(--acc); margin-top:auto; }
+
+  .tbl-wrap { overflow-x:auto; margin:18px 0 0; border:1px solid var(--line); border-radius:11px; }
+  table { border-collapse:collapse; width:100%; font-size:13px; min-width:520px; }
+  th, td { text-align:left; padding:11px 14px; border-bottom:1px solid var(--line); vertical-align:top; line-height:1.6; }
+  th { font-size:11px; letter-spacing:.8px; text-transform:uppercase; color:var(--ink-faint); font-weight:600; background:var(--bg-3); }
+  tr:last-child td { border-bottom:none; }
+  td code { white-space:nowrap; }
+  td b { color:var(--ink); font-weight:600; }
+
+  .badges { display:flex; flex-wrap:wrap; gap:8px; margin:20px 0 0; }
+  .badge {
+    display:inline-flex; align-items:center; gap:7px; font-size:11.5px; color:var(--ink-dim);
+    border:1px solid var(--line-2); border-radius:999px; padding:6px 12px;
+  }
+  .badge .d { width:6px; height:6px; border-radius:50%; background:var(--acc); flex:none; }
+  .badge.exp .d { background:var(--warn); }
+
+  .steps-num { list-style:none; counter-reset:s; padding:0; margin:18px 0 0; max-width:none; }
+  .steps-num > li { counter-increment:s; position:relative; padding:0 0 4px 42px; margin:0 0 18px; }
+  .steps-num > li::before {
+    content:counter(s); position:absolute; left:0; top:0;
+    width:28px; height:28px; border-radius:8px; display:grid; place-items:center;
+    background:var(--acc-deep); color:var(--acc); border:1px solid rgba(61,220,151,.34);
+    font-size:13px; font-weight:600;
+  }
+  .steps-num > li b { color:var(--ink); }
+
+  details { border:1px solid var(--line); border-radius:11px; background:var(--bg-2); padding:0 18px; margin:18px 0 0; }
+  details summary { cursor:pointer; padding:15px 0; font-size:14px; font-weight:600; color:var(--ink); list-style:none; }
+  details summary::-webkit-details-marker { display:none; }
+  details summary::before { content:"+ "; color:var(--acc); }
+  details[open] summary::before { content:"– "; }
+  details > *:not(summary) { margin-bottom:16px; }
+
+  :focus-visible { outline:2px solid var(--acc); outline-offset:2px; border-radius:4px; }
+
+  footer { border-top:1px solid var(--line); padding:38px 0 48px; margin-top:60px; }
+  .foot { display:flex; flex-wrap:wrap; gap:22px; justify-content:space-between; align-items:center; }
+  .foot-l { font-size:12.5px; color:var(--ink-faint); max-width:52ch; line-height:1.7; }
+  .foot-l b { color:var(--ink-dim); font-weight:500; }
+  .foot-links { display:flex; flex-wrap:wrap; gap:20px; font-size:13px; }
+  .foot-links a { color:var(--ink-dim); text-decoration:none; transition:color .2s var(--ease); }
+  .foot-links a:hover { color:var(--acc); }
+
+  @media (prefers-reduced-motion:reduce){ html { scroll-behavior:auto; } .card-link:hover { transform:none; } }
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<div class="grain"></div>
+<div class="gridlines"></div>
+<div class="wrap">
+
+<header>
+  <div class="bound nav">
+    <a class="brand" href="/"><span class="mark">stm</span><b>subscribe<i>tome</i></b></a>
+    <nav class="docnav" aria-label="Documentation">
+      <a href="/docs.html">Overview</a>
+      <a href="/security.html">Security</a>
+      <a href="/broker.html">Broker</a>
+      <a href="/teams.html" aria-current="page">Teams</a>
+      <a href="/cli.html">CLI</a>
+      <a class="gh" href="https://github.com/matterhornso/subscribetome">GitHub →</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+<div class="bound doc">
+  <span class="kicker"><span class="d"></span>STM Teams · self-hosted</span>
+  <h1>Share credentials <em>without sharing them.</em></h1>
+  <p class="lead">
+    STM Teams is self-hostable, zero-knowledge credential sharing and usage attribution across a team. Credentials are
+    encrypted on a member's machine with a team key <b>the server never sees</b>; the server stores only ciphertext.
+    Members are enrolled by <b>public key</b> — no shared passphrase is ever transmitted — and every usage report is
+    signed, so the audit log attributes activity to a cryptographically-verified member.
+  </p>
+</div>
+
+<div class="bound prose">
+
+  <nav class="toc" aria-label="On this page">
+    <div class="t">On this page</div>
+    <ul>
+      <li><a href="#how">How it fits together</a></li>
+      <li><a href="#prereqs">Prerequisites</a></li>
+      <li><a href="#serve">Run the server</a></li>
+      <li><a href="#env">Environment variables</a></li>
+      <li><a href="#create">Create a team</a></li>
+      <li><a href="#vault">Push &amp; pull the vault</a></li>
+      <li><a href="#enroll">Public-key enrollment</a></li>
+      <li><a href="#audit">Signed audit attribution</a></li>
+      <li><a href="#limits">Honest limits</a></li>
+    </ul>
+  </nav>
+
+  <h2 id="how">How it <em>fits together</em><a class="anchor" href="#how" aria-label="Link to this section">#</a></h2>
+  <p>
+    One machine (or a small VM) runs the server. Each member runs the <code>stm</code> CLI locally. The server is a
+    dumb, encrypted store: it holds an opaque vault blob, per-member sealed envelopes, and a signed audit log. All
+    encryption and decryption happens on member machines. A fully-compromised server (stolen database, malicious host)
+    yields <b>no key</b> — only ciphertext it cannot decrypt and token hashes it cannot reverse.
+  </p>
+  <div class="callout note">
+    <div class="h">Scope</div>
+    <p>The Teams server is a plain Bun program and runs anywhere Bun does — a laptop for a trial, or a small server
+    behind a TLS reverse proxy for real use. It is independent of the macOS-only runtime hooks.</p>
+  </div>
+
+  <h2 id="prereqs">Prerequisites<a class="anchor" href="#prereqs" aria-label="Link to this section">#</a></h2>
+  <ul>
+    <li><a href="https://bun.sh">Bun</a> on the host that runs the server, and <code>stm</code> installed on each member's machine.</li>
+    <li>A network path from members to the server. For anything beyond a single-machine trial, put the server <b>behind a TLS reverse proxy</b> (Caddy / nginx) — the server itself is transport-agnostic about TLS.</li>
+    <li>An <b>admin token</b> you generate and keep secret. Team creation is disabled unless it is set, so a misconfigured public server cannot have teams created on it.</li>
+  </ul>
+
+  <h2 id="serve">Run the <em>server</em><a class="anchor" href="#serve" aria-label="Link to this section">#</a></h2>
+  <p>Generate an admin token, then start the server with it in the environment:</p>
+  <div class="copybox">
+    <div class="copybar"><span>shell · on the host</span><button class="copy-btn">Copy</button></div>
+<pre><span class="c"># a high-entropy admin token — keep it secret</span>
+export STM_TEAM_ADMIN_TOKEN="$(openssl rand -hex 32)"
+export STM_TEAM_DB=/var/lib/stm-teams/stm-teams.sqlite
+export STM_TEAM_HOST=0.0.0.0
+export STM_TEAM_PORT=8787
+
+stm teams serve</pre>
+  </div>
+  <p>On start it prints the bind address, the database path, and whether team creation is enabled:</p>
+  <pre class="plain">stm teams server on http://0.0.0.0:8787  (db: /var/lib/stm-teams/stm-teams.sqlite)
+team creation ENABLED (admin token set)</pre>
+  <div class="callout warn">
+    <div class="h">Binding 0.0.0.0</div>
+    <p>Bind <code>0.0.0.0</code> only behind a TLS reverse proxy. The server speaks plain HTTP; terminate TLS at the
+    proxy and forward to the server on loopback. For a single-machine trial, leave <code>STM_TEAM_HOST</code> at its
+    default of <code>127.0.0.1</code>.</p>
+  </div>
+
+  <h2 id="env">Environment <em>variables</em><a class="anchor" href="#env" aria-label="Link to this section">#</a></h2>
+  <div class="tbl-wrap">
+  <table>
+    <thead><tr><th>Variable</th><th>Default</th><th>Purpose</th></tr></thead>
+    <tbody>
+      <tr><td><code>STM_TEAM_ADMIN_TOKEN</code></td><td><i>unset</i></td><td><b>Required to create teams.</b> When unset, team creation is disabled (the server still serves existing teams). Checked with a constant-time comparison.</td></tr>
+      <tr><td><code>STM_TEAM_DB</code></td><td><code>stm-teams.sqlite</code></td><td>Path to the SQLite database file. Holds ciphertext blobs, member public keys + sealed envelopes, token <em>hashes</em>, and the signed audit log.</td></tr>
+      <tr><td><code>STM_TEAM_HOST</code></td><td><code>127.0.0.1</code></td><td>Bind address. Use <code>0.0.0.0</code> only behind a TLS reverse proxy.</td></tr>
+      <tr><td><code>STM_TEAM_PORT</code></td><td><code>8787</code></td><td>Listening port.</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p>
+    Team bearer tokens are stored only as <b>SHA-256 hashes</b>, so a leaked database does not reveal live tokens. The
+    server caps the encrypted vault at 10&nbsp;MiB and bounds every request body, so an oversized upload cannot fill the
+    disk or exhaust memory.
+  </p>
+
+  <h2 id="create">Create a <em>team</em><a class="anchor" href="#create" aria-label="Link to this section">#</a></h2>
+  <p>An admin runs <code>stm teams init</code> against the running server. This generates the team key, self-enrolls the admin as the first member, and prints the <b>team token</b> teammates use to join:</p>
+  <div class="copybox">
+    <div class="copybar"><span>shell · admin machine</span><button class="copy-btn">Copy</button></div>
+<pre>stm teams init \
+  --server https://teams.example.com \
+  --admin "$STM_TEAM_ADMIN_TOKEN" \
+  --name "Acme AI"</pre>
+  </div>
+  <p>
+    The admin token authorizes team <em>creation</em> only; it may also come from <code>STM_TEAM_ADMIN_TOKEN</code> in the
+    environment. Keep the returned team token safe — it authorizes vault and audit access for the whole team. Then push
+    the admin's keys so members have something to pull:
+  </p>
+  <div class="copybox">
+    <div class="copybar"><span>shell · admin machine</span><button class="copy-btn">Copy</button></div>
+<pre>stm teams push</pre>
+  </div>
+
+  <h2 id="vault">Push &amp; pull the <em>vault</em><a class="anchor" href="#vault" aria-label="Link to this section">#</a></h2>
+  <p>
+    The shared vault is <b>AES-256-GCM</b>, keyed by <b>PBKDF2-SHA512</b> from the team key. Encryption and decryption
+    happen entirely on member machines; the plaintext never leaves the process and the server receives only the
+    ciphertext blob.
+  </p>
+  <ul>
+    <li><b><code>stm teams push</code></b> — encrypt your local active keys with the team key and upload the blob. Unresolved-locally keys are skipped rather than uploaded as a hole.</li>
+    <li><b><code>stm teams pull</code></b> — download the blob, decrypt it locally, and add any keys you don't already have. Keys already present are left untouched.</li>
+  </ul>
+  <div class="callout note">
+    <div class="h">The team key lives in your keychain</div>
+    <p>On each member's machine the team key is stored in the OS keychain, never on disk in plaintext. The local
+    <code>teams.json</code> (mode 0600) holds only the server URL and the team bearer token.</p>
+  </div>
+
+  <h2 id="enroll">Public-key <em>enrollment</em><a class="anchor" href="#enroll" aria-label="Link to this section">#</a></h2>
+  <p>
+    New members join without anyone transmitting a shared passphrase. Each member has an <b>X25519 sealing keypair</b> and
+    an <b>Ed25519 signing keypair</b>; their member id is <code>sha256(sealPub‖signPub)</code> truncated to 128 bits, so
+    the id is self-certifying — it fingerprints both public keys at once. Enrollment seals the team key to the joiner's
+    sealing key using an X25519 sealed box (ephemeral ECDH → HKDF-SHA256 → AES-256-GCM); only the joiner's private key
+    can open it.
+  </p>
+  <ol class="steps-num">
+    <li><b>Teammate joins</b> with the team token:<br><code>stm teams join --server https://teams.example.com --token &lt;team-token&gt;</code></li>
+    <li><b>Teammate requests enrollment</b>, publishing only their public keys:<br><code>stm teams enroll-request</code> — prints their member id for an existing member to enroll.</li>
+    <li><b>An existing member enrolls them</b>, sealing the team key to their keys:<br><code>stm teams enroll &lt;member-id&gt;</code> — the CLI verifies the fetched key set matches the member id <em>before</em> sealing, so the team key is never sealed to a substituted key.</li>
+    <li><b>Teammate accepts</b>, unwrapping the sealed team key locally into their keychain:<br><code>stm teams accept</code></li>
+    <li><b>Teammate pulls</b> the vault:<br><code>stm teams pull</code></li>
+  </ol>
+  <p>Use <code>stm teams members</code> to list members and their enrollment status. (A shared-passphrase path exists via <code>stm teams passphrase</code> for setups that prefer it, but public-key enrollment is the recommended flow — nothing secret crosses the wire.)</p>
+  <div class="callout note">
+    <div class="h">Why the id binds both keys</div>
+    <p>Because the member id fingerprints the sealing <em>and</em> signing key together, a server or man-in-the-middle
+    cannot swap one key for its own without changing the id — which the enrolling member checks before sealing. The same
+    binding is what makes audit attribution unforgeable.</p>
+  </div>
+
+  <h2 id="audit">Signed audit <em>attribution</em><a class="anchor" href="#audit" aria-label="Link to this section">#</a></h2>
+  <p>
+    STM Teams gives a team a shared, tamper-evident record of key <em>usage</em> — without ever collecting a key value.
+  </p>
+  <ul>
+    <li><b><code>stm teams audit-push</code></b> — send this machine's local key-use events (placeholder commands only, <b>never a resolved key</b>), each <b>signed with your Ed25519 key</b>. The server verifies the signature and attributes the event to the <b>verified member id</b> — a client cannot forge who it is.</li>
+    <li><b><code>stm teams audit</code></b> — show the combined team log, with each entry attributed to the cryptographically-verified actor.</li>
+    <li><b><code>stm teams status</code></b> / <b><code>stm teams leave</code></b> — show local team status, or remove this machine's team config.</li>
+  </ul>
+
+  <h2 id="limits">Honest <em>limits</em><a class="anchor" href="#limits" aria-label="Link to this section">#</a></h2>
+  <div class="callout warn">
+    <div class="h">What the self-hosted server does and does not learn</div>
+    <p>Zero-knowledge applies to <em>credentials</em>, not to all metadata. Read these before you deploy.</p>
+  </div>
+  <ul>
+    <li><b>Credentials are never visible to the server</b> — it stores ciphertext it cannot decrypt, and token hashes it cannot reverse.</li>
+    <li><b>Usage metadata is plaintext to the server you host.</b> The audit log's tool, label, and counts are readable by the server operator. Credentials are not, but the fact that "someone used <code>openai:default</code> N times" is.</li>
+    <li><b>The audit actor is cryptographically verified</b> — it is the Ed25519-signed member id, not a self-asserted name. This is a genuine integrity guarantee.</li>
+    <li><b>Per-member dollar cost is an estimate.</b> Providers bill per key, not per caller, so attributing spend to an individual member is an approximation, not an invoice.</li>
+    <li><b>Run it behind TLS.</b> The server speaks plain HTTP and is transport-agnostic; you are responsible for terminating TLS at a reverse proxy for any non-local deployment.</li>
+  </ul>
+
+  <div class="cards">
+    <a class="card-link" href="/security.html#teams">
+      <span class="ct">Security</span>
+      <h3>The cryptography, in context</h3>
+      <p>How the sealed box, the Ed25519 signatures, and the zero-knowledge server fit the overall threat model.</p>
+      <span class="go">Read the security model →</span>
+    </a>
+    <a class="card-link" href="/cli.html#teams">
+      <span class="ct">CLI</span>
+      <h3>Every teams subcommand</h3>
+      <p>The full <code>stm teams</code> surface — serve, init, join, enroll, accept, push, pull, audit, and more.</p>
+      <span class="go">Read the CLI reference →</span>
+    </a>
+  </div>
+
+</div>
+</main>
+
+<footer>
+  <div class="bound foot">
+    <div class="foot-l">
+      <b>subscribetome</b> — open-source AI API key manager. Keys live in your OS keychain; the agent uses them
+      without ever seeing one. MIT licensed.
+    </div>
+    <div class="foot-links">
+      <a href="/">Home</a>
+      <a href="/docs.html">Docs</a>
+      <a href="https://github.com/matterhornso/subscribetome">GitHub</a>
+      <a href="https://github.com/matterhornso/subscribetome/blob/main/CHANGELOG.md">Changelog</a>
+      <a href="https://github.com/matterhornso/subscribetome/blob/main/LICENSE">License</a>
+    </div>
+  </div>
+</footer>
+
+</div>
+
+<script>
+  document.querySelectorAll(".copy-btn").forEach(function(btn){
+    btn.addEventListener("click",function(){
+      var box=btn.closest(".copybox"); if(!box) return;
+      var pre=box.querySelector("pre"); if(!pre) return;
+      var text=(pre.innerText||pre.textContent).trim();
+      function done(){
+        btn.classList.add("ok"); btn.textContent="Copied ✓";
+        setTimeout(function(){ btn.classList.remove("ok"); btn.textContent="Copy"; },1700);
+      }
+      function fallback(){
+        var t=document.createElement("textarea"); t.value=text;
+        t.style.position="fixed"; t.style.opacity="0";
+        document.body.appendChild(t); t.select();
+        try{ document.execCommand("copy"); done(); }catch(e){}
+        document.body.removeChild(t);
+      }
+      if(navigator.clipboard&&navigator.clipboard.writeText){
+        navigator.clipboard.writeText(text).then(done,fallback);
+      }else{ fallback(); }
+    });
+  });
+</script>
+</body>
+</html>
