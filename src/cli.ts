@@ -789,6 +789,7 @@ const AUDIT_EVENTS = new Set([
   "policy.warn",
   "unresolved",
   "malformed",
+  "broker",
 ]);
 
 function auditHelp(): void {
@@ -798,7 +799,7 @@ function auditHelp(): void {
       `  stm audit --tail N                        last N (max 10000)\n` +
       `  stm audit --event <class>                 filter by event class:\n` +
       `                                            substitute | policy.deny | policy.warn\n` +
-      `                                            | unresolved | malformed\n` +
+      `                                            | unresolved | malformed | broker\n` +
       `  stm audit --tool <name>                   filter by tool, e.g. openai\n` +
       `  stm audit --since <duration>              5m, 1h, 7d\n` +
       `  stm audit prune --before <duration>       drop rows older than 7d, etc.\n` +
@@ -1775,6 +1776,8 @@ function helpCmd(): void {
       `  stm project <add|list|show|scope|unscope|enforce|rename|remove>  per-project key scope\n` +
       `  stm import [dir...]             scan .env files for importable keys\n` +
       `  stm dashboard                   open the localhost web dashboard\n` +
+      `  stm broker [tool] [label]       route a command's API calls through the broker\n` +
+      `                                  (key injected server-side, never seen by the agent)\n` +
       `  stm stop                        stop the dashboard daemon\n` +
       `  stm status                      daemon + inventory summary\n` +
       `  stm uninstall [--yes|--dry-run]  remove all stm data + Codex blocks from this host\n` +
@@ -1841,6 +1844,10 @@ async function main(): Promise<void> {
     case "daemon": {
       const d = await import("./daemon.ts");
       return d.runDaemon();
+    }
+    case "broker": {
+      const d = await import("./daemon.ts");
+      return d.printBroker(rest);
     }
     case "stop": {
       const d = await import("./daemon.ts");
