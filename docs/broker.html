@@ -1,0 +1,467 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#0a0b0d">
+
+<title>The credential broker — subscribetome (stm)</title>
+<meta name="description" content="The subscribetome credential broker: route HTTP API calls through a local daemon that injects the real key on the outbound request, so the key never enters the command's argv, environment, or output. The /proxy model, the loopback capability token, and the SSRF / redirect / scrub / size-cap invariants.">
+<meta name="author" content="Matterhorn Labs">
+<meta name="application-name" content="subscribetome">
+<meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
+
+<link rel="canonical" href="https://subscribetome.pro/broker.html">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="sitemap" type="application/xml" href="/sitemap.xml">
+
+<meta property="og:site_name" content="subscribetome">
+<meta property="og:title" content="The credential broker — subscribetome">
+<meta property="og:description" content="Route HTTP API calls through a local daemon that injects the real key on the outbound request. The key never enters the command.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://subscribetome.pro/broker.html">
+<meta property="og:image" content="https://subscribetome.pro/og.png">
+<meta property="og:locale" content="en_US">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet"><style>
+  :root {
+    --bg:#0a0b0d; --bg-2:#101114; --bg-3:#15171b;
+    --ink:#ece9e2; --ink-dim:#9a998f; --ink-faint:#62625b;
+    --line:rgba(236,233,226,.10); --line-2:rgba(236,233,226,.18);
+    --acc:#3ddc97; --acc-bright:#74f0bc; --acc-deep:#0d2a1f;
+    --warn:#e8895e; --warn-deep:rgba(232,137,94,.10); --warn-line:rgba(232,137,94,.30);
+    --grain-opacity:.035; --grid-opacity:.5;
+    --serif:"Instrument Serif",Georgia,"Times New Roman",serif;
+    --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    --ease:cubic-bezier(.2,.7,.2,1);
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg:#faf9f5; --bg-2:#f3f1ea; --bg-3:#eae7dd;
+      --ink:#1a1b18; --ink-dim:#55554c; --ink-faint:#86867b;
+      --line:rgba(20,22,16,.12); --line-2:rgba(20,22,16,.20);
+      --acc:#0e9463; --acc-bright:#0b7d53; --acc-deep:#e0f2e8;
+      --warn:#b8592a; --warn-deep:rgba(184,89,42,.09); --warn-line:rgba(184,89,42,.28);
+      --grain-opacity:.02; --grid-opacity:.35;
+    }
+  }
+  *,*::before,*::after { box-sizing:border-box; }
+  html { scroll-behavior:smooth; }
+  body {
+    margin:0; background:var(--bg); color:var(--ink);
+    font-family:var(--mono); font-weight:400; font-size:15px; line-height:1.65;
+    -webkit-font-smoothing:antialiased; overflow-x:hidden;
+  }
+  ::selection { background:var(--acc); color:#04130c; }
+  a { color:inherit; }
+  h1,h2,h3,h4,p,ul,ol { margin:0; }
+
+  .grain {
+    position:fixed; inset:0; z-index:1; pointer-events:none; opacity:var(--grain-opacity);
+    mix-blend-mode:overlay;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+  .gridlines {
+    position:fixed; inset:0; z-index:0; pointer-events:none;
+    background-image:
+      linear-gradient(var(--line) 1px,transparent 1px),
+      linear-gradient(90deg,var(--line) 1px,transparent 1px);
+    background-size:64px 64px;
+    -webkit-mask-image:radial-gradient(ellipse 75% 50% at 50% 0%,#000,transparent 78%);
+            mask-image:radial-gradient(ellipse 75% 50% at 50% 0%,#000,transparent 78%);
+    opacity:var(--grid-opacity);
+  }
+  .wrap { position:relative; z-index:2; }
+  .bound { max-width:980px; margin:0 auto; padding:0 32px; }
+
+  .skip {
+    position:absolute; left:-9999px; top:0; z-index:100;
+    background:var(--acc); color:#04130c; padding:10px 16px; border-radius:8px;
+    font-size:13px; text-decoration:none;
+  }
+  .skip:focus { left:12px; top:12px; }
+
+  header {
+    position:sticky; top:0; z-index:50;
+    border-bottom:1px solid var(--line);
+    background:color-mix(in srgb, var(--bg) 78%, transparent); backdrop-filter:blur(10px);
+  }
+  .nav { display:flex; align-items:center; justify-content:space-between; gap:18px; min-height:62px; flex-wrap:wrap; }
+  .brand { display:flex; align-items:center; gap:11px; font-size:14px; text-decoration:none; flex:none; }
+  .mark {
+    height:25px; padding:0 9px; border-radius:7px; flex:none; display:grid; place-items:center;
+    background:linear-gradient(150deg,var(--acc-bright),var(--acc) 55%,#1f8a63);
+    color:#04130c; font-weight:600; font-size:12.5px; letter-spacing:.6px;
+  }
+  .brand b { font-weight:600; }
+  .brand b i { color:var(--acc); font-style:normal; }
+  .docnav { display:flex; align-items:center; gap:4px; flex-wrap:wrap; }
+  .docnav a {
+    text-decoration:none; font-size:13px; color:var(--ink-dim);
+    padding:7px 11px; border-radius:7px; border:1px solid transparent;
+    transition:color .15s var(--ease),background .15s var(--ease),border-color .15s var(--ease);
+  }
+  .docnav a:hover { color:var(--ink); background:var(--bg-2); }
+  .docnav a[aria-current="page"] { color:var(--acc); border-color:var(--line-2); background:var(--acc-deep); }
+  .docnav a.gh { color:var(--ink); border:1px solid var(--line-2); }
+  .docnav a.gh:hover { border-color:var(--acc); background:var(--acc-deep); }
+
+  main { display:block; }
+  .doc { padding:46px 0 30px; }
+  .kicker {
+    display:inline-flex; align-items:center; gap:8px;
+    font-size:11px; letter-spacing:1.8px; text-transform:uppercase; color:var(--acc);
+    border:1px solid var(--line-2); border-radius:999px; padding:6px 13px; margin-bottom:22px;
+  }
+  .kicker .d { width:6px; height:6px; border-radius:50%; background:currentColor; }
+  .doc h1 {
+    font-family:var(--serif); font-weight:400;
+    font-size:clamp(38px,5.4vw,60px); line-height:1.04; letter-spacing:-.4px; max-width:20ch;
+  }
+  .doc h1 em { font-style:italic; color:var(--acc); }
+  .lead { margin:22px 0 0; max-width:66ch; color:var(--ink-dim); font-size:16px; line-height:1.7; }
+  .lead b { color:var(--ink); font-weight:500; }
+
+  .prose { padding:8px 0 40px; }
+  .prose h2 {
+    font-family:var(--serif); font-weight:400; font-size:clamp(26px,3.4vw,34px);
+    line-height:1.12; letter-spacing:-.3px; margin:52px 0 6px; scroll-margin-top:84px;
+  }
+  .prose h2 em { font-style:italic; color:var(--acc); }
+  .prose h3 {
+    font-size:15px; font-weight:600; letter-spacing:.2px; color:var(--ink);
+    margin:34px 0 4px; scroll-margin-top:84px;
+  }
+  .prose h4 { font-size:13.5px; font-weight:600; color:var(--ink); margin:22px 0 2px; }
+  .prose p { margin:14px 0 0; color:var(--ink-dim); font-size:14.5px; line-height:1.78; max-width:72ch; }
+  .prose p b, .prose li b { color:var(--ink); font-weight:600; }
+  .prose ul, .prose ol { margin:14px 0 0; padding-left:22px; color:var(--ink-dim); font-size:14.5px; line-height:1.78; max-width:72ch; }
+  .prose li { margin:7px 0; }
+  .prose li::marker { color:var(--ink-faint); }
+  .prose a:not(.card-link) { color:var(--acc); text-decoration:underline; text-underline-offset:3px; text-decoration-thickness:1px; text-decoration-color:var(--line-2); }
+  .prose a:not(.card-link):hover { text-decoration-color:var(--acc); }
+  .anchor { color:var(--ink-faint); text-decoration:none; margin-left:10px; font-size:.7em; opacity:0; transition:opacity .15s var(--ease); }
+  .prose h2:hover .anchor, .prose h3:hover .anchor { opacity:1; }
+
+  code {
+    font-family:var(--mono); font-size:.9em;
+    background:var(--bg-2); border:1px solid var(--line);
+    border-radius:5px; padding:1px 6px; color:var(--ink); word-break:break-word;
+  }
+  .prose p code, .prose li code { color:var(--acc); }
+  .ph { color:var(--acc); }
+
+  .copybox { border:1px solid var(--line); border-radius:11px; background:var(--bg); overflow:hidden; margin:18px 0 0; }
+  .copybar {
+    display:flex; align-items:center; justify-content:space-between;
+    padding:8px 8px 8px 13px; border-bottom:1px solid var(--line); background:var(--bg-3);
+  }
+  .copybar span { font-size:10.5px; letter-spacing:1.2px; text-transform:uppercase; color:var(--ink-faint); }
+  .copy-btn {
+    font-family:var(--mono); font-size:12px; cursor:pointer;
+    border:1px solid var(--line-2); border-radius:7px; padding:5px 11px;
+    background:transparent; color:var(--ink);
+    transition:border-color .15s var(--ease),background .15s var(--ease),color .15s var(--ease);
+  }
+  .copy-btn:hover { border-color:var(--acc); background:var(--acc-deep); }
+  .copy-btn.ok { border-color:var(--acc); background:var(--acc); color:#04130c; }
+  .copybox pre {
+    margin:0; padding:14px; font-family:var(--mono); font-size:12.5px; line-height:1.75;
+    white-space:pre; overflow-x:auto; color:var(--ink);
+  }
+  pre.plain {
+    margin:18px 0 0; padding:14px; border:1px solid var(--line); border-radius:11px;
+    background:var(--bg); font-family:var(--mono); font-size:12.5px; line-height:1.75;
+    white-space:pre; overflow-x:auto; color:var(--ink-dim);
+  }
+  .copybox pre .c, pre.plain .c { color:var(--ink-faint); }
+  .copybox pre .p, pre.plain .p { color:var(--acc); }
+  .copybox pre .r, pre.plain .r { color:var(--warn); }
+
+  .toc { border:1px solid var(--line); border-radius:13px; background:var(--bg-2); padding:20px 24px; margin:30px 0 0; }
+  .toc .t { font-size:11px; letter-spacing:1.6px; text-transform:uppercase; color:var(--ink-faint); }
+  .toc ul { list-style:none; margin:12px 0 0; padding:0; columns:2; column-gap:28px; }
+  @media (max-width:640px){ .toc ul { columns:1; } }
+  .toc li { margin:0 0 8px; break-inside:avoid; }
+  .toc a { color:var(--ink-dim); text-decoration:none; font-size:13.5px; }
+  .toc a:hover { color:var(--acc); }
+  .toc a::before { content:"→ "; color:var(--ink-faint); }
+
+  .callout { border:1px solid var(--line-2); border-left-width:3px; border-radius:10px; background:var(--bg-2); padding:16px 18px; margin:20px 0 0; }
+  .callout .h { font-size:11px; letter-spacing:1.4px; text-transform:uppercase; color:var(--ink-dim); margin-bottom:6px; }
+  .callout p { margin:0; font-size:13.5px; color:var(--ink-dim); line-height:1.72; max-width:none; }
+  .callout p + p { margin-top:10px; }
+  .callout.note { border-left-color:var(--acc); }
+  .callout.note .h { color:var(--acc); }
+  .callout.warn { border-left-color:var(--warn); background:var(--warn-deep); }
+  .callout.warn .h { color:var(--warn); }
+
+  .cards { display:grid; grid-template-columns:repeat(2,1fr); gap:18px; margin:16px 0 0; }
+  @media (max-width:720px){ .cards { grid-template-columns:1fr; } }
+  .card-link {
+    border:1px solid var(--line-2); border-radius:14px; background:var(--bg-2);
+    padding:24px; text-decoration:none; color:inherit; display:flex; flex-direction:column; gap:10px;
+    transition:border-color .2s var(--ease), transform .2s var(--ease);
+  }
+  .card-link:hover { border-color:var(--acc); transform:translateY(-2px); }
+  .card-link .ct { font-size:11px; letter-spacing:1.6px; text-transform:uppercase; color:var(--acc); }
+  .card-link h3 { font-family:var(--serif); font-weight:400; font-size:23px; line-height:1.15; letter-spacing:-.2px; }
+  .card-link p { margin:0; color:var(--ink-dim); font-size:13.5px; line-height:1.66; }
+  .card-link .go { font-size:12.5px; color:var(--acc); margin-top:auto; }
+
+  .tbl-wrap { overflow-x:auto; margin:18px 0 0; border:1px solid var(--line); border-radius:11px; }
+  table { border-collapse:collapse; width:100%; font-size:13px; min-width:520px; }
+  th, td { text-align:left; padding:11px 14px; border-bottom:1px solid var(--line); vertical-align:top; line-height:1.6; }
+  th { font-size:11px; letter-spacing:.8px; text-transform:uppercase; color:var(--ink-faint); font-weight:600; background:var(--bg-3); }
+  tr:last-child td { border-bottom:none; }
+  td code { white-space:nowrap; }
+  td b { color:var(--ink); font-weight:600; }
+
+  .badges { display:flex; flex-wrap:wrap; gap:8px; margin:20px 0 0; }
+  .badge {
+    display:inline-flex; align-items:center; gap:7px; font-size:11.5px; color:var(--ink-dim);
+    border:1px solid var(--line-2); border-radius:999px; padding:6px 12px;
+  }
+  .badge .d { width:6px; height:6px; border-radius:50%; background:var(--acc); flex:none; }
+  .badge.exp .d { background:var(--warn); }
+
+  details { border:1px solid var(--line); border-radius:11px; background:var(--bg-2); padding:0 18px; margin:18px 0 0; }
+  details summary { cursor:pointer; padding:15px 0; font-size:14px; font-weight:600; color:var(--ink); list-style:none; }
+  details summary::-webkit-details-marker { display:none; }
+  details summary::before { content:"+ "; color:var(--acc); }
+  details[open] summary::before { content:"– "; }
+  details > *:not(summary) { margin-bottom:16px; }
+
+  :focus-visible { outline:2px solid var(--acc); outline-offset:2px; border-radius:4px; }
+
+  footer { border-top:1px solid var(--line); padding:38px 0 48px; margin-top:60px; }
+  .foot { display:flex; flex-wrap:wrap; gap:22px; justify-content:space-between; align-items:center; }
+  .foot-l { font-size:12.5px; color:var(--ink-faint); max-width:52ch; line-height:1.7; }
+  .foot-l b { color:var(--ink-dim); font-weight:500; }
+  .foot-links { display:flex; flex-wrap:wrap; gap:20px; font-size:13px; }
+  .foot-links a { color:var(--ink-dim); text-decoration:none; transition:color .2s var(--ease); }
+  .foot-links a:hover { color:var(--acc); }
+
+  @media (prefers-reduced-motion:reduce){ html { scroll-behavior:auto; } .card-link:hover { transform:none; } }
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<div class="grain"></div>
+<div class="gridlines"></div>
+<div class="wrap">
+
+<header>
+  <div class="bound nav">
+    <a class="brand" href="/"><span class="mark">stm</span><b>subscribe<i>tome</i></b></a>
+    <nav class="docnav" aria-label="Documentation">
+      <a href="/docs.html">Overview</a>
+      <a href="/security.html">Security</a>
+      <a href="/broker.html" aria-current="page">Broker</a>
+      <a href="/teams.html">Teams</a>
+      <a href="/cli.html">CLI</a>
+      <a class="gh" href="https://github.com/matterhornso/subscribetome">GitHub →</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+<div class="bound doc">
+  <span class="kicker"><span class="d"></span>Credential broker</span>
+  <h1>The key never <em>enters the command.</em></h1>
+  <p class="lead">
+    Substituting a key <em>into</em> a shell command works everywhere but has a ceiling: for the moment the command runs,
+    the key is a real argv element. The broker removes that ceiling for HTTP APIs. Point the request at a
+    <b>local daemon</b>; the daemon injects the real auth on the <b>outbound</b> call to the provider. The key never
+    touches the command's argv, environment, or output.
+  </p>
+</div>
+
+<div class="bound prose">
+
+  <nav class="toc" aria-label="On this page">
+    <div class="t">On this page</div>
+    <ul>
+      <li><a href="#why">Why the broker exists</a></li>
+      <li><a href="#start">Start the broker</a></li>
+      <li><a href="#proxy">The /proxy request model</a></li>
+      <li><a href="#example">A worked curl example</a></li>
+      <li><a href="#token">The loopback capability token</a></li>
+      <li><a href="#invariants">Security invariants</a></li>
+      <li><a href="#targets">Built-in targets</a></li>
+      <li><a href="#audit">Auditing brokered calls</a></li>
+    </ul>
+  </nav>
+
+  <h2 id="why">Why the broker <em>exists</em><a class="anchor" href="#why" aria-label="Link to this section">#</a></h2>
+  <p>
+    The <a href="/security.html#substitution">PreToolUse substitution</a> keeps a key out of the <b>conversation</b>, but
+    at execution time the substituted key is an argument of the shell command — briefly visible to a local <code>ps</code>,
+    and printable by any command that echoes its own arguments. That is inherent to injecting a secret into a command.
+  </p>
+  <p>
+    The broker sidesteps it. For an HTTP API you never put the key in the command at all. The agent sends its request to
+    a loopback daemon; the daemon resolves <code>&lt;tool&gt;:&lt;label&gt;</code> from the OS keychain and attaches the
+    real credential on the request <em>it</em> makes to the provider. The command the agent runs carries only a local,
+    loopback-only capability token — worthless off your machine.
+  </p>
+
+  <h2 id="start">Start the <em>broker</em><a class="anchor" href="#start" aria-label="Link to this section">#</a></h2>
+  <p>Run <code>stm broker</code>. It ensures the local daemon is up and prints the base URL, the capability-token header, and a ready-to-run curl example:</p>
+  <div class="copybox">
+    <div class="copybar"><span>shell</span><button class="copy-btn">Copy</button></div>
+<pre>stm broker openai default</pre>
+  </div>
+  <pre class="plain"><span class="c">subscribetome broker</span>
+
+  base URL : http://127.0.0.1:&lt;port&gt;/proxy/&lt;tool&gt;/&lt;label&gt;/&lt;upstream-path&gt;
+  auth     : header  x-stm-token: &lt;broker-token&gt;
+
+  curl http://127.0.0.1:&lt;port&gt;/proxy/openai/default/v1/models \
+    -H "x-stm-token: &lt;broker-token&gt;"</pre>
+  <p>The <code>[tool]</code> and <code>[label]</code> arguments are optional — they only tailor the printed example. The broker can proxy any built-in target once the daemon is running.</p>
+
+  <h2 id="proxy">The <em>/proxy</em> request model<a class="anchor" href="#proxy" aria-label="Link to this section">#</a></h2>
+  <p>Every brokered request has the same shape:</p>
+  <pre class="plain">http://127.0.0.1:&lt;port&gt;/proxy/<span class="p">&lt;tool&gt;</span>/<span class="p">&lt;label&gt;</span>/<span class="p">&lt;upstream-path&gt;</span></pre>
+  <div class="tbl-wrap">
+  <table>
+    <thead><tr><th>Segment</th><th>Meaning</th></tr></thead>
+    <tbody>
+      <tr><td><code>&lt;tool&gt;</code></td><td>A built-in broker target (e.g. <code>openai</code>). Selects the upstream origin and the auth scheme.</td></tr>
+      <tr><td><code>&lt;label&gt;</code></td><td>Which key under that tool to use (e.g. <code>default</code>). The <code>(tool,&nbsp;label)</code> pair is resolved from the keychain.</td></tr>
+      <tr><td><code>&lt;upstream-path&gt;</code></td><td>The provider's own path, e.g. <code>v1/chat/completions</code>. Forwarded verbatim to the target's origin, with your query string preserved.</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p>
+    The daemon looks up the target, resolves the credential, drops any client-supplied auth for the injected scheme,
+    attaches the real auth on the outbound request to the target's <b>own origin</b>, and streams back the response with
+    the key scrubbed out. Method, request body, and non-auth headers pass through.
+  </p>
+
+  <h2 id="example">A worked <em>curl example</em><a class="anchor" href="#example" aria-label="Link to this section">#</a></h2>
+  <p>Calling OpenAI's chat-completions endpoint through the broker — note there is no <code>Authorization</code> header and no key anywhere in the command:</p>
+  <div class="copybox">
+    <div class="copybar"><span>shell</span><button class="copy-btn">Copy</button></div>
+<pre>curl http://127.0.0.1:&lt;port&gt;/proxy/openai/default/v1/chat/completions \
+  -H "x-stm-token: &lt;broker-token&gt;" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"gpt-4o-mini","messages":[{"role":"user","content":"hello"}]}'</pre>
+  </div>
+  <p>
+    The broker resolves <code>openai:default</code> from your keychain and sends
+    <code>Authorization: Bearer &lt;real-key&gt;</code> on its own request to <code>https://api.openai.com</code>. Your
+    command — and anything that logs it — sees only the loopback token. In Claude Code you can simply ask the agent to
+    "call OpenAI chat completions through the stm broker"; the placeholder-free command is safe for the transcript.
+  </p>
+
+  <h2 id="token">The loopback <em>capability token</em><a class="anchor" href="#token" aria-label="Link to this section">#</a></h2>
+  <p>The <code>x-stm-token</code> value is deliberately different from the dashboard token:</p>
+  <ul>
+    <li><b>It authorizes <code>/proxy</code> only.</b> It cannot read the key inventory, open the dashboard, or view metadata.</li>
+    <li><b>It exposes no secret.</b> It is a capability to <em>make brokered calls</em>, not a key — so it is safe to appear in a command, a script, or the chat.</li>
+    <li><b>It is loopback-only.</b> The daemon binds to <code>127.0.0.1</code>; the token is worthless to anyone off your machine.</li>
+    <li><b>It resets on restart.</b> A fresh token is generated each time the daemon starts, so it is naturally short-lived.</li>
+  </ul>
+
+  <h2 id="invariants">Security <em>invariants</em><a class="anchor" href="#invariants" aria-label="Link to this section">#</a></h2>
+  <p>The broker enforces these on every request. They are the reason routing a key through a proxy is safe:</p>
+  <div class="tbl-wrap">
+  <table>
+    <thead><tr><th>Invariant</th><th>What it prevents</th></tr></thead>
+    <tbody>
+      <tr><td><b>SSRF / origin guard</b></td><td>The upstream path must be server-relative and resolve to the target's <em>own</em> origin. A protocol-relative <code>//host</code>, an absolute URL, or a <code>\</code> is rejected, and the constructed origin is re-checked as a backstop — so a crafted path can never redirect the key to another host.</td></tr>
+      <tr><td><b>No auto-follow redirects</b></td><td>The outbound fetch uses <code>redirect: manual</code>. A 3xx is surfaced to the caller, never followed — so the injected credential can't ride a redirect to an off-origin host.</td></tr>
+      <tr><td><b>Response scrub</b></td><td>Every occurrence of the real key — literal and URL-encoded — is replaced with <code>[stm:redacted]</code> in the response body <em>and</em> headers, and in any network-error message. An upstream that echoes the credential back cannot leak it into your output.</td></tr>
+      <tr><td><b>Client auth dropped</b></td><td>Any caller-supplied header for the injected scheme is stripped before the real auth is attached — the caller can neither override nor read the credential.</td></tr>
+      <tr><td><b>Response size cap</b></td><td>The upstream body is bounded (16&nbsp;MiB). A hostile or compromised provider can't OOM the daemon with an unbounded response.</td></tr>
+      <tr><td><b>Never logs a key</b></td><td>The broker never writes a resolved key value to a log. A brokered call is audited by method, path, and status only.</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <div class="callout note">
+    <div class="h">Same boundary as the rest of stm</div>
+    <p>The broker keeps the key off the command and out of your output. It does not defend a compromised local machine —
+    a process running as your user could talk to the loopback daemon directly. That is the same endpoint-trust boundary
+    described on the <a href="/security.html#limits">security page</a>.</p>
+  </div>
+
+  <h2 id="targets">Built-in <em>targets</em><a class="anchor" href="#targets" aria-label="Link to this section">#</a></h2>
+  <p>Targets are a data-driven registry — each is an origin plus an auth scheme. The launch set:</p>
+  <div class="tbl-wrap">
+  <table>
+    <thead><tr><th>Tool</th><th>Upstream origin</th><th>Auth attached on the outbound request</th></tr></thead>
+    <tbody>
+      <tr><td><code>openai</code></td><td><code>https://api.openai.com</code></td><td><code>Authorization: Bearer</code></td></tr>
+      <tr><td><code>anthropic</code></td><td><code>https://api.anthropic.com</code></td><td><code>x-api-key</code> header</td></tr>
+      <tr><td><code>groq</code></td><td><code>https://api.groq.com</code></td><td><code>Authorization: Bearer</code></td></tr>
+      <tr><td><code>openrouter</code></td><td><code>https://openrouter.ai</code></td><td><code>Authorization: Bearer</code></td></tr>
+      <tr><td><code>replicate</code></td><td><code>https://api.replicate.com</code></td><td><code>Authorization: Token &lt;key&gt;</code></td></tr>
+      <tr><td><code>fal</code></td><td><code>https://fal.run</code></td><td><code>Authorization: Key &lt;key&gt;</code></td></tr>
+      <tr><td><code>stripe</code></td><td><code>https://api.stripe.com</code></td><td><code>Authorization: Bearer</code></td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p>The registry is extensible — adding a provider is a single data entry (origin + auth scheme).</p>
+
+  <h2 id="audit">Auditing brokered <em>calls</em><a class="anchor" href="#audit" aria-label="Link to this section">#</a></h2>
+  <p>
+    Every brokered request is recorded as a first-class <code>broker</code> audit event — the method, the path, and the
+    response status, <b>never the key</b>. Filter for them with:
+  </p>
+  <div class="copybox">
+    <div class="copybar"><span>shell</span><button class="copy-btn">Copy</button></div>
+<pre>stm audit --event broker</pre>
+  </div>
+  <p>See the <a href="/cli.html#audit">CLI reference</a> for the full audit filter set, and the <a href="/security.html">security page</a> for how the broker fits the overall model.</p>
+
+</div>
+</main>
+
+<footer>
+  <div class="bound foot">
+    <div class="foot-l">
+      <b>subscribetome</b> — open-source AI API key manager. Keys live in your OS keychain; the agent uses them
+      without ever seeing one. MIT licensed.
+    </div>
+    <div class="foot-links">
+      <a href="/">Home</a>
+      <a href="/docs.html">Docs</a>
+      <a href="https://github.com/matterhornso/subscribetome">GitHub</a>
+      <a href="https://github.com/matterhornso/subscribetome/blob/main/CHANGELOG.md">Changelog</a>
+      <a href="https://github.com/matterhornso/subscribetome/blob/main/LICENSE">License</a>
+    </div>
+  </div>
+</footer>
+
+</div>
+
+<script>
+  document.querySelectorAll(".copy-btn").forEach(function(btn){
+    btn.addEventListener("click",function(){
+      var box=btn.closest(".copybox"); if(!box) return;
+      var pre=box.querySelector("pre"); if(!pre) return;
+      var text=(pre.innerText||pre.textContent).trim();
+      function done(){
+        btn.classList.add("ok"); btn.textContent="Copied ✓";
+        setTimeout(function(){ btn.classList.remove("ok"); btn.textContent="Copy"; },1700);
+      }
+      function fallback(){
+        var t=document.createElement("textarea"); t.value=text;
+        t.style.position="fixed"; t.style.opacity="0";
+        document.body.appendChild(t); t.select();
+        try{ document.execCommand("copy"); done(); }catch(e){}
+        document.body.removeChild(t);
+      }
+      if(navigator.clipboard&&navigator.clipboard.writeText){
+        navigator.clipboard.writeText(text).then(done,fallback);
+      }else{ fallback(); }
+    });
+  });
+</script>
+</body>
+</html>

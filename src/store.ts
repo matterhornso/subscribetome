@@ -131,7 +131,7 @@ CREATE TABLE IF NOT EXISTS audit_log (
   ts         TEXT    NOT NULL,
   event      TEXT    NOT NULL CHECK(event IN (
                        'substitute','policy.deny','policy.warn',
-                       'unresolved','malformed')),
+                       'unresolved','malformed','broker')),
   tool       TEXT,
   label      TEXT,
   command    TEXT,
@@ -182,7 +182,8 @@ export type AuditEvent =
   | "policy.deny"
   | "policy.warn"
   | "unresolved"
-  | "malformed";
+  | "malformed"
+  | "broker";
 
 export interface Project {
   id: number;
@@ -309,6 +310,50 @@ export class Store {
     addColumnIfMissing("tools", "card_nickname", "card_nickname TEXT");
     addColumnIfMissing("tools", "card_last4", "card_last4 TEXT");
     addColumnIfMissing("tools", "billing_cadence", "billing_cadence TEXT");
+    this.migrateAuditEventCheck();
+  }
+
+  /**
+   * Add the 'broker' event class to audit_log's CHECK constraint on DBs created
+   * before the broker existed. A CHECK can't be altered in place, so we rebuild
+   * the table (the standard SQLite recipe) — copy rows into a new table with the
+   * expanded constraint, drop, rename, recreate indexes. Idempotent: a no-op
+   * once 'broker' is already allowed (and on a fresh DB, whose CREATE TABLE
+   * already includes it). Wrapped in a transaction so it fails closed.
+   */
+  private migrateAuditEventCheck(): void {
+    const row = this.db
+      .query(`SELECT sql FROM sqlite_master WHERE type='table' AND name='audit_log'`)
+      .get() as { sql: string } | null;
+    if (!row || row.sql.includes("'broker'")) return; // absent or already current
+    this.db.exec("BEGIN");
+    try {
+      this.db.exec(`
+        CREATE TABLE audit_log_new (
+          id         INTEGER PRIMARY KEY AUTOINCREMENT,
+          ts         TEXT    NOT NULL,
+          event      TEXT    NOT NULL CHECK(event IN (
+                               'substitute','policy.deny','policy.warn',
+                               'unresolved','malformed','broker')),
+          tool       TEXT,
+          label      TEXT,
+          command    TEXT,
+          agent      TEXT,
+          policy_id  INTEGER REFERENCES policies(id) ON DELETE SET NULL,
+          reason     TEXT
+        );
+        INSERT INTO audit_log_new (id,ts,event,tool,label,command,agent,policy_id,reason)
+          SELECT id,ts,event,tool,label,command,agent,policy_id,reason FROM audit_log;
+        DROP TABLE audit_log;
+        ALTER TABLE audit_log_new RENAME TO audit_log;
+        CREATE INDEX IF NOT EXISTS audit_log_ts_idx    ON audit_log(ts DESC);
+        CREATE INDEX IF NOT EXISTS audit_log_event_idx ON audit_log(event, ts DESC);
+      `);
+      this.db.exec("COMMIT");
+    } catch (e) {
+      this.db.exec("ROLLBACK");
+      throw e;
+    }
   }
 
   close(): void {
@@ -593,7 +638,7 @@ export class Store {
     tool: string;
     label: string;
     value: string;
-    source?: "manual" | "imported";
+    source?: "manual" | "imported" | "team";
     displayName?: string;
   }): KeyView {
     const tool = normalizeSegment(input.tool);
@@ -910,6 +955,19 @@ export class Store {
     return this.db
       .query(`SELECT * FROM audit_log ${where} ORDER BY id DESC LIMIT ?`)
       .all(...(params as any[])) as AuditRow[];
+  }
+
+  /**
+   * Audit rows with id > sinceId, OLDEST first — for incremental push to a
+   * Teams server. `command` carries placeholders only (never a resolved key),
+   * so these rows are safe to send off-machine. Returns the rows plus the
+   * highest id seen so the caller can advance its cursor.
+   */
+  listAuditForSync(sinceId: number, limit = 500): AuditRow[] {
+    const cap = Math.max(1, Math.min(limit, 5000));
+    return this.db
+      .query(`SELECT * FROM audit_log WHERE id > ? ORDER BY id ASC LIMIT ?`)
+      .all(sinceId, cap) as AuditRow[];
   }
 
   auditCount(): number {

@@ -789,6 +789,7 @@ const AUDIT_EVENTS = new Set([
   "policy.warn",
   "unresolved",
   "malformed",
+  "broker",
 ]);
 
 function auditHelp(): void {
@@ -798,7 +799,7 @@ function auditHelp(): void {
       `  stm audit --tail N                        last N (max 10000)\n` +
       `  stm audit --event <class>                 filter by event class:\n` +
       `                                            substitute | policy.deny | policy.warn\n` +
-      `                                            | unresolved | malformed\n` +
+      `                                            | unresolved | malformed | broker\n` +
       `  stm audit --tool <name>                   filter by tool, e.g. openai\n` +
       `  stm audit --since <duration>              5m, 1h, 7d\n` +
       `  stm audit prune --before <duration>       drop rows older than 7d, etc.\n` +
@@ -1755,6 +1756,255 @@ function versionCmd(): void {
   process.stdout.write(`stm ${STM_VERSION}\n`);
 }
 
+async function teamsCmd(args: string[]): Promise<void> {
+  const sub = args[0];
+  const rest = args.slice(1);
+  const flag = (name: string): string | undefined => {
+    const i = rest.indexOf(`--${name}`);
+    return i >= 0 ? rest[i + 1] : undefined;
+  };
+  const t = await import("./teams/client.ts");
+  const kp = await import("./teams/keypair.ts");
+  const out = (s: string) => process.stdout.write(s);
+  const die = (s: string): never => {
+    process.stderr.write(s + "\n");
+    process.exit(1);
+  };
+
+  switch (sub) {
+    case "serve": {
+      const s = await import("./teams/server.ts");
+      return s.runTeamServer();
+    }
+    case "init": {
+      const server = flag("server");
+      // Prefer the env var — an argv token is visible to `ps` and shell history.
+      const admin = flag("admin") ?? process.env.STM_TEAM_ADMIN_TOKEN;
+      const name = flag("name") ?? "team";
+      if (!server || !admin) {
+        die("usage: stm teams init --server <url> --admin <admin-token> [--name <name>]\n" +
+          "(--admin may instead be supplied via the STM_TEAM_ADMIN_TOKEN env var)");
+      }
+      const created = await t.createTeam(server!, admin!, name);
+      const cfg = {
+        serverUrl: server!,
+        teamToken: created.token,
+        teamId: created.id,
+        teamName: created.name,
+      };
+      t.writeTeamConfig(cfg);
+      // Generate the team key, keep it locally, and self-enroll by sealing it to
+      // this machine's own identity key. The team key never leaves this machine
+      // except sealed to a specific member's public key.
+      const teamKey = t.generateTeamKey();
+      t.setTeamPassphrase(teamKey);
+      const id = kp.ensureIdentity();
+      await t.registerMember(cfg, id.memberId, id.publicKeyB64);
+      await t.uploadEnvelope(cfg, id.memberId, kp.seal(teamKey, id.publicKeyB64));
+      out(
+        `created team "${created.name}" (id ${created.id}); config saved (0600).\n` +
+          `you are enrolled (member ${id.memberId}); team key generated + stored in the keychain.\n\n` +
+          `  team token : ${created.token}\n\n` +
+          `Give teammates the SERVER URL + TEAM TOKEN (safe to share — it decrypts nothing).\n` +
+          `They run:  stm teams join --server ${server} --token <token>\n` +
+          `then:      stm teams enroll-request     (sends you their public key)\n` +
+          `you run:   stm teams enroll <their-member-id>\n` +
+          `they run:  stm teams accept  &&  stm teams pull\n\n` +
+          `Upload your keys now with:  stm teams push\n`,
+      );
+      return;
+    }
+    case "join": {
+      const server = flag("server");
+      const token = flag("token");
+      if (!server || !token) {
+        die("usage: stm teams join --server <url> --token <team-token>");
+      }
+      t.writeTeamConfig({ serverUrl: server!, teamToken: token! });
+      out(
+        `joined "${server}". Now request enrollment (sends your public key to the team):\n` +
+          `  stm teams enroll-request\n` +
+          `An existing member enrolls you, then:  stm teams accept  &&  stm teams pull\n`,
+      );
+      return;
+    }
+    case "enroll-request": {
+      const cfg = t.readTeamConfig();
+      if (!cfg) die("teams: not configured. Run `stm teams join` first.");
+      const id = kp.ensureIdentity();
+      await t.registerMember(cfg!, id.memberId, id.publicKeyB64);
+      out(
+        `enrollment requested. Give an existing team member your member id:\n\n` +
+          `  ${id.memberId}\n\n` +
+          `They run:  stm teams enroll ${id.memberId}\n` +
+          `Then you run:  stm teams accept\n`,
+      );
+      return;
+    }
+    case "members": {
+      const cfg = t.readTeamConfig();
+      if (!cfg) die("teams: not configured.");
+      const members = await t.listMembers(cfg!);
+      if (members.length === 0) {
+        out("no members yet.\n");
+        return;
+      }
+      out("member-id           enrolled\n");
+      for (const m of members) out(`${m.memberId.padEnd(18)}  ${m.enrolled ? "yes" : "PENDING"}\n`);
+      return;
+    }
+    case "enroll": {
+      const memberId = rest[0];
+      if (!memberId) die("usage: stm teams enroll <member-id>");
+      const cfg = t.readTeamConfig();
+      if (!cfg) die("teams: not configured.");
+      const teamKey = t.getTeamPassphrase();
+      if (!teamKey) die("you don't have the team key on this machine — accept your own enrollment first.");
+      const member = await t.getMember(cfg!, memberId!);
+      if (!member) die(`no member "${memberId}" — they must run \`stm teams enroll-request\` first.`);
+      // CRITICAL: the server is untrusted in a zero-knowledge system. Verify the
+      // returned public key actually hashes to the member id you were given
+      // out-of-band before sealing the team key to it — otherwise a malicious
+      // server could substitute its own key and unwrap the team key. The member
+      // id IS the fingerprint, so this check is the out-of-band verification.
+      if (!kp.pubkeyMatchesMemberId(member!.pubkey, memberId!)) {
+        die(
+          `refusing to enroll: the server returned a public key that does NOT match\n` +
+            `member id "${memberId}". Either the id is wrong, or the server tampered\n` +
+            `with it. Confirm the exact member id with the person out-of-band.`,
+        );
+      }
+      await t.uploadEnvelope(cfg!, memberId!, kp.seal(teamKey!, member!.pubkey));
+      out(`enrolled ${memberId}. They can now run \`stm teams accept\`.\n`);
+      return;
+    }
+    case "accept": {
+      const cfg = t.readTeamConfig();
+      if (!cfg) die("teams: not configured. Run `stm teams join` first.");
+      if (!kp.hasIdentity()) die("no identity yet — run `stm teams enroll-request` first.");
+      const id = kp.ensureIdentity();
+      const envelope = await t.fetchEnvelope(cfg!, id.memberId);
+      if (!envelope) die("not enrolled yet — ask an existing member to run `stm teams enroll " + id.memberId + "`.");
+      const teamKey = kp.open(envelope);
+      t.setTeamPassphrase(teamKey);
+      out("accepted — team key unwrapped and stored in the keychain. Now: stm teams pull\n");
+      return;
+    }
+    case "passphrase": {
+      const p = await readAllStdin();
+      if (!p) die("empty passphrase — nothing stored");
+      t.setTeamPassphrase(p);
+      out("team passphrase stored in the OS keychain (never written to disk).\n");
+      return;
+    }
+    case "push":
+    case "pull": {
+      const cfg = t.readTeamConfig();
+      if (!cfg) die("teams: not configured. Run `stm teams init` or `stm teams join` first.");
+      const pass = t.getTeamPassphrase();
+      if (!pass) die("no team passphrase set. Run `stm teams passphrase` first.");
+      const store = new Store();
+      try {
+        if (sub === "push") {
+          const r = await t.pushVault({
+            store,
+            cfg: cfg!,
+            passphrase: pass!,
+            actor: process.env.USER || "member",
+          });
+          out(`pushed ${r.keyCount} key(s) as vault version ${r.version}.\n`);
+        } else {
+          const r = await t.pullVault({ store, cfg: cfg!, passphrase: pass! });
+          out(
+            r.version == null
+              ? `no team vault on the server yet.\n`
+              : `pulled vault v${r.version}: added ${r.added}, skipped ${r.skipped} (already present).\n`,
+          );
+        }
+      } finally {
+        store.close();
+      }
+      return;
+    }
+    case "audit-push": {
+      const cfg = t.readTeamConfig();
+      if (!cfg) die("teams: not configured.");
+      const store = new Store();
+      try {
+        const actor = kp.hasIdentity() ? kp.ensureIdentity().memberId : process.env.USER || "member";
+        const r = await t.pushLocalAudit({ store, cfg: cfg!, actor });
+        if (r.pushed > 0) t.writeTeamConfig(r.cfg); // advance the cursor
+        out(`pushed ${r.pushed} audit event(s) to the team log.\n`);
+      } finally {
+        store.close();
+      }
+      return;
+    }
+    case "audit": {
+      const cfg = t.readTeamConfig();
+      if (!cfg) die("teams: not configured.");
+      const limit = Number(flag("limit") ?? "50") || 50;
+      const rows = await t.fetchTeamAudit(cfg!, limit);
+      if (rows.length === 0) {
+        out("team audit log is empty.\n");
+        return;
+      }
+      for (const r of rows) {
+        out(`${(r.ts ?? "").slice(0, 19)}  ${(r.actor ?? "?").padEnd(16)}  ${r.event.padEnd(12)}  ${r.detail ?? ""}\n`);
+      }
+      return;
+    }
+    case "status": {
+      const cfg = t.readTeamConfig();
+      if (!cfg) {
+        out("teams: not configured. Run `stm teams init` or `stm teams join`.\n");
+        return;
+      }
+      const hasPass = t.getTeamPassphrase() != null;
+      out(
+        `server : ${cfg.serverUrl}\n` +
+          `team   : ${cfg.teamName ?? "(joined)"}${cfg.teamId ? ` (id ${cfg.teamId})` : ""}\n` +
+          `pass   : ${hasPass ? "set" : "NOT set — run `stm teams passphrase`"}\n`,
+      );
+      return;
+    }
+    case "leave": {
+      t.clearTeam();
+      kp.clearIdentity();
+      out("left the team; local config, team key, and identity cleared.\n");
+      return;
+    }
+    case "help":
+    case "--help":
+    case "-h":
+    case undefined:
+      out(
+        `subscribetome teams — self-hosted, zero-knowledge credential sharing\n\n` +
+          `  stm teams serve                 run the self-hostable sync server\n` +
+          `                                  (env: STM_TEAM_DB, STM_TEAM_HOST, STM_TEAM_PORT,\n` +
+          `                                   STM_TEAM_ADMIN_TOKEN)\n` +
+          `  stm teams init --server <url> --admin <tok> [--name <n>]  create a team\n` +
+          `  stm teams join --server <url> --token <tok>               join an existing team\n` +
+          `  stm teams enroll-request        publish your public key (ask to be enrolled)\n` +
+          `  stm teams members               list members + enrollment status\n` +
+          `  stm teams enroll <member-id>    seal the team key to a member (enroll them)\n` +
+          `  stm teams accept                unwrap the team key sealed to you\n` +
+          `  stm teams passphrase            set a shared team key manually (stdin -> keychain)\n` +
+          `  stm teams push                  encrypt local keys + upload the vault\n` +
+          `  stm teams pull                  download + decrypt + add any new keys\n` +
+          `  stm teams audit-push            send local key-use events to the team log\n` +
+          `  stm teams audit [--limit N]     view the team's combined key-use log\n` +
+          `  stm teams status                show the configured team\n` +
+          `  stm teams leave                 clear local team config + passphrase\n\n` +
+          `Enrollment is public-key: the team key is sealed to each member's key and\n` +
+          `never shared as a plaintext passphrase. The server only stores ciphertext.\n`,
+      );
+      return;
+    default:
+      die(`stm teams: unknown subcommand "${sub}". Try \`stm teams help\`.`);
+  }
+}
+
 function helpCmd(): void {
   process.stdout.write(
     `subscribetome — AI API key & subscription manager\n\n` +
@@ -1774,7 +2024,10 @@ function helpCmd(): void {
       `  stm vault <unlock|rotate|info>  manage the encrypted-file Tier 3 vault\n` +
       `  stm project <add|list|show|scope|unscope|enforce|rename|remove>  per-project key scope\n` +
       `  stm import [dir...]             scan .env files for importable keys\n` +
+      `  stm teams <serve|init|join|push|pull|status>  self-hosted, zero-knowledge key sharing\n` +
       `  stm dashboard                   open the localhost web dashboard\n` +
+      `  stm broker [tool] [label]       route a command's API calls through the broker\n` +
+      `                                  (key injected server-side, never seen by the agent)\n` +
       `  stm stop                        stop the dashboard daemon\n` +
       `  stm status                      daemon + inventory summary\n` +
       `  stm uninstall [--yes|--dry-run]  remove all stm data + Codex blocks from this host\n` +
@@ -1841,6 +2094,13 @@ async function main(): Promise<void> {
     case "daemon": {
       const d = await import("./daemon.ts");
       return d.runDaemon();
+    }
+    case "teams":
+    case "team":
+      return teamsCmd(rest);
+    case "broker": {
+      const d = await import("./daemon.ts");
+      return d.printBroker(rest);
     }
     case "stop": {
       const d = await import("./daemon.ts");
