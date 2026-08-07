@@ -74,6 +74,21 @@ async function run() {
     record("Initial tab = Keys", tabKeysActive);
   }
 
+  // 2a-bis. The boot loading orb dismisses once inventory has loaded — it must
+  // not linger over the app (its .done state is pointer-events:none, and it's
+  // removed shortly after). If it stayed opaque it would swallow every click
+  // below, so this both documents intent and guards the overlay's teardown.
+  {
+    const gone = await page
+      .waitForFunction(() => {
+        const o = document.getElementById("boot-overlay");
+        return !o || o.classList.contains("done");
+      }, { timeout: 5000 })
+      .then(() => true)
+      .catch(() => false);
+    record("Boot overlay dismisses after load", gone);
+  }
+
   // 2b. Sync button has the new label.
   {
     const text = (await page.locator("#sync-btn").textContent()).trim();
