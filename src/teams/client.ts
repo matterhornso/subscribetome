@@ -32,6 +32,13 @@ export interface TeamConfig {
   teamName?: string;
   /** Highest local audit-row id already pushed to the team log (sync cursor). */
   auditCursor?: number;
+  /**
+   * Public fingerprint of the team key, obtained OUT-OF-BAND (never from the
+   * server — it is untrusted). `accept` checks the key it unwraps from the
+   * server's envelope against this before trusting it, so a malicious server
+   * cannot substitute a key it knows. Reveals nothing about the key itself.
+   */
+  teamKeyFp?: string;
 }
 
 export interface TeamVaultPayload {
@@ -79,6 +86,25 @@ export function getTeamPassphrase(): string | null {
  *  distributed to members by sealing it to their public keys. */
 export function generateTeamKey(): string {
   return randomBytes(32).toString("base64");
+}
+
+/**
+ * A PUBLIC, non-secret commitment to the team key: a domain-separated SHA-256,
+ * truncated to 128 bits and grouped for read-aloud. Given a 256-bit key it
+ * reveals nothing about the key, but binds it — two different keys almost never
+ * share a fingerprint. Members compare this out-of-band so `accept` can reject a
+ * key an untrusted server tried to substitute (see TeamConfig.teamKeyFp).
+ */
+export function teamKeyFingerprint(teamKey: string): string {
+  const h = createHash("sha256").update("stm-team-key-fp:v1\n").update(teamKey, "utf8").digest("hex");
+  return (h.slice(0, 32).match(/.{4}/g) as string[]).join("-");
+}
+
+/** True iff `teamKey` matches `expectedFp` (a fingerprint from teamKeyFingerprint).
+ *  Case/format tolerant on the caller-supplied side: strips spaces + lowercases. */
+export function teamKeyMatchesFingerprint(teamKey: string, expectedFp: string): boolean {
+  const norm = (s: string) => s.replace(/[\s-]/g, "").toLowerCase();
+  return norm(teamKeyFingerprint(teamKey)) === norm(expectedFp);
 }
 
 export function clearTeam(): void {

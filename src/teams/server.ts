@@ -97,6 +97,10 @@ function verifyEd25519(payload: Buffer, sigB64: string, pubB64: string): boolean
 
 /** Signature freshness window + replay-nonce TTL (5 min). */
 const SIG_WINDOW_MS = 5 * 60 * 1000;
+/** Sweep expired nonces once the replay cache grows past this. */
+const NONCE_PRUNE_AT = 10000;
+/** Absolute ceiling on live nonces (memory bound under authenticated flood). */
+const NONCE_HARD_CAP = 50000;
 
 /** Constant-time string compare that never throws on length mismatch. */
 function safeEqual(a: string, b: string): boolean {
@@ -317,7 +321,17 @@ export function makeTeamServerHandler(
     if (!Number.isFinite(t) || Math.abs(Date.now() - t) > SIG_WINDOW_MS) return null;
     const cacheKey = `${memberId}:${nonce}`;
     const now = Date.now();
-    if (seenNonces.size > 10000) for (const [k, exp] of seenNonces) if (exp < now) seenNonces.delete(k);
+    if (seenNonces.size > NONCE_PRUNE_AT) {
+      for (const [k, exp] of seenNonces) if (exp < now) seenNonces.delete(k);
+      // Hard bound: if a member floods uniquely-nonced, still-valid requests so
+      // nothing is expired, evict the oldest (nearest-expiry, insertion order)
+      // down to the cap. Bounds memory + the O(n) sweep at the cost of allowing a
+      // replay only of nonces that were already within ~SIG_WINDOW_MS of expiry.
+      if (seenNonces.size > NONCE_HARD_CAP) {
+        let excess = seenNonces.size - NONCE_HARD_CAP;
+        for (const k of seenNonces.keys()) { seenNonces.delete(k); if (--excess <= 0) break; }
+      }
+    }
     if (seenNonces.has(cacheKey)) return null; // replay
     const mem = store.getMember(teamId, memberId);
     if (!mem || !mem.sign_pubkey) return null;
