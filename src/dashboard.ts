@@ -511,6 +511,20 @@ export function dashboardHTML(): string {
     .grid.cols-2,.grid.cols-3 { grid-template-columns:1fr; }
     header,main { padding-left:calc(var(--space)*4); padding-right:calc(var(--space)*4); }
   }
+
+  /* ---- boot loading overlay (thinking-orb) ---- */
+  #boot-overlay {
+    position:fixed; inset:0; z-index:200;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:18px; background:var(--bg);
+    transition:opacity .45s var(--ease);
+  }
+  #boot-overlay.done { opacity:0; pointer-events:none; }
+  #boot-orb { display:block; }
+  #boot-cap {
+    font-size:12.5px; letter-spacing:.08em; text-transform:uppercase;
+    color:var(--text-dim); font-family:var(--font-mono);
+  }
 </style>
 <script>
   /* Set theme before first paint to avoid a flash of the wrong theme. */
@@ -524,6 +538,10 @@ export function dashboardHTML(): string {
 </script>
 </head>
 <body>
+<div id="boot-overlay" role="status" aria-live="polite" aria-label="Loading">
+  <canvas id="boot-orb" width="72" height="72"></canvas>
+  <div id="boot-cap">Loading</div>
+</div>
 <header>
   <div class="brand">
     <div class="mark">s</div>
@@ -758,6 +776,107 @@ export function dashboardHTML(): string {
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
 <script>
+/* ---- boot loading orb: a dotted sphere with a scanning meridian.
+   Ported to vanilla canvas (no deps, no build) from thinking-orbs by
+   Jakub Antalik, MIT-licensed — the "searching"/globe mode.
+   https://github.com/Jakubantalik/thinking-orbs
+   Depth is carried by dot size + grayscale ink alone; the ink value is
+   mirrored on dark themes so near dots read bright either way. */
+(function(){
+  var canvas=document.getElementById("boot-orb");
+  var overlay=document.getElementById("boot-overlay");
+  if(!canvas||!overlay){ window.__bootDone=function(){}; return; }
+  var ctx=canvas.getContext("2d");
+  if(!ctx){ if(overlay.parentNode)overlay.parentNode.removeChild(overlay);
+    window.__bootDone=function(){}; return; }
+
+  var SIZE=72;
+  var dpr=Math.min(2,(typeof devicePixelRatio!=="undefined"&&devicePixelRatio)||1);
+  canvas.width=Math.round(SIZE*dpr);
+  canvas.height=Math.round(SIZE*dpr);
+  var reduce=window.matchMedia&&window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  function isDark(){ return (document.documentElement.getAttribute("data-theme")||"dark")!=="light"; }
+
+  // spin + tilt + orthographic projection (shared with the reference engine)
+  function makeProj(yaw,tilt,cx,cy,scale){
+    var st=Math.sin(tilt),ct=Math.cos(tilt),sy=Math.sin(yaw),cyw=Math.cos(yaw);
+    return function(x,y,z){
+      var x1=x*cyw+z*sy, z1=-x*sy+z*cyw, y1=y*ct-z1*st, z2=y*st+z1*ct;
+      return [cx+x1*scale, cy-y1*scale, z2];
+    };
+  }
+  function angleDelta(a,b){ return Math.atan2(Math.sin(a-b),Math.cos(a-b)); }
+
+  // Baked "searching-64" preset (globe mode: count x0.42, radius x1.15),
+  // so the mark matches the reference at this size without the scaler.
+  var LAT=11, LON=29, RBASE=0.69, RDEPTH=1.955, RBOOST=1.0,
+      INKFAR=0.62, INKSPAN=0.54, SCANMUL=4.08, DIMBASE=0.45,
+      RMIN=0.3, SPEED=2.015;
+
+  function frame(t){
+    var dark=isDark();
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    ctx.clearRect(0,0,SIZE,SIZE);
+    var spin=0.5, cx=SIZE/2, cy=SIZE/2, radius=(SIZE/2)*0.82;
+    var tilt=0.4+0.06*Math.sin(t*0.35);
+    var pt=makeProj(t*spin,tilt,cx,cy,radius);
+    // the scan meridian sweeps relative to the spin, read as a size ripple
+    var scan=t*(spin+(1.7-spin)*SCANMUL);
+    var rs=Math.pow(SIZE/300,0.6);
+    var dots=[];
+    for(var li=0; li<=LAT; li++){
+      var lat=-Math.PI/2+(li/LAT)*Math.PI;
+      var cosLat=Math.cos(lat), sinLat=Math.sin(lat);
+      var lonCount=Math.max(1,Math.round(Math.abs(cosLat)*LON));
+      for(var lj=0; lj<lonCount; lj++){
+        var lon=(lj/lonCount)*2*Math.PI;
+        var p=pt(cosLat*Math.cos(lon), sinLat, cosLat*Math.sin(lon));
+        var z=p[2], depth=(z+1)/2;
+        var d=angleDelta(lon+t*spin, scan);
+        var boost=Math.exp(-(d*d)/0.18)*Math.max(0,z);
+        dots.push({ x:p[0], y:p[1], z:z,
+          r:(RBASE+RDEPTH*depth+RBOOST*boost)*rs,
+          white:INKFAR-INKSPAN*depth,
+          a:DIMBASE+(1-DIMBASE)*Math.min(1,boost) });
+      }
+    }
+    dots.sort(function(a,b){return a.z-b.z;}); // far -> near
+    for(var i=0;i<dots.length;i++){
+      var dt=dots[i], alpha=dt.a;
+      if(alpha<0.02)continue;
+      var w=Math.min(1,Math.max(0,dt.white));
+      var g=Math.round((dark?1-w:w)*255);
+      ctx.fillStyle="rgba("+g+","+g+","+g+","+alpha+")";
+      ctx.beginPath();
+      ctx.arc(dt.x,dt.y,Math.max(RMIN,dt.r),0,Math.PI*2);
+      ctx.fill();
+    }
+  }
+
+  var raf=0, running=false, dismissed=false;
+  function loop(){ frame((performance.now()/1000)*SPEED); if(running)raf=requestAnimationFrame(loop); }
+  function start(){ if(running||reduce||dismissed)return; running=true; raf=requestAnimationFrame(loop); }
+  function stop(){ running=false; if(raf)cancelAnimationFrame(raf); }
+
+  frame(reduce?0.6:(performance.now()/1000)*SPEED); // at least one frame
+  if(!reduce){
+    start();
+    // free the CPU while the tab is hidden
+    document.addEventListener("visibilitychange",function(){
+      if(document.visibilityState==="hidden")stop(); else start();
+    });
+  }
+
+  // The app calls this once initial data has loaded (or failed).
+  window.__bootDone=function(){
+    if(dismissed)return; dismissed=true; stop();
+    overlay.classList.add("done");
+    setTimeout(function(){ if(overlay.parentNode)overlay.parentNode.removeChild(overlay); },500);
+  };
+  // Safety net: never trap the user behind the loader if a fetch hangs.
+  setTimeout(function(){ if(window.__bootDone)window.__bootDone(); },8000);
+})();
+
 var TOKEN = new URLSearchParams(location.search).get("token") || "";
 var CATALOG = ${JSON.stringify(CATALOG)};
 var CATEGORY_LABEL = ${JSON.stringify(CATEGORY_LABEL)};
@@ -1876,7 +1995,8 @@ syncThemeBtn();
 
 refresh()
   .then(function(){ return renderSessionSignal(); })
-  .catch(function(e){setMsg("add-msg","Failed to load: "+e.message,"err");});
+  .catch(function(e){setMsg("add-msg","Failed to load: "+e.message,"err");})
+  .then(function(){ if(window.__bootDone)window.__bootDone(); });
 </script>
 </body>
 </html>`;
