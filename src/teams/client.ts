@@ -32,6 +32,8 @@ export interface TeamConfig {
   teamName?: string;
   /** Highest local audit-row id already pushed to the team log (sync cursor). */
   auditCursor?: number;
+  /** Highest local usage-row id already pushed to the team usage log (cursor). */
+  usageCursor?: number;
   /**
    * Public fingerprint of the team key, obtained OUT-OF-BAND (never from the
    * server — it is untrusted). `accept` checks the key it unwraps from the
@@ -375,6 +377,74 @@ export async function fetchTeamAudit(
     headers: { authorization: `Bearer ${cfg.teamToken}` },
   });
   if (!r.ok) throw new Error(`fetch team audit failed: HTTP ${r.status} ${await safeText(r)}`);
+  return ((await r.json()) as any).rows ?? [];
+}
+
+/** One brokered-call usage record as stored + returned by the team server. */
+export interface TeamUsageRow {
+  ts: string;
+  actor: string | null;
+  tool: string;
+  label: string;
+  method: string | null;
+  path: string | null;
+  status: number | null;
+  bytes: number | null;
+}
+
+/**
+ * Push local brokered-call usage records newer than the cursor to the team
+ * usage log, SIGNED so the server attributes them to a verified member. Usage
+ * records are metadata only (tool, label, method, upstream path, status, size)
+ * — never a key, request body, or response body. Returns how many were pushed
+ * and the new cursor (the caller persists the updated config).
+ */
+export async function pushLocalUsage(deps: {
+  store: Store;
+  cfg: TeamConfig;
+  auth: MemberAuth;
+  fetch?: Fetch;
+}): Promise<{ pushed: number; cursor: number; cfg: TeamConfig }> {
+  const doFetch = deps.fetch ?? fetch;
+  const since = deps.cfg.usageCursor ?? 0;
+  const local = deps.store.listUsageForSync(since, 1000);
+  if (local.length === 0) return { pushed: 0, cursor: since, cfg: deps.cfg };
+  const rows = local.map((r) => ({
+    ts: r.ts,
+    tool: r.tool,
+    label: r.label,
+    method: r.method ?? undefined,
+    path: r.path ?? undefined,
+    status: r.status ?? undefined,
+    bytes: r.bytes ?? undefined,
+  }));
+  const body = JSON.stringify({ rows });
+  const resp = await doFetch(`${trim(deps.cfg.serverUrl)}/v1/usage`, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${deps.cfg.teamToken}`,
+      "content-type": "application/json",
+      ...signedHeaders(deps.auth, "POST", "/v1/usage", body),
+    },
+    body,
+  });
+  if (!resp.ok) throw new Error(`usage push failed: HTTP ${resp.status} ${await safeText(resp)}`);
+  const cursor = local[local.length - 1].id;
+  const cfg = { ...deps.cfg, usageCursor: cursor };
+  return { pushed: rows.length, cursor, cfg };
+}
+
+/** Fetch the team's combined usage log (most recent first). */
+export async function fetchTeamUsage(
+  cfg: TeamConfig,
+  limit = 100,
+  deps?: { fetch?: Fetch },
+): Promise<TeamUsageRow[]> {
+  const doFetch = deps?.fetch ?? fetch;
+  const r = await doFetch(`${trim(cfg.serverUrl)}/v1/usage?limit=${limit}`, {
+    headers: { authorization: `Bearer ${cfg.teamToken}` },
+  });
+  if (!r.ok) throw new Error(`fetch team usage failed: HTTP ${r.status} ${await safeText(r)}`);
   return ((await r.json()) as any).rows ?? [];
 }
 

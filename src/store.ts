@@ -141,6 +141,17 @@ CREATE TABLE IF NOT EXISTS audit_log (
 );
 CREATE INDEX IF NOT EXISTS audit_log_ts_idx     ON audit_log(ts DESC);
 CREATE INDEX IF NOT EXISTS audit_log_event_idx  ON audit_log(event, ts DESC);
+CREATE TABLE IF NOT EXISTS usage_log (
+  id       INTEGER PRIMARY KEY AUTOINCREMENT,
+  ts       TEXT    NOT NULL,
+  tool     TEXT    NOT NULL,
+  label    TEXT    NOT NULL,
+  method   TEXT,
+  path     TEXT,             -- upstream request path; the broker strips the key
+  status   INTEGER,          -- HTTP status, or 0 on transport error
+  bytes    INTEGER           -- response size, null if unknown
+);
+CREATE INDEX IF NOT EXISTS usage_log_id_idx ON usage_log(id ASC);
 CREATE TABLE IF NOT EXISTS projects (
   id              INTEGER PRIMARY KEY AUTOINCREMENT,
   path            TEXT    NOT NULL UNIQUE,
@@ -246,6 +257,23 @@ export interface AuditRow {
   agent: string | null;
   policy_id: number | null;
   reason: string | null;
+}
+
+/**
+ * One brokered API call, recorded locally by the broker route. Metadata only —
+ * never a key, request body, or response body — so a row is safe to sync to a
+ * Teams server for per-member usage attribution (M2). `path` is the upstream
+ * request path with the injected credential already stripped by the broker.
+ */
+export interface UsageRow {
+  id: number;
+  ts: string;
+  tool: string;
+  label: string;
+  method: string | null;
+  path: string | null;
+  status: number | null;
+  bytes: number | null;
 }
 
 const KEY_VIEW_SELECT = `
@@ -968,6 +996,60 @@ export class Store {
     return this.db
       .query(`SELECT * FROM audit_log WHERE id > ? ORDER BY id ASC LIMIT ?`)
       .all(sinceId, cap) as AuditRow[];
+  }
+
+  /**
+   * Record one brokered API call (M2 usage attribution). Metadata only — the
+   * caller MUST NOT pass a key, request body, or response body. Shares the
+   * audit rolling-cap policy so the local table stays bounded.
+   */
+  recordUsage(input: {
+    tool: string;
+    label: string;
+    method?: string | null;
+    path?: string | null;
+    status?: number | null;
+    bytes?: number | null;
+  }): void {
+    this.db
+      .query(
+        `INSERT INTO usage_log (ts, tool, label, method, path, status, bytes)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        new Date().toISOString(),
+        input.tool,
+        input.label,
+        input.method ?? null,
+        input.path ?? null,
+        input.status ?? null,
+        input.bytes ?? null,
+      );
+
+    const max = auditMax();
+    const count = (this.db
+      .query(`SELECT COUNT(*) AS c FROM usage_log`)
+      .get() as { c: number }).c;
+    if (count > max) {
+      this.db
+        .query(
+          `DELETE FROM usage_log
+            WHERE id IN (SELECT id FROM usage_log ORDER BY id ASC LIMIT ?)`,
+        )
+        .run(Math.max(AUDIT_PRUNE_BATCH, count - max));
+    }
+  }
+
+  /**
+   * Usage rows with id > sinceId, OLDEST first — for incremental push to a
+   * Teams server. Metadata only, safe to send off-machine. The caller advances
+   * its cursor to the highest id returned.
+   */
+  listUsageForSync(sinceId: number, limit = 500): UsageRow[] {
+    const cap = Math.max(1, Math.min(limit, 5000));
+    return this.db
+      .query(`SELECT * FROM usage_log WHERE id > ? ORDER BY id ASC LIMIT ?`)
+      .all(sinceId, cap) as UsageRow[];
   }
 
   auditCount(): number {

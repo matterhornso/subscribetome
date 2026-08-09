@@ -551,8 +551,19 @@ async function brokerRoute(url: URL, req: Request, store: Store): Promise<Respon
       agent: "broker",
       reason: result.error ?? null,
     });
+    // Structured usage record for team attribution (M2). Metadata only — path
+    // is the upstream path WITHOUT the query string (which could carry ids),
+    // and never a key or body. `bytes` is the scrubbed response size.
+    store.recordUsage({
+      tool,
+      label,
+      method,
+      path: rest,
+      status: result.status || 0,
+      bytes: typeof result.body === "string" ? Buffer.byteLength(result.body) : null,
+    });
   } catch {
-    /* audit is best-effort */
+    /* audit + usage are best-effort */
   }
 
   if (result.error) {

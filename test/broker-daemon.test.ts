@@ -15,6 +15,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { Store } from "../src/store.ts";
 
 const CLI = join(import.meta.dir, "..", "src", "cli.ts");
 const P = process.pid;
@@ -102,4 +103,13 @@ t("broker token gates /proxy only; dashboard token gates everything", async () =
   expect(audit.rows.length).toBeGreaterThan(0);
   expect(audit.rows[0].event).toBe("broker");
   expect(audit.rows[0].agent).toBe("broker");
+
+  // The same brokered calls were also recorded as structured usage rows (M2),
+  // read straight from the DB (WAL allows a concurrent reader). Proves the
+  // /proxy -> recordUsage wiring end-to-end. Metadata only, never a key.
+  const reader = new Store(DB);
+  const usage = reader.listUsageForSync(0, 50);
+  reader.close();
+  expect(usage.length).toBeGreaterThan(0);
+  expect(usage.some((u) => u.label === "default" && typeof u.status === "number")).toBe(true);
 });
