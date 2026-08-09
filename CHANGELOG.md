@@ -5,6 +5,18 @@ change behaviour. Format follows [Keep a Changelog](https://keepachangelog.com).
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-08-09
+
+The multi-user release. STM Teams gains **verified, per-member attribution**: each
+member signs their requests with an Ed25519 identity, so the team audit log records
+*who* used which key with a signature the server verifies, not a self-asserted name.
+This release also folds in the security follow-ups from the platform review —
+authenticated team-key enrollment, defense-in-depth hardening, and a locked-down
+dashboard Content-Security-Policy — plus dashboard and documentation polish. The
+individual, local workflow is unchanged and fully backward compatible; the new
+attribution is additive and only applies once you enroll members in a team. Scope
+is unchanged (macOS + Claude Code; other platforms experimental).
+
 ### Added
 
 - **Per-member signing identity + verified usage attribution (Teams M1).** Each
@@ -42,6 +54,8 @@ change behaviour. Format follows [Keep a Changelog](https://keepachangelog.com).
 - Document the out-of-band team-key fingerprint step in the Teams enrollment
   guide (`docs/teams.html`): `--fingerprint` on `join`/`accept`, and why the
   key-substitution defense runs in both directions.
+- Typographic and mobile polish across the documentation pages: balanced heading
+  line-breaks, and a compact single-row mobile nav with comfortable tap targets. (#27)
 
 ## [1.2.0] - 2026-08-03
 
