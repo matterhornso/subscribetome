@@ -247,6 +247,9 @@
   .foot-links a:hover { color:var(--acc); }
 
   @media (prefers-reduced-motion:reduce){ html { scroll-behavior:auto; } .card-link:hover { transform:none; } }
+  /* typographic polish: balance multi-line headings, avoid body orphans */
+  h1, h2, h3 { text-wrap:balance; }
+  .lead, .prose p, .prose li { text-wrap:pretty; }
 </style>
 </head>
 <body>
