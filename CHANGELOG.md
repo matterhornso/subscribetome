@@ -14,7 +14,12 @@ change behaviour. Format follows [Keep a Changelog](https://keepachangelog.com).
   member's Ed25519 identity; the server stores them in a `team_usage` table
   attributed to the **verified** member (`POST /v1/usage` refuses an unsigned or
   mis-signed report). This is the metered, per-member counterpart to the M1 audit
-  log. Reading it back (`stm teams usage`) lands in M3.
+  log.
+- **Query the team usage log (Teams M3).** `stm teams usage` reads the usage
+  records back, most-recent-first. Narrow with `--tool <tool>` or `--member <id>`
+  (filtered server-side), cap with `--limit N`, or pass `--summary` to aggregate
+  calls per member and per key — "who used which key, how many times". Documented
+  in the Teams guide and CLI reference.
 
 ## [1.3.0] - 2026-08-09
 

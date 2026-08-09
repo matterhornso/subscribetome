@@ -279,14 +279,19 @@ export class TeamServerStore {
 
   listUsage(
     teamId: number,
-    limit: number,
+    opts: { limit: number; tool?: string; member?: string },
   ): { ts: string; actor: string | null; tool: string; label: string; method: string | null; path: string | null; status: number | null; bytes: number | null }[] {
+    const clauses = ["team_id = ?"];
+    const params: unknown[] = [teamId];
+    if (opts.tool) { clauses.push("tool = ?"); params.push(opts.tool.slice(0, MAX_USAGE_FIELD)); }
+    if (opts.member) { clauses.push("actor = ?"); params.push(opts.member.slice(0, MAX_USAGE_FIELD)); }
+    params.push(opts.limit);
     return this.db
       .query(
         `SELECT ts, actor, tool, label, method, path, status, bytes FROM team_usage
-          WHERE team_id = ? ORDER BY id DESC LIMIT ?`,
+          WHERE ${clauses.join(" AND ")} ORDER BY id DESC LIMIT ?`,
       )
-      .all(teamId, limit) as any[];
+      .all(...(params as any[])) as any[];
   }
 
   /** Register (or refresh) a member's sealing + signing public keys. Leaves any
@@ -558,7 +563,9 @@ export function makeTeamServerHandler(
     if (path === "/v1/usage" && method === "GET") {
       const raw = Number(url.searchParams.get("limit") ?? "100");
       const limit = Number.isFinite(raw) ? Math.max(1, Math.min(Math.floor(raw), 1000)) : 100;
-      return json({ rows: store.listUsage(team!.id, limit) });
+      const tool = url.searchParams.get("tool") ?? undefined;
+      const member = url.searchParams.get("member") ?? undefined;
+      return json({ rows: store.listUsage(team!.id, { limit, tool, member }) });
     }
 
     return json({ error: "not found" }, 404);

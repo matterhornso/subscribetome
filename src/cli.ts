@@ -2029,6 +2029,43 @@ async function teamsCmd(args: string[]): Promise<void> {
       }
       return;
     }
+    case "usage": {
+      const cfg = t.readTeamConfig();
+      if (!cfg) die("teams: not configured.");
+      const limit = Number(flag("limit") ?? "50") || 50;
+      const tool = flag("tool");
+      const member = flag("member");
+      const rows = await t.fetchTeamUsage(cfg!, { limit, tool, member });
+      if (rows.length === 0) {
+        out("no usage records match" + (tool || member ? " that filter." : " yet — brokered calls appear after `stm teams usage-push`.") + "\n");
+        return;
+      }
+      if (rest.includes("--summary")) {
+        // Aggregate the fetched window: calls per member, then per tool:label.
+        const byMember = new Map<string, number>();
+        const byTool = new Map<string, number>();
+        for (const r of rows) {
+          byMember.set(r.actor ?? "?", (byMember.get(r.actor ?? "?") ?? 0) + 1);
+          const k = `${r.tool}:${r.label}`;
+          byTool.set(k, (byTool.get(k) ?? 0) + 1);
+        }
+        const sorted = (m: Map<string, number>) => [...m].sort((a, b) => b[1] - a[1]);
+        out(`usage summary (last ${rows.length} record(s)):\n\nby member:\n`);
+        for (const [k, n] of sorted(byMember)) out(`  ${k.padEnd(18)} ${n}\n`);
+        out(`\nby key:\n`);
+        for (const [k, n] of sorted(byTool)) out(`  ${k.padEnd(28)} ${n}\n`);
+        return;
+      }
+      for (const r of rows) {
+        const status = r.status == null ? "?" : String(r.status);
+        const size = r.bytes == null ? "" : `  ${r.bytes}b`;
+        out(
+          `${(r.ts ?? "").slice(0, 19)}  ${(r.actor ?? "?").padEnd(16)}  ` +
+            `${`${r.tool}:${r.label}`.padEnd(20)}  ${(r.method ?? "").padEnd(4)} ${r.path ?? ""} -> ${status}${size}\n`,
+        );
+      }
+      return;
+    }
     case "status": {
       const cfg = t.readTeamConfig();
       if (!cfg) {
@@ -2071,6 +2108,7 @@ async function teamsCmd(args: string[]): Promise<void> {
           `  stm teams audit-push            send local key-use events to the team log\n` +
           `  stm teams audit [--limit N]     view the team's combined key-use log\n` +
           `  stm teams usage-push            send local brokered-call usage records to the team log\n` +
+          `  stm teams usage [--limit N]     view team usage; --tool/--member filter, --summary aggregates\n` +
           `  stm teams status                show the configured team\n` +
           `  stm teams leave                 clear local team config + passphrase\n\n` +
           `Enrollment is public-key: the team key is sealed to each member's key and\n` +

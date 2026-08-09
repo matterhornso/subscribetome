@@ -312,6 +312,7 @@
       <li><a href="#vault">Push &amp; pull the vault</a></li>
       <li><a href="#enroll">Public-key enrollment</a></li>
       <li><a href="#audit">Signed audit attribution</a></li>
+      <li><a href="#usage">Per-member usage</a></li>
       <li><a href="#limits">Honest limits</a></li>
     </ul>
   </nav>
@@ -448,6 +449,18 @@ team creation ENABLED (admin token set)</pre>
     <li><b><code>stm teams status</code></b> / <b><code>stm teams leave</code></b> — show local team status, or remove this machine's team config.</li>
   </ul>
 
+  <h2 id="usage">Per-member <em>usage</em><a class="anchor" href="#usage" aria-label="Link to this section">#</a></h2>
+  <p>
+    When calls go through the <a href="/broker.html">credential broker</a>, STM records a signed <b>usage</b> record per
+    call — the metered counterpart to the audit log. A usage record is metadata only: the tool, the label, the HTTP
+    method, the upstream path (query string stripped), the response status, and the response size — <b>never a key,
+    a request body, or a response body</b>.
+  </p>
+  <ul>
+    <li><b><code>stm teams usage-push</code></b> — send this machine's brokered-call usage records, each <b>signed with your Ed25519 key</b>. The server attributes every record to the <b>verified member id</b>; an unsigned report is refused.</li>
+    <li><b><code>stm teams usage</code></b> — read the team's usage log. Narrow it with <code>--tool &lt;tool&gt;</code> or <code>--member &lt;id&gt;</code>, cap it with <code>--limit N</code>, or pass <code>--summary</code> to aggregate calls per member and per key.</li>
+  </ul>
+
   <h2 id="limits">Honest <em>limits</em><a class="anchor" href="#limits" aria-label="Link to this section">#</a></h2>
   <div class="callout warn">
     <div class="h">What the self-hosted server does and does not learn</div>
@@ -455,7 +468,7 @@ team creation ENABLED (admin token set)</pre>
   </div>
   <ul>
     <li><b>Credentials are never visible to the server</b> — it stores ciphertext it cannot decrypt, and token hashes it cannot reverse.</li>
-    <li><b>Usage metadata is plaintext to the server you host.</b> The audit log's tool, label, and counts are readable by the server operator. Credentials are not, but the fact that "someone used <code>openai:default</code> N times" is.</li>
+    <li><b>Usage metadata is plaintext to the server you host.</b> The audit and usage logs' tool, label, method, path, status, and counts are readable by the server operator. Credentials are not, but the fact that "someone used <code>openai:default</code> N times" is.</li>
     <li><b>The audit actor is cryptographically verified</b> — it is the Ed25519-signed member id, not a self-asserted name. This is a genuine integrity guarantee.</li>
     <li><b>Per-member dollar cost is an estimate.</b> Providers bill per key, not per caller, so attributing spend to an individual member is an approximation, not an invoice.</li>
     <li><b>Run it behind TLS.</b> The server speaks plain HTTP and is transport-agnostic; you are responsible for terminating TLS at a reverse proxy for any non-local deployment.</li>
