@@ -434,14 +434,18 @@ export async function pushLocalUsage(deps: {
   return { pushed: rows.length, cursor, cfg };
 }
 
-/** Fetch the team's combined usage log (most recent first). */
+/** Fetch the team's combined usage log (most recent first). Optional filters
+ *  narrow to one provider (`tool`) or one member (`member`). */
 export async function fetchTeamUsage(
   cfg: TeamConfig,
-  limit = 100,
+  opts: { limit?: number; tool?: string; member?: string } = {},
   deps?: { fetch?: Fetch },
 ): Promise<TeamUsageRow[]> {
   const doFetch = deps?.fetch ?? fetch;
-  const r = await doFetch(`${trim(cfg.serverUrl)}/v1/usage?limit=${limit}`, {
+  const q = new URLSearchParams({ limit: String(opts.limit ?? 100) });
+  if (opts.tool) q.set("tool", opts.tool);
+  if (opts.member) q.set("member", opts.member);
+  const r = await doFetch(`${trim(cfg.serverUrl)}/v1/usage?${q}`, {
     headers: { authorization: `Bearer ${cfg.teamToken}` },
   });
   if (!r.ok) throw new Error(`fetch team usage failed: HTTP ${r.status} ${await safeText(r)}`);

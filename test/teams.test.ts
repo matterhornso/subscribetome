@@ -404,7 +404,7 @@ test("team usage: signed brokered-call records push once (cursor advances), attr
   expect(r1.pushed).toBe(2);
   expect(r1.cursor).toBe(2);
 
-  const rows = await fetchTeamUsage(r1.cfg, 10, { fetch: f });
+  const rows = await fetchTeamUsage(r1.cfg, { limit: 10 }, { fetch: f });
   expect(rows).toHaveLength(2);
   // Actor is the VERIFIED member id (from the signature), never client-supplied.
   expect(rows.every((x) => x.actor === alice.memberId)).toBe(true);
@@ -426,6 +426,44 @@ test("team usage: signed brokered-call records push once (cursor advances), attr
   // Idempotent: re-push with the advanced cursor sends nothing.
   const r2 = await pushLocalUsage({ store: asStore(src), cfg: r1.cfg, auth, fetch: f });
   expect(r2.pushed).toBe(0);
+
+  server.close();
+});
+
+test("usage query: filters by tool and by member (verified actor)", async () => {
+  const server = new TeamServerStore();
+  const f = wire(server);
+  const team = await createTeam("http://s", ADMIN, "acme", { fetch: f });
+  const cfg: TeamConfig = { serverUrl: "http://s", teamToken: team.token, teamId: team.id };
+
+  const { id: alice, auth: aliceAuth } = makeMember();
+  const { id: bob, auth: bobAuth } = makeMember();
+  await register(cfg, alice, f);
+  await register(cfg, bob, f);
+
+  const aSrc = new FakeStore();
+  aSrc.seedUsage("openai", "default", "POST", "/v1/chat/completions", 200, 10);
+  aSrc.seedUsage("stripe", "default", "GET", "/v1/charges", 200, 20);
+  await pushLocalUsage({ store: asStore(aSrc), cfg, auth: aliceAuth, fetch: f });
+
+  const bSrc = new FakeStore();
+  bSrc.seedUsage("openai", "default", "POST", "/v1/embeddings", 200, 30);
+  await pushLocalUsage({ store: asStore(bSrc), cfg, auth: bobAuth, fetch: f });
+
+  // No filter → all three.
+  expect(await fetchTeamUsage(cfg, { limit: 50 }, { fetch: f })).toHaveLength(3);
+  // Filter by tool=openai → alice's + bob's openai calls (2), no stripe.
+  const openai = await fetchTeamUsage(cfg, { tool: "openai" }, { fetch: f });
+  expect(openai).toHaveLength(2);
+  expect(openai.every((r) => r.tool === "openai")).toBe(true);
+  // Filter by member=alice → her two calls only, both attributed to her.
+  const aliceRows = await fetchTeamUsage(cfg, { member: alice.memberId }, { fetch: f });
+  expect(aliceRows).toHaveLength(2);
+  expect(aliceRows.every((r) => r.actor === alice.memberId)).toBe(true);
+  // Combined filter tool=openai + member=bob → bob's single embeddings call.
+  const bobOpenai = await fetchTeamUsage(cfg, { tool: "openai", member: bob.memberId }, { fetch: f });
+  expect(bobOpenai).toHaveLength(1);
+  expect(bobOpenai[0].path).toBe("/v1/embeddings");
 
   server.close();
 });
