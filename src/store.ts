@@ -89,6 +89,9 @@ export interface KeyView {
   source: string;
   status: string;
   created_at: string;
+  /** Team scope (M4): 'shared' | 'personal' | null (unset). Only 'shared' keys
+   *  are included in `stm teams push`. */
+  team_scope: string | null;
 }
 
 const SCHEMA = `
@@ -112,6 +115,10 @@ CREATE TABLE IF NOT EXISTS keys (
   source        TEXT NOT NULL DEFAULT 'manual',
   status        TEXT NOT NULL DEFAULT 'active',
   created_at    TEXT NOT NULL,
+  -- Team scope (M4): 'shared' = included in "stm teams push"; 'personal' or
+  -- NULL (unset) = held back. Personal-by-default: a key is never shared with a
+  -- team unless explicitly marked. See STM Teams docs.
+  team_scope    TEXT,
   UNIQUE (tool_id, label)
 );
 CREATE TABLE IF NOT EXISTS policies (
@@ -278,7 +285,8 @@ export interface UsageRow {
 
 const KEY_VIEW_SELECT = `
   SELECT t.name AS tool, t.display_name AS tool_display, k.label AS label,
-         k.source AS source, k.status AS status, k.created_at AS created_at
+         k.source AS source, k.status AS status, k.created_at AS created_at,
+         k.team_scope AS team_scope
     FROM keys k JOIN tools t ON t.id = k.tool_id`;
 
 export class Store {
@@ -327,6 +335,7 @@ export class Store {
       if (cols.some((c) => c.name === column)) return;
       this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${ddl}`);
     };
+    addColumnIfMissing("keys", "team_scope", "team_scope TEXT");
     addColumnIfMissing("policies", "when_project", "when_project TEXT");
     addColumnIfMissing(
       "projects",
@@ -802,6 +811,23 @@ export class Store {
           )`,
       )
       .run(normalizeSegment(tool), normalizeSegment(label));
+    return r.changes > 0;
+  }
+
+  /**
+   * Set a key's team scope (M4): 'shared' includes it in `stm teams push`;
+   * 'personal' holds it back. Returns false if the key does not exist.
+   */
+  setKeyScope(tool: string, label: string, scope: "shared" | "personal"): boolean {
+    const r = this.db
+      .query(
+        `UPDATE keys SET team_scope = ?
+          WHERE id = (
+            SELECT k.id FROM keys k JOIN tools t ON t.id = k.tool_id
+             WHERE t.name = ? AND k.label = ?
+          )`,
+      )
+      .run(scope, normalizeSegment(tool), normalizeSegment(label));
     return r.changes > 0;
   }
 

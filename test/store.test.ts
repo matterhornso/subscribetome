@@ -32,6 +32,20 @@ afterAll(() => {
   }
 });
 
+test("team_scope: defaults to null (personal-by-default), setKeyScope flips it", () => {
+  const s = new Store(DB);
+  s.addKey({ tool: "openai", label: "scoped", value: "sk-scopetest" });
+  // A fresh key is unscoped → held back from `stm teams push` by default.
+  expect(s.viewKey("openai", "scoped")!.team_scope).toBeNull();
+  expect(s.setKeyScope("openai", "scoped", "shared")).toBe(true);
+  expect(s.viewKey("openai", "scoped")!.team_scope).toBe("shared");
+  expect(s.setKeyScope("openai", "scoped", "personal")).toBe(true);
+  expect(s.viewKey("openai", "scoped")!.team_scope).toBe("personal");
+  // A missing key can't be scoped.
+  expect(s.setKeyScope("nope", "nope", "shared")).toBe(false);
+  s.close();
+});
+
 test("recordUsage stores brokered-call metadata; listUsageForSync is cursor-paged, oldest-first", () => {
   const s = new Store(DB);
   s.recordUsage({ tool: "openai", label: "default", method: "POST", path: "/v1/chat/completions", status: 200, bytes: 1024 });

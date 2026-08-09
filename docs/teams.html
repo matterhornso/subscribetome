@@ -403,9 +403,14 @@ team creation ENABLED (admin token set)</pre>
     ciphertext blob.
   </p>
   <ul>
-    <li><b><code>stm teams push</code></b> — encrypt your local active keys with the team key and upload the blob. Unresolved-locally keys are skipped rather than uploaded as a hole.</li>
-    <li><b><code>stm teams pull</code></b> — download the blob, decrypt it locally, and add any keys you don't already have. Keys already present are left untouched.</li>
+    <li><b><code>stm teams share &lt;tool&gt;:&lt;label&gt;</code></b> / <b><code>unshare</code></b> — mark a key <b>shared</b> (goes to the team) or <b>personal</b> (kept local). Keys are <b>personal by default</b>: a credential is never shared with a team unless you say so.</li>
+    <li><b><code>stm teams push</code></b> — encrypt your <b>shared</b> keys with the team key and upload the blob; personal and unscoped keys are held back (it tells you how many, and how to share them). <code>stm teams push --all</code> shares every active key at once. Unresolved-locally keys are skipped rather than uploaded as a hole.</li>
+    <li><b><code>stm teams pull</code></b> — download the blob, decrypt it locally, and add any keys you don't already have. A pulled team key is marked shared, so re-pushing keeps sharing it. Keys already present are left untouched.</li>
   </ul>
+  <div class="callout note">
+    <div class="h">Personal by default</div>
+    <p>A key you add is <b>personal</b> until you <code>stm teams share</code> it — <code>push</code> holds back anything unscoped, so you never broadcast a credential to a team by accident. Use <code>--all</code> only when you really mean "share everything active".</p>
+  </div>
   <div class="callout note">
     <div class="h">The team key lives in your keychain</div>
     <p>On each member's machine the team key is stored in the OS keychain, never on disk in plaintext. The local
