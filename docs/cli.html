@@ -250,6 +250,12 @@
   /* typographic polish: balance multi-line headings, avoid body orphans */
   h1, h2, h3 { text-wrap:balance; }
   .lead, .prose p, .prose li { text-wrap:pretty; }
+  /* mobile: keep the nav one compact scrollable row with comfortable tap targets */
+  @media (max-width:640px){
+    .docnav { flex-wrap:nowrap; overflow-x:auto; max-width:100%; scrollbar-width:none; -webkit-overflow-scrolling:touch; }
+    .docnav::-webkit-scrollbar { display:none; }
+    .docnav a { flex:none; white-space:nowrap; padding-top:11px; padding-bottom:11px; }
+  }
 </style>
 </head>
 <body>
