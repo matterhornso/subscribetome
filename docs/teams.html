@@ -417,21 +417,25 @@ team creation ENABLED (admin token set)</pre>
     an <b>Ed25519 signing keypair</b>; their member id is <code>sha256(sealPub‖signPub)</code> truncated to 128 bits, so
     the id is self-certifying — it fingerprints both public keys at once. Enrollment seals the team key to the joiner's
     sealing key using an X25519 sealed box (ephemeral ECDH → HKDF-SHA256 → AES-256-GCM); only the joiner's private key
-    can open it.
+    can open it. The team creator shares one short <b>team-key fingerprint</b> out-of-band so the joiner can confirm it
+    received the real team key, not one a malicious server substituted.
   </p>
   <ol class="steps-num">
-    <li><b>Teammate joins</b> with the team token:<br><code>stm teams join --server https://teams.example.com --token &lt;team-token&gt;</code></li>
+    <li><b>Teammate joins</b> with the team token, recording the team-key fingerprint the creator shares out-of-band:<br><code>stm teams join --server https://teams.example.com --token &lt;team-token&gt; --fingerprint &lt;team-key-fingerprint&gt;</code></li>
     <li><b>Teammate requests enrollment</b>, publishing only their public keys:<br><code>stm teams enroll-request</code> — prints their member id for an existing member to enroll.</li>
-    <li><b>An existing member enrolls them</b>, sealing the team key to their keys:<br><code>stm teams enroll &lt;member-id&gt;</code> — the CLI verifies the fetched key set matches the member id <em>before</em> sealing, so the team key is never sealed to a substituted key.</li>
-    <li><b>Teammate accepts</b>, unwrapping the sealed team key locally into their keychain:<br><code>stm teams accept</code></li>
+    <li><b>An existing member enrolls them</b>, sealing the team key to their keys:<br><code>stm teams enroll &lt;member-id&gt;</code> — the CLI verifies the fetched key set matches the member id <em>before</em> sealing, and prints the team-key fingerprint to pass to the joiner out-of-band.</li>
+    <li><b>Teammate accepts</b>, unwrapping the sealed team key and <em>verifying it against the fingerprint</em> before it touches the keychain:<br><code>stm teams accept</code> (or <code>stm teams accept --fingerprint &lt;fp&gt;</code>). Accept <b>refuses</b> if the unwrapped key does not match the fingerprint, or if no fingerprint is available — pass <code>--unverified</code> only if you knowingly accept the risk.</li>
     <li><b>Teammate pulls</b> the vault:<br><code>stm teams pull</code></li>
   </ol>
   <p>Use <code>stm teams members</code> to list members and their enrollment status. (A shared-passphrase path exists via <code>stm teams passphrase</code> for setups that prefer it, but public-key enrollment is the recommended flow — nothing secret crosses the wire.)</p>
   <div class="callout note">
-    <div class="h">Why the id binds both keys</div>
-    <p>Because the member id fingerprints the sealing <em>and</em> signing key together, a server or man-in-the-middle
-    cannot swap one key for its own without changing the id — which the enrolling member checks before sealing. The same
-    binding is what makes audit attribution unforgeable.</p>
+    <div class="h">Key-substitution defense runs both ways</div>
+    <p>The member id fingerprints the sealing <em>and</em> signing key together, so a server or man-in-the-middle
+    cannot swap one key for its own without changing the id — which the enrolling member checks before sealing (and the
+    same binding makes audit attribution unforgeable). In the other direction, an active malicious server could seal a
+    key <em>it</em> chose to a member's real public key, and the sealed box would open cleanly. That is why
+    <code>accept</code> verifies the unwrapped team key against the out-of-band <b>team-key fingerprint</b> and refuses
+    on a mismatch — a substituted key is caught before anything is ever pushed under it.</p>
   </div>
 
   <h2 id="audit">Signed audit <em>attribution</em><a class="anchor" href="#audit" aria-label="Link to this section">#</a></h2>

@@ -110,6 +110,23 @@ const SEC_HEADERS: Record<string, string> = {
   "Cache-Control": "no-store",
 };
 
+// CSP for the dashboard document. The page is fully self-contained (inline
+// <style>/<script>, no external assets, fetch only to same-origin /api), so a
+// strict policy fits: `default-src 'none'` plus `connect-src 'self'` means even
+// if a rendered value ever escaped its `esc()`, injected script could not beacon
+// a key out to another origin. 'unsafe-inline' is required because the page is
+// inline-by-design (no build step to hash/nonce); the exfil channels are what
+// this closes. Loopback + token still gate reaching the page at all.
+const DASHBOARD_CSP =
+  "default-src 'none'; " +
+  "script-src 'unsafe-inline'; " +
+  "style-src 'unsafe-inline'; " +
+  "img-src 'self' data:; " +
+  "connect-src 'self'; " +
+  "base-uri 'none'; " +
+  "form-action 'none'; " +
+  "frame-ancestors 'none'";
+
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
     status,
@@ -605,7 +622,11 @@ export async function runDaemon(): Promise<void> {
           );
         }
         return new Response(dashboardHTML(), {
-          headers: { "content-type": "text/html; charset=utf-8", ...SEC_HEADERS },
+          headers: {
+            "content-type": "text/html; charset=utf-8",
+            "Content-Security-Policy": DASHBOARD_CSP,
+            ...SEC_HEADERS,
+          },
         });
       }
       if (path.startsWith("/api/")) {

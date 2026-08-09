@@ -54,6 +54,17 @@ async function run() {
     record("DNS rebind defense (bogus Host) → 403", r.status === 403, `got ${r.status}`);
   }
 
+  // 1e. Dashboard document carries a locked-down CSP (no off-origin exfil path).
+  {
+    const r = await fetch(`http://127.0.0.1:${PORT}/?token=${TOKEN}`);
+    const csp = r.headers.get("content-security-policy") || "";
+    const ok =
+      csp.includes("default-src 'none'") &&
+      csp.includes("connect-src 'self'") &&
+      !/connect-src[^;]*\*/.test(csp);
+    record("Dashboard sets a strict CSP (connect-src self)", ok, `got "${csp}"`);
+  }
+
   // ─── 2. Browser-level checks ────────────────────────────────────────────
   process.stdout.write("\nBrowser / UX:\n");
 

@@ -5,6 +5,44 @@ change behaviour. Format follows [Keep a Changelog](https://keepachangelog.com).
 
 ## [Unreleased]
 
+### Added
+
+- **Per-member signing identity + verified usage attribution (Teams M1).** Each
+  member now has an Ed25519 signing keypair, and the member id fingerprints both
+  the sealing (X25519) and signing keys at 128 bits. `POST /v1/audit` requires a
+  request signature (canonical `method\npath\nts\nnonce\nsha256(body)`, ±5-minute
+  window, replay-nonce cache) and stamps the **verified** member id, so a client
+  cannot forge which member used a key. (#24)
+- **Animated boot loader on the dashboard.** While the first `/api/inventory`
+  fetch is in flight, the dashboard shows a self-contained canvas "thinking orb"
+  (a dependency-free, no-build vanilla port of the searching/globe mode) that
+  dismisses once data loads. Respects `prefers-reduced-motion`. (#26)
+
+### Security
+
+- **Teams enrollment authenticity — `accept` verifies the key it unwraps.** An
+  active malicious server could seal a key *it* chose to a member's real public
+  key (sealing needs only the public key); the sealed box opens cleanly, and the
+  member's next `push` would then encrypt under a server-known key. `stm teams
+  accept` now verifies the unwrapped team key against an out-of-band **team-key
+  fingerprint** (domain-separated SHA-256; printed by `init`/`enroll`, recorded
+  at `join`), refusing on a mismatch and refusing when no fingerprint is
+  available unless `--unverified` is passed. (#25)
+- **Defense-in-depth hardening.** The replay-nonce cache is hard-bounded (prune
+  expired, then cap by oldest); the broker now scrubs the form-urlencoded (`+`)
+  key form and response header *names*, not just values; a dashboard single-sided
+  fallback path is escaped. (#25)
+- **Content-Security-Policy on the dashboard document.** A strict policy
+  (`default-src 'none'`; `connect-src`/`img-src` limited to `self`) means that
+  even if a rendered value ever escaped its `esc()`, injected script would have no
+  channel to beacon a key off-origin. The page stays loopback- and token-gated.
+
+### Docs
+
+- Document the out-of-band team-key fingerprint step in the Teams enrollment
+  guide (`docs/teams.html`): `--fingerprint` on `join`/`accept`, and why the
+  key-substitution defense runs in both directions.
+
 ## [1.2.0] - 2026-08-03
 
 The platform release. STM grows from a personal key manager into an API-security
