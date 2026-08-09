@@ -32,6 +32,32 @@ afterAll(() => {
   }
 });
 
+test("recordUsage stores brokered-call metadata; listUsageForSync is cursor-paged, oldest-first", () => {
+  const s = new Store(DB);
+  s.recordUsage({ tool: "openai", label: "default", method: "POST", path: "/v1/chat/completions", status: 200, bytes: 1024 });
+  s.recordUsage({ tool: "anthropic", label: "default", method: "POST", path: "/v1/messages", status: 429, bytes: 88 });
+
+  const all = s.listUsageForSync(0, 10);
+  expect(all).toHaveLength(2);
+  // Oldest-first, ascending ids — the sync order.
+  expect(all[0].tool).toBe("openai");
+  expect(all[0].id).toBeLessThan(all[1].id);
+  expect(all[0].method).toBe("POST");
+  expect(all[0].path).toBe("/v1/chat/completions");
+  expect(all[0].status).toBe(200);
+  expect(all[0].bytes).toBe(1024);
+
+  // Cursor advances: nothing newer than the last id.
+  expect(s.listUsageForSync(all[1].id, 10)).toHaveLength(0);
+  // A new call shows up past the cursor.
+  s.recordUsage({ tool: "stripe", label: "default", method: "GET", path: "/v1/charges", status: 200 });
+  const next = s.listUsageForSync(all[1].id, 10);
+  expect(next).toHaveLength(1);
+  expect(next[0].tool).toBe("stripe");
+  expect(next[0].bytes).toBeNull(); // unspecified → null, not 0
+  s.close();
+});
+
 test("upsertTool inserts then updates without clobbering", () => {
   const s = new Store(DB);
   const t = s.upsertTool({ name: "OpenAI", displayName: "OpenAI", monthlyCost: 20 });

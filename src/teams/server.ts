@@ -48,6 +48,19 @@ CREATE TABLE IF NOT EXISTS team_audit (
   detail   TEXT
 );
 CREATE INDEX IF NOT EXISTS team_audit_idx ON team_audit(team_id, id DESC);
+CREATE TABLE IF NOT EXISTS team_usage (
+  id       INTEGER PRIMARY KEY AUTOINCREMENT,
+  team_id  INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+  ts       TEXT NOT NULL,
+  actor    TEXT,            -- VERIFIED member id (stamped server-side)
+  tool     TEXT NOT NULL,   -- provider id, e.g. openai
+  label    TEXT NOT NULL,   -- credential label, e.g. default
+  method   TEXT,            -- HTTP method of the brokered call
+  path     TEXT,            -- upstream request path (key already stripped)
+  status   INTEGER,         -- HTTP status returned, or 0 on transport error
+  bytes    INTEGER          -- response size; null if unknown
+);
+CREATE INDEX IF NOT EXISTS team_usage_idx ON team_usage(team_id, id DESC);
 CREATE TABLE IF NOT EXISTS members (
   team_id     INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
   member_id   TEXT NOT NULL,
@@ -67,6 +80,7 @@ const MAX_REQUEST_BODY = 12 * 1024 * 1024;
 /** Per-endpoint bounds so audit/members can't fill the disk or OOM the host. */
 const MAX_AUDIT_ROWS_PER_REQUEST = 1000;
 const MAX_AUDIT_FIELD = 8192; // event / actor / detail / ts
+const MAX_USAGE_FIELD = 512; // tool / label / method / path / ts — metadata only
 const MAX_PUBKEY_CHARS = 2048; // SPKI X25519 base64 is ~60 chars; generous
 const MAX_ENVELOPE_CHARS = 65536; // sealed JSON envelope
 
@@ -220,6 +234,61 @@ export class TeamServerStore {
       .all(teamId, limit) as any[];
   }
 
+  /** Append signed usage records (one per brokered call), all attributed to the
+   *  VERIFIED `actor` the handler derived from the signature. Metadata only —
+   *  never a key, request body, or response body. Fields are clipped and rows
+   *  capped so one report can't flood the table. */
+  appendUsage(
+    teamId: number,
+    actor: string,
+    rows: {
+      ts?: string; tool: string; label: string;
+      method?: string; path?: string; status?: number; bytes?: number;
+    }[],
+  ): number {
+    const insert = this.db.query(
+      `INSERT INTO team_usage (team_id, ts, actor, tool, label, method, path, status, bytes)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    );
+    const clip = (s: unknown): string | null =>
+      typeof s === "string" ? s.slice(0, MAX_USAGE_FIELD) : null;
+    const num = (n: unknown): number | null =>
+      typeof n === "number" && Number.isFinite(n) ? Math.trunc(n) : null;
+    let n = 0;
+    const tx = this.db.transaction((rs: typeof rows) => {
+      for (const r of rs.slice(0, MAX_AUDIT_ROWS_PER_REQUEST)) {
+        // tool + label are the minimum that makes a usage record meaningful.
+        if (!r || typeof r.tool !== "string" || !r.tool || typeof r.label !== "string" || !r.label) continue;
+        insert.run(
+          teamId,
+          clip(r.ts) ?? new Date().toISOString(),
+          actor,
+          clip(r.tool)!,
+          clip(r.label)!,
+          clip(r.method),
+          clip(r.path),
+          num(r.status),
+          num(r.bytes),
+        );
+        n++;
+      }
+    });
+    tx(rows);
+    return n;
+  }
+
+  listUsage(
+    teamId: number,
+    limit: number,
+  ): { ts: string; actor: string | null; tool: string; label: string; method: string | null; path: string | null; status: number | null; bytes: number | null }[] {
+    return this.db
+      .query(
+        `SELECT ts, actor, tool, label, method, path, status, bytes FROM team_usage
+          WHERE team_id = ? ORDER BY id DESC LIMIT ?`,
+      )
+      .all(teamId, limit) as any[];
+  }
+
   /** Register (or refresh) a member's sealing + signing public keys. Leaves any
    *  existing sealed envelope intact; a brand-new member starts pending. */
   registerMember(teamId: number, memberId: string, sealPubkey: string, signPubkey: string): void {
@@ -367,6 +436,7 @@ export function makeTeamServerHandler(
     if (
       path.startsWith("/v1/vault") ||
       path.startsWith("/v1/audit") ||
+      path.startsWith("/v1/usage") ||
       path.startsWith("/v1/members")
     ) {
       if (!team) return json({ error: "unauthorized" }, 401);
@@ -471,6 +541,24 @@ export function makeTeamServerHandler(
       const raw = Number(url.searchParams.get("limit") ?? "100");
       const limit = Number.isFinite(raw) ? Math.max(1, Math.min(Math.floor(raw), 1000)) : 100;
       return json({ rows: store.listAudit(team!.id, limit) });
+    }
+
+    if (path === "/v1/usage" && method === "POST") {
+      // Signed like /v1/audit: the ACTOR is the verified member, never claimed.
+      const bytes = Buffer.from(await req.arrayBuffer());
+      const actor = verifyMemberSignature(team!.id, "POST", "/v1/usage", bytes, req);
+      if (!actor) return json({ error: "a valid member signature is required (X-STM-Member/Timestamp/Nonce/Signature)" }, 401);
+      let b: any = {};
+      try { b = JSON.parse(bytes.toString("utf8") || "{}"); } catch { b = {}; }
+      const rows = Array.isArray(b?.rows) ? b.rows : [];
+      const added = store.appendUsage(team!.id, actor, rows);
+      return json({ ok: true, added, actor });
+    }
+
+    if (path === "/v1/usage" && method === "GET") {
+      const raw = Number(url.searchParams.get("limit") ?? "100");
+      const limit = Number.isFinite(raw) ? Math.max(1, Math.min(Math.floor(raw), 1000)) : 100;
+      return json({ rows: store.listUsage(team!.id, limit) });
     }
 
     return json({ error: "not found" }, 404);

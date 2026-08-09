@@ -5,6 +5,17 @@ change behaviour. Format follows [Keep a Changelog](https://keepachangelog.com).
 
 ## [Unreleased]
 
+### Added
+
+- **Signed per-member usage records (Teams M2).** Every brokered API call is now
+  recorded locally as a structured usage row (tool, label, HTTP method, upstream
+  path, status, response size — never a key, request body, or response body).
+  `stm teams usage-push` sends new rows to the team server **signed** with the
+  member's Ed25519 identity; the server stores them in a `team_usage` table
+  attributed to the **verified** member (`POST /v1/usage` refuses an unsigned or
+  mis-signed report). This is the metered, per-member counterpart to the M1 audit
+  log. Reading it back (`stm teams usage`) lands in M3.
+
 ## [1.3.0] - 2026-08-09
 
 The multi-user release. STM Teams gains **verified, per-member attribution**: each

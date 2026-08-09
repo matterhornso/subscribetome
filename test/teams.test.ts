@@ -15,6 +15,7 @@ import {
   createTeam, pushVault, pullVault, generateTeamKey,
   registerMember, listMembers, getMember, uploadEnvelope, fetchEnvelope,
   pushLocalAudit, fetchTeamAudit,
+  pushLocalUsage, fetchTeamUsage,
   teamKeyFingerprint, teamKeyMatchesFingerprint,
   type TeamConfig,
 } from "../src/teams/client.ts";
@@ -65,6 +66,16 @@ class FakeStore {
   }
   listAuditForSync(since: number, limit: number) {
     return this.auditRows.filter((r) => r.id > since).slice(0, limit);
+  }
+  private usageRows: any[] = [];
+  seedUsage(tool: string, label: string, method: string, path: string, status: number, bytes: number | null = null) {
+    this.usageRows.push({
+      id: this.usageRows.length + 1, ts: "2026-01-01T00:00:00Z",
+      tool, label, method, path, status, bytes,
+    });
+  }
+  listUsageForSync(since: number, limit: number) {
+    return this.usageRows.filter((r) => r.id > since).slice(0, limit);
   }
 }
 
@@ -372,6 +383,67 @@ test("team audit: local key-use events push once (cursor advances) and are visib
   const r3 = await pushLocalAudit({ store: asStore(src), cfg: r1.cfg, auth, fetch: f });
   expect(r3.pushed).toBe(1);
   expect((await fetchTeamAudit(r3.cfg, 10, { fetch: f }))).toHaveLength(3);
+
+  server.close();
+});
+
+test("team usage: signed brokered-call records push once (cursor advances), attributed to the verified member", async () => {
+  const server = new TeamServerStore();
+  const f = wire(server);
+  const team = await createTeam("http://s", ADMIN, "acme", { fetch: f });
+  const cfg: TeamConfig = { serverUrl: "http://s", teamToken: team.token, teamId: team.id };
+
+  const { id: alice, auth } = makeMember();
+  await register(cfg, alice, f);
+
+  const src = new FakeStore();
+  src.seedUsage("openai", "default", "POST", "/v1/chat/completions", 200, 1024);
+  src.seedUsage("anthropic", "default", "POST", "/v1/messages", 429, 88);
+
+  const r1 = await pushLocalUsage({ store: asStore(src), cfg, auth, fetch: f });
+  expect(r1.pushed).toBe(2);
+  expect(r1.cursor).toBe(2);
+
+  const rows = await fetchTeamUsage(r1.cfg, 10, { fetch: f });
+  expect(rows).toHaveLength(2);
+  // Actor is the VERIFIED member id (from the signature), never client-supplied.
+  expect(rows.every((x) => x.actor === alice.memberId)).toBe(true);
+  // Structured metadata survives the round-trip.
+  const openai = rows.find((x) => x.tool === "openai")!;
+  expect(openai.method).toBe("POST");
+  expect(openai.path).toBe("/v1/chat/completions");
+  expect(openai.status).toBe(200);
+  expect(openai.bytes).toBe(1024);
+  // Privacy invariant: NOTHING in a usage row is a key value or a body — only
+  // the metadata fields exist. Serialize the whole payload and check no secret
+  // shapes leak (there is no field that could carry one).
+  const blob = JSON.stringify(rows);
+  expect(blob).not.toContain("sk-");
+  expect(Object.keys(openai).sort()).toEqual(
+    ["actor", "bytes", "label", "method", "path", "status", "tool", "ts"].sort(),
+  );
+
+  // Idempotent: re-push with the advanced cursor sends nothing.
+  const r2 = await pushLocalUsage({ store: asStore(src), cfg: r1.cfg, auth, fetch: f });
+  expect(r2.pushed).toBe(0);
+
+  server.close();
+});
+
+test("usage POST without a valid member signature is rejected (no unattributed usage)", async () => {
+  const server = new TeamServerStore();
+  const f = wire(server);
+  const team = await createTeam("http://s", ADMIN, "acme", { fetch: f });
+  const body = JSON.stringify({ rows: [{ tool: "openai", label: "default", method: "GET", path: "/v1/models", status: 200 }] });
+  // Team token but NO signature headers → 401, and nothing is stored.
+  const unsigned = await f("http://s/v1/usage", {
+    method: "POST",
+    headers: { authorization: `Bearer ${team.token}`, "content-type": "application/json" },
+    body,
+  });
+  expect(unsigned.status).toBe(401);
+  const rows = (await (await f(`http://s/v1/usage?limit=10`, { headers: { authorization: `Bearer ${team.token}` } })).json()).rows;
+  expect(rows).toHaveLength(0);
 
   server.close();
 });

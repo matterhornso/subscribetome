@@ -1995,6 +1995,26 @@ async function teamsCmd(args: string[]): Promise<void> {
       }
       return;
     }
+    case "usage-push": {
+      const cfg = t.readTeamConfig();
+      if (!cfg) die("teams: not configured.");
+      const store = new Store();
+      try {
+        if (!kp.hasIdentity() || !sig.hasSigningIdentity()) {
+          die("no signing identity yet — run `stm teams enroll-request` first (usage reports are signed).");
+        }
+        const auth = {
+          memberId: kp.ensureIdentity().memberId,
+          sign: (payload: string) => sig.signWithIdentity(payload),
+        };
+        const r = await t.pushLocalUsage({ store, cfg: cfg!, auth });
+        if (r.pushed > 0) t.writeTeamConfig(r.cfg); // advance the cursor
+        out(`pushed ${r.pushed} brokered-call usage record(s) to the team log.\n`);
+      } finally {
+        store.close();
+      }
+      return;
+    }
     case "audit": {
       const cfg = t.readTeamConfig();
       if (!cfg) die("teams: not configured.");
@@ -2050,6 +2070,7 @@ async function teamsCmd(args: string[]): Promise<void> {
           `  stm teams pull                  download + decrypt + add any new keys\n` +
           `  stm teams audit-push            send local key-use events to the team log\n` +
           `  stm teams audit [--limit N]     view the team's combined key-use log\n` +
+          `  stm teams usage-push            send local brokered-call usage records to the team log\n` +
           `  stm teams status                show the configured team\n` +
           `  stm teams leave                 clear local team config + passphrase\n\n` +
           `Enrollment is public-key: the team key is sealed to each member's key and\n` +
