@@ -472,6 +472,9 @@ team creation ENABLED (admin token set)</pre>
     <li><b><code>stm teams usage-push</code></b> — send this machine's brokered-call usage records, each <b>signed with your Ed25519 key</b>. The server attributes every record to the <b>verified member id</b>; an unsigned report is refused.</li>
     <li><b><code>stm teams usage</code></b> — read the team's usage log. Narrow it with <code>--tool &lt;tool&gt;</code> or <code>--member &lt;id&gt;</code>, cap it with <code>--limit N</code>, or pass <code>--summary</code> to aggregate calls per member and per key.</li>
   </ul>
+  <p>The local dashboard also has a read-only <b>Teams</b> tab that shows the teams this machine belongs to, the current
+  team's members, and this same usage log — the daemon fetches team data server-side, so the browser only ever talks to
+  your own loopback.</p>
 
   <h2 id="limits">Honest <em>limits</em><a class="anchor" href="#limits" aria-label="Link to this section">#</a></h2>
   <div class="callout warn">

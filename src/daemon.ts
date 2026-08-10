@@ -22,6 +22,8 @@ import { findExact } from "./grammar.ts";
 import { syncAll, syncProvider } from "./sync.ts";
 import { listProviderIds } from "./providers/index.ts";
 import { listSupportedAgents } from "./agents/codex.ts";
+import * as teamsClient from "./teams/client.ts";
+import { hasIdentity as teamHasIdentity, ensureIdentity as teamEnsureIdentity } from "./teams/keypair.ts";
 
 interface DaemonInfo {
   port: number;
@@ -493,6 +495,52 @@ async function apiRoute(path: string, req: Request, store: Store): Promise<Respo
     }
     const results = await syncAll({ store });
     return json({ results });
+  }
+
+  // ---- Teams dashboard view (read-only) ----------------------------------
+  // Local, fast: which teams this machine is in + the current team's status.
+  if (path === "/api/teams" && req.method === "GET") {
+    const teams = teamsClient.listTeams();
+    const cfg = teamsClient.readTeamConfig();
+    let current: unknown = null;
+    if (cfg) {
+      current = {
+        name: (cfg as any).name ?? null,
+        serverUrl: cfg.serverUrl,
+        teamName: cfg.teamName ?? null,
+        teamId: cfg.teamId ?? null,
+        hasPassphrase: teamsClient.getTeamPassphrase() != null,
+        // Read the member id only if an identity already exists — never generate
+        // one from a dashboard GET.
+        memberId: teamHasIdentity() ? teamEnsureIdentity().memberId : null,
+      };
+    }
+    return json({ configured: teams.length > 0, teams, current });
+  }
+  // Remote: fetched from the team server with the stored bearer token. These can
+  // fail (server down / behind TLS) — return a 502 with the message, never throw.
+  if (path === "/api/teams/members" && req.method === "GET") {
+    const u = new URL(req.url);
+    const cfg = teamsClient.readTeamConfig(u.searchParams.get("team") ?? undefined);
+    if (!cfg) return json({ error: "no team configured" }, 400);
+    try {
+      return json({ members: await teamsClient.listMembers(cfg) });
+    } catch (e: any) {
+      return json({ error: e?.message ?? String(e) }, 502);
+    }
+  }
+  if (path === "/api/teams/usage" && req.method === "GET") {
+    const u = new URL(req.url);
+    const cfg = teamsClient.readTeamConfig(u.searchParams.get("team") ?? undefined);
+    if (!cfg) return json({ error: "no team configured" }, 400);
+    const limit = Math.max(1, Math.min(Number(u.searchParams.get("limit") ?? "100") || 100, 500));
+    const tool = u.searchParams.get("tool") ?? undefined;
+    const member = u.searchParams.get("member") ?? undefined;
+    try {
+      return json({ rows: await teamsClient.fetchTeamUsage(cfg, { limit, tool, member }) });
+    } catch (e: any) {
+      return json({ error: e?.message ?? String(e) }, 502);
+    }
   }
 
   return json({ error: "not found" }, 404);
