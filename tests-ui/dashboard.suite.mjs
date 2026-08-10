@@ -163,7 +163,8 @@ async function run() {
     });
     record("Teams tab renders (onboarding when no team)", teamsShown && onboarded);
   }
-  await page.click('button.tab[data-tab="keys"]'); // restore
+  // Restore the Projects tab — the checks below operate on its panel.
+  await page.click('button.tab[data-tab="projects"]');
   await page.waitForTimeout(150);
 
   // 2e. Projects row layout — Enforce toggle exists and is NOT overlapping
