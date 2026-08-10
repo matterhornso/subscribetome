@@ -196,6 +196,16 @@ async function apiRoute(path: string, req: Request, store: Store): Promise<Respo
       ? json({ ok: true })
       : json({ error: "no such key" }, 404);
   }
+  // Set a key's team scope (M4 shared/personal) from the dashboard Teams view.
+  if (path === "/api/keys/scope" && req.method === "POST") {
+    const b: any = await req.json().catch(() => ({}));
+    if (b?.scope !== "shared" && b?.scope !== "personal") {
+      return json({ error: "scope must be 'shared' or 'personal'" }, 400);
+    }
+    return store.setKeyScope(b.tool, b.label, b.scope)
+      ? json({ ok: true })
+      : json({ error: "no such key" }, 404);
+  }
   if (path === "/api/tools/subscription" && req.method === "POST") {
     const b: any = await req.json().catch(() => ({}));
     if (!b.tool) return json({ error: "tool is required" }, 400);
