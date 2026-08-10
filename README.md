@@ -64,6 +64,8 @@ stm teams usage         who used which key, cryptographically attributed
 
 A machine can belong to several teams at once (`stm teams list` / `use <name>`), and the dashboard has a read-only **Teams** tab that shows members and the signed usage log.
 
+![The dashboard's Teams tab — the teams this machine is in, members and enrollment, and the signed usage log: who used which key, cryptographically attributed, never a key value](docs/screenshots/teams.png)
+
 ---
 
 ## What it is
