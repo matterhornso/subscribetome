@@ -5,6 +5,19 @@ change behaviour. Format follows [Keep a Changelog](https://keepachangelog.com).
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-08-10
+
+The multi-team release. STM Teams completes its multi-user line: brokered API
+calls are recorded as **signed, per-member usage records** and queryable with
+`stm teams usage`; keys carry a **shared / personal scope** and are personal by
+default, so a credential is never shared with a team by accident; and a machine
+can now belong to **several teams at once**. This release also folds in a
+dashboard boot loader, a Content-Security-Policy on the dashboard, the
+team-key-enrollment authenticity fix, and documentation polish. The individual,
+local workflow is unchanged and fully backward compatible; existing team config
+migrates automatically. Scope is unchanged (macOS + Claude Code; other platforms
+experimental).
+
 ### Added
 
 - **Multi-team membership (Teams M4b).** A machine can now belong to several
