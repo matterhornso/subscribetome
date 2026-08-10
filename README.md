@@ -76,4 +76,22 @@ A machine can belong to several teams at once (`stm teams list` / `use <name>`),
 
 ---
 
-**More:** [`DOCS.md`](./DOCS.md) — every command, the security model, the broker, Teams, and the Codex surface · [docs site](https://subscribetome.pro/docs.html) · [`SECURITY.md`](./SECURITY.md) — the threat model + how to report a vulnerability · [`CHANGELOG.md`](./CHANGELOG.md) · [`CONTRIBUTING.md`](./CONTRIBUTING.md) · MIT licensed
+**More:** [`DOCS.md`](./DOCS.md) — every command, the security model, the broker, Teams, and the Codex surface · [docs site](https://subscribetome.pro/docs.html) · [`SECURITY.md`](./SECURITY.md) — the threat model + how to report a vulnerability · [`CHANGELOG.md`](./CHANGELOG.md) · MIT licensed
+
+**Contributing & community:** [`CONTRIBUTING.md`](./CONTRIBUTING.md) · [`CODE_OF_CONDUCT.md`](./CODE_OF_CONDUCT.md) · found a security issue? see [`SECURITY.md`](./SECURITY.md) (please don't open a public issue)
+
+<details>
+<summary><b>Install instructions for the AI agent</b></summary>
+
+Claude Code reads this when a user pastes the install prompt above. Humans can skip.
+
+Do these steps in order. **Never ask the user for an API key. Never run a command that contains a real key. Never add a key yourself** — key entry is out-of-band by design.
+
+1. **Check the OS.** Run `uname` (or `ver` on Windows). This beta is supported on **macOS**; Linux and Windows are experimental — on native Windows (no WSL/git-bash) the Bash hook may not fire, so tell a Windows user this is experimental before continuing.
+2. **Check Bun.** Run `bun --version`. If that fails, install Bun with `curl -fsSL https://bun.sh/install | bash` (or `brew install bun` on macOS with Homebrew), then re-check.
+3. **Add the marketplace:** `claude plugin marketplace add matterhornso/subscribetome`
+4. **Install the plugin:** `claude plugin install stm@subscribetome`
+5. **Tell the user**, in your own words: subscribetome is installed; they need to quit and reopen Claude Code to activate it; then run `/stm:dashboard` and add API keys in the web page that opens — the keys go straight to their OS keychain and the AI will never see them.
+6. **Stop here.** Do not add keys. Do not ask the user to paste a key. Setup is complete.
+
+</details>
