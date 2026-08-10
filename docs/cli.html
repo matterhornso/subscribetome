@@ -410,7 +410,8 @@
       <tr><td class="cmd"><code>stm teams enroll &lt;member-id&gt;</code></td><td>(Existing member) seal the team key to a joiner's key. The CLI verifies the key set matches the id before sealing.</td></tr>
       <tr><td class="cmd"><code>stm teams accept</code></td><td>Unwrap the sealed team key locally into your keychain.</td></tr>
       <tr><td class="cmd"><code>stm teams passphrase</code></td><td>Set the team passphrase directly (the shared-passphrase alternative to public-key enrollment).</td></tr>
-      <tr><td class="cmd"><code>stm teams push</code></td><td>Encrypt local active keys with the team key and upload the vault blob.</td></tr>
+      <tr><td class="cmd"><code>stm teams share &lt;tool&gt;:&lt;label&gt;</code></td><td>Mark a key shared (included in push) or, with <code>unshare</code>, personal. Keys are personal by default.</td></tr>
+      <tr><td class="cmd"><code>stm teams push</code></td><td>Encrypt <b>shared</b> keys with the team key and upload the vault blob; personal/unscoped keys are held back. <code>--all</code> shares every active key.</td></tr>
       <tr><td class="cmd"><code>stm teams pull</code></td><td>Download the vault, decrypt locally, and add new keys.</td></tr>
       <tr><td class="cmd"><code>stm teams audit-push</code></td><td>Send local key-use events (placeholder commands only), signed with your Ed25519 key.</td></tr>
       <tr><td class="cmd"><code>stm teams audit</code></td><td>Show the combined team log, attributed to the verified member.</td></tr>

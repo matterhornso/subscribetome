@@ -1955,13 +1955,22 @@ async function teamsCmd(args: string[]): Promise<void> {
       const store = new Store();
       try {
         if (sub === "push") {
+          const shareAll = rest.includes("--all");
           const r = await t.pushVault({
             store,
             cfg: cfg!,
             passphrase: pass!,
             actor: process.env.USER || "member",
+            all: shareAll,
           });
-          out(`pushed ${r.keyCount} key(s) as vault version ${r.version}.\n`);
+          out(`pushed ${r.keyCount} shared key(s) as vault version ${r.version}.\n`);
+          if (r.heldBack > 0) {
+            out(
+              `held back ${r.heldBack} personal/unscoped key(s) — keys are personal by default.\n` +
+                `  share one:  stm teams share <tool>:<label>\n` +
+                `  share all:  stm teams push --all\n`,
+            );
+          }
         } else {
           const r = await t.pullVault({ store, cfg: cfg!, passphrase: pass! });
           out(
@@ -1970,6 +1979,28 @@ async function teamsCmd(args: string[]): Promise<void> {
               : `pulled vault v${r.version}: added ${r.added}, skipped ${r.skipped} (already present).\n`,
           );
         }
+      } finally {
+        store.close();
+      }
+      return;
+    }
+    case "share":
+    case "unshare": {
+      const spec = rest[0];
+      const idx = spec ? spec.indexOf(":") : -1;
+      if (idx <= 0) die(`usage: stm teams ${sub} <tool>:<label>   (e.g. stm teams ${sub} openai:default)`);
+      const tool = spec.slice(0, idx);
+      const label = spec.slice(idx + 1);
+      const scope = sub === "share" ? "shared" : "personal";
+      const store = new Store();
+      try {
+        if (!store.setKeyScope(tool, label, scope)) die(`no such key: ${tool}:${label}`);
+        out(
+          `${tool}:${label} is now ${scope} — ` +
+            (scope === "shared"
+              ? "it will be included in the next `stm teams push`.\n"
+              : "it will be held back from `stm teams push`.\n"),
+        );
       } finally {
         store.close();
       }
@@ -2103,7 +2134,9 @@ async function teamsCmd(args: string[]): Promise<void> {
           `  stm teams enroll <member-id>    seal the team key to a member (enroll them)\n` +
           `  stm teams accept                unwrap the team key sealed to you\n` +
           `  stm teams passphrase            set a shared team key manually (stdin -> keychain)\n` +
-          `  stm teams push                  encrypt local keys + upload the vault\n` +
+          `  stm teams share <tool>:<label>  mark a key SHARED (included in push)\n` +
+          `  stm teams unshare <tool>:<label> mark a key PERSONAL (held back from push)\n` +
+          `  stm teams push [--all]          encrypt + upload SHARED keys (--all: every active key)\n` +
           `  stm teams pull                  download + decrypt + add any new keys\n` +
           `  stm teams audit-push            send local key-use events to the team log\n` +
           `  stm teams audit [--limit N]     view the team's combined key-use log\n` +

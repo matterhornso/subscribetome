@@ -7,6 +7,15 @@ change behaviour. Format follows [Keep a Changelog](https://keepachangelog.com).
 
 ### Added
 
+- **Per-key shared / personal scope (Teams M4a).** Keys are now **personal by
+  default** — `stm teams push` shares only keys you explicitly mark, so a
+  credential is never broadcast to a team by accident. `stm teams share
+  <tool>:<label>` marks a key shared; `unshare` holds it back; `push` reports
+  how many keys were held back and how to share them; `stm teams push --all` is
+  the explicit "share every active key" override. A key pulled from the team
+  vault is marked shared, so re-pushing keeps sharing it. (This changes `push`'s
+  default: previously it shared every active key.)
+
 - **Signed per-member usage records (Teams M2).** Every brokered API call is now
   recorded locally as a structured usage row (tool, label, HTTP method, upstream
   path, status, response size — never a key, request body, or response body).

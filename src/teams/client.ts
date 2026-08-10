@@ -144,12 +144,19 @@ export async function pushVault(deps: {
   cfg: TeamConfig;
   passphrase: string;
   actor?: string;
+  /** Share ALL active keys, ignoring per-key scope (the explicit opt-out of
+   *  personal-by-default). Without it, only keys marked `shared` are pushed. */
+  all?: boolean;
   fetch?: Fetch;
-}): Promise<{ version: number; keyCount: number }> {
+}): Promise<{ version: number; keyCount: number; heldBack: number }> {
   const doFetch = deps.fetch ?? fetch;
   const keys: TeamVaultPayload["keys"] = [];
+  let heldBack = 0;
   for (const k of deps.store.listKeys()) {
     if (k.status !== "active") continue;
+    // Personal-by-default: an unscoped or `personal` key is NOT shared unless
+    // the caller explicitly opts into sharing everything.
+    if (!deps.all && k.team_scope !== "shared") { heldBack++; continue; }
     const value = deps.store.resolve(k.tool, k.label);
     if (value == null) continue; // unresolved locally — skip rather than push a hole
     keys.push({ tool: k.tool, label: k.label, value });
@@ -171,7 +178,7 @@ export async function pushVault(deps: {
   });
   if (!r.ok) throw new Error(`push failed: HTTP ${r.status} ${await safeText(r)}`);
   const { version } = (await r.json()) as { version: number };
-  return { version, keyCount: keys.length };
+  return { version, keyCount: keys.length, heldBack };
 }
 
 /**
@@ -210,6 +217,10 @@ export async function pullVault(deps: {
     }
     try {
       deps.store.addKey({ tool: k.tool, label: k.label, value: k.value, source: "team" });
+      // A key received from the team vault is inherently shared — mark it so a
+      // later `push` keeps sharing it (personal-by-default only holds back keys
+      // the member never chose to share).
+      deps.store.setKeyScope(k.tool, k.label, "shared");
       added++;
     } catch {
       skipped++; // already present (UNIQUE) or invalid — leave the local copy alone

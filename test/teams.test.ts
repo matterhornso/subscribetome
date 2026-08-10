@@ -35,14 +35,16 @@ function wire(store: TeamServerStore) {
 /** Minimal in-memory stand-in for Store — just what the client touches. */
 class FakeStore {
   private vals = new Map<string, string>();
-  private meta: { tool: string; label: string; status: string }[] = [];
-  seed(tool: string, label: string, value: string) {
+  private meta: { tool: string; label: string; status: string; team_scope: string | null }[] = [];
+  /** seed a key; `scope` defaults to 'shared' so existing vault tests (which
+   *  seed keys meaning to share them) keep working under personal-by-default. */
+  seed(tool: string, label: string, value: string, scope: string | null = "shared") {
     this.vals.set(`${tool}:${label}`, value);
-    this.meta.push({ tool, label, status: "active" });
+    this.meta.push({ tool, label, status: "active", team_scope: scope });
   }
   listKeys() {
     return this.meta.map((m) => ({
-      tool: m.tool, label: m.label, status: m.status,
+      tool: m.tool, label: m.label, status: m.status, team_scope: m.team_scope,
       tool_display: m.tool, placeholder: `{{stm:${m.tool}:${m.label}}}`,
       source: "manual", created_at: "",
     }));
@@ -50,11 +52,17 @@ class FakeStore {
   resolve(tool: string, label: string) {
     return this.vals.get(`${tool}:${label}`) ?? null;
   }
+  setKeyScope(tool: string, label: string, scope: "shared" | "personal") {
+    const m = this.meta.find((x) => x.tool === tool && x.label === label);
+    if (!m) return false;
+    m.team_scope = scope;
+    return true;
+  }
   addKey({ tool, label, value }: { tool: string; label: string; value: string }) {
     const k = `${tool}:${label}`;
     if (this.vals.has(k)) throw new Error("already exists");
     this.vals.set(k, value);
-    this.meta.push({ tool, label, status: "active" });
+    this.meta.push({ tool, label, status: "active", team_scope: null });
     return { placeholder: `{{stm:${tool}:${label}}}` };
   }
   private auditRows: any[] = [];
@@ -182,6 +190,45 @@ test("pull with the wrong passphrase fails loudly, adds nothing", async () => {
     pullVault({ store: asStore(dst), cfg, passphrase: "wrong", fetch: f }),
   ).rejects.toThrow(/passphrase/);
   expect(dst.listKeys()).toHaveLength(0);
+  server.close();
+});
+
+test("key scope: personal-by-default holds keys back; share includes them; --all overrides", async () => {
+  const server = new TeamServerStore();
+  const f = wire(server);
+  const team = await createTeam("http://s", ADMIN, "acme", { fetch: f });
+  const cfg: TeamConfig = { serverUrl: "http://s", teamToken: team.token, teamId: team.id };
+
+  const src = new FakeStore();
+  src.seed("openai", "default", "sk-team-shared", "shared");
+  src.seed("mytool", "default", "sk-my-personal", "personal");
+  src.seed("draft", "default", "sk-unscoped", null); // never scoped
+
+  // Default push shares ONLY the 'shared' key; personal + unscoped are held back.
+  const r1 = await pushVault({ store: asStore(src), cfg, passphrase: "pw", fetch: f });
+  expect(r1.keyCount).toBe(1);
+  expect(r1.heldBack).toBe(2);
+
+  // A teammate pulls: they receive exactly the one shared key, nothing personal.
+  const dst = new FakeStore();
+  const p1 = await pullVault({ store: asStore(dst), cfg, passphrase: "pw", fetch: f });
+  expect(p1.added).toBe(1);
+  expect(dst.resolve("openai", "default")).toBe("sk-team-shared");
+  expect(dst.resolve("mytool", "default")).toBeNull();
+  // A pulled team key is marked shared locally, so re-push keeps sharing it.
+  expect(dst.listKeys().find((k) => k.tool === "openai")!.team_scope).toBe("shared");
+
+  // Explicitly sharing the unscoped key includes it on the next push.
+  src.setKeyScope("draft", "default", "shared");
+  const r2 = await pushVault({ store: asStore(src), cfg, passphrase: "pw", fetch: f });
+  expect(r2.keyCount).toBe(2);
+  expect(r2.heldBack).toBe(1); // only the explicitly-personal key now
+
+  // --all overrides scope entirely and pushes every active key.
+  const r3 = await pushVault({ store: asStore(src), cfg, passphrase: "pw", all: true, fetch: f });
+  expect(r3.keyCount).toBe(3);
+  expect(r3.heldBack).toBe(0);
+
   server.close();
 });
 
