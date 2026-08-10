@@ -5,6 +5,18 @@ change behaviour. Format follows [Keep a Changelog](https://keepachangelog.com).
 
 ## [Unreleased]
 
+### Added
+
+- **Teams dashboard view.** The local dashboard gains a read-only **Teams** tab:
+  the teams this machine belongs to (current-flagged), the current team's members
+  and enrollment status, and the signed **usage log** — "who used which key",
+  cryptographically attributed, never a key value. Team data is fetched
+  server-side by the daemon (`/api/teams`, `/api/teams/members`,
+  `/api/teams/usage`); the browser only ever calls same-origin `/api`, so the
+  strict dashboard CSP is unaffected, and a remote-server failure degrades to a
+  clear message rather than a broken view. Teams are still created and managed
+  from the `stm teams` CLI.
+
 ## [1.4.0] - 2026-08-10
 
 The multi-team release. STM Teams completes its multi-user line: brokered API

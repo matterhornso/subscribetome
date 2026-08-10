@@ -569,6 +569,7 @@ export function dashboardHTML(): string {
     <button class="tab active" data-tab="keys" role="tab" aria-selected="true">Keys</button>
     <button class="tab" data-tab="projects" role="tab" aria-selected="false">Projects</button>
     <button class="tab" data-tab="policy" role="tab" aria-selected="false">Policy &amp; audit</button>
+    <button class="tab" data-tab="teams" role="tab" aria-selected="false">Teams</button>
     <button class="tab" data-tab="import" role="tab" aria-selected="false">Import</button>
   </div>
 
@@ -771,6 +772,41 @@ export function dashboardHTML(): string {
     </div>
   </section>
   </div><!-- /tab-panel import -->
+
+  <div class="tab-panel" data-panel="teams" role="tabpanel">
+  <section class="card">
+    <div class="card-head">
+      <h2>Teams</h2>
+      <span class="meta">Read-only · self-hosted, zero-knowledge · managed via <code>stm teams</code></span>
+    </div>
+    <div id="teams-body">
+      <div class="empty" style="font-family:inherit">Loading team status…</div>
+    </div>
+  </section>
+
+  <section class="card" id="teams-members-card" style="display:none">
+    <div class="card-head"><h2>Members</h2><span class="meta" id="teams-members-meta">current team</span></div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Member id</th><th>Status</th></tr></thead>
+        <tbody id="teams-members"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="card" id="teams-usage-card" style="display:none">
+    <div class="card-head">
+      <h2>Usage</h2>
+      <span class="meta">who used which key, cryptographically attributed · never a key value</span>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>When</th><th>Member</th><th>Key</th><th>Call</th><th>Status</th></tr></thead>
+        <tbody id="teams-usage"></tbody>
+      </table>
+    </div>
+  </section>
+  </div><!-- /tab-panel teams -->
 </main>
 
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
@@ -1935,6 +1971,82 @@ el("projects-list").addEventListener("change",function(e){
 })();
 
 // ---- tab switching ----
+// ---- Teams view (read-only; managed via the stm teams CLI) ----
+function teamBadge(text,color){
+  return '<span style="font-size:11px;font-weight:600;letter-spacing:.3px;color:'+color+'">'+text+'</span>';
+}
+async function refreshTeams(){
+  var body=el("teams-body");
+  var mCard=el("teams-members-card"), uCard=el("teams-usage-card");
+  try{
+    var r=await api("/api/teams");
+    if(!r.configured){
+      body.innerHTML='<div class="note" style="margin:0;border-top:0;padding-top:0">'
+        +'This machine is not in a team yet. Create one with <code>stm teams init</code> or join with '
+        +'<code>stm teams join</code>, then choose what to share with <code>stm teams share</code> and '
+        +'<code>stm teams push</code>. STM Teams is self-hosted and zero-knowledge — the server only ever '
+        +'stores ciphertext it cannot read.</div>';
+      mCard.style.display="none"; uCard.style.display="none";
+      return;
+    }
+    var rows=r.teams.map(function(t){
+      return '<tr>'
+        +'<td>'+esc(t.name)+(t.current?' '+teamBadge("current","var(--primary)"):'')+'</td>'
+        +'<td>'+esc(t.teamName||"\\u2014")+'</td>'
+        +'<td class="mono">'+esc(t.serverUrl)+'</td></tr>';
+    }).join("");
+    var cur=r.current, status='';
+    if(cur){
+      status='<p class="note" style="margin:0 0 14px;border-top:0;padding-top:0">'
+        +'Current team <b>'+esc(cur.name)+'</b>'+(cur.teamName?' ("'+esc(cur.teamName)+'")':'')
+        +' · member <code>'+esc(cur.memberId||"not enrolled")+'</code>'
+        +' · team key '+(cur.hasPassphrase?teamBadge("set","var(--primary)"):teamBadge("NOT set","var(--danger)"))
+        +'</p>';
+    }
+    body.innerHTML=status
+      +'<div class="table-wrap"><table><thead><tr><th>Local name</th><th>Team</th><th>Server</th></tr></thead>'
+      +'<tbody>'+rows+'</tbody></table></div>';
+    mCard.style.display="block"; uCard.style.display="block";
+    loadTeamMembers(); loadTeamUsage();
+  }catch(e){
+    body.innerHTML='<div class="v-head" style="color:var(--danger)">Failed to load teams: '+esc(e.message)+'</div>';
+    mCard.style.display="none"; uCard.style.display="none";
+  }
+}
+async function loadTeamMembers(){
+  var tb=el("teams-members");
+  tb.innerHTML='<tr><td colspan="2" class="empty">Loading…</td></tr>';
+  try{
+    var r=await api("/api/teams/members");
+    if(!r.members||!r.members.length){ tb.innerHTML='<tr><td colspan="2" class="empty">No members yet.</td></tr>'; return; }
+    tb.innerHTML=r.members.map(function(m){
+      return '<tr><td class="mono">'+esc(m.memberId)+'</td><td>'
+        +(m.enrolled?teamBadge("enrolled","var(--primary)"):teamBadge("pending","var(--text-muted)"))
+        +'</td></tr>';
+    }).join("");
+  }catch(e){
+    tb.innerHTML='<tr><td colspan="2" class="empty">Could not reach the team server — '+esc(e.message)+'</td></tr>';
+  }
+}
+async function loadTeamUsage(){
+  var tb=el("teams-usage");
+  tb.innerHTML='<tr><td colspan="5" class="empty">Loading…</td></tr>';
+  try{
+    var r=await api("/api/teams/usage?limit=100");
+    if(!r.rows||!r.rows.length){ tb.innerHTML='<tr><td colspan="5" class="empty">No usage yet. Brokered calls appear after <code>stm teams usage-push</code>.</td></tr>'; return; }
+    tb.innerHTML=r.rows.map(function(u){
+      return '<tr>'
+        +'<td class="mono">'+esc((u.ts||"").slice(0,19))+'</td>'
+        +'<td class="mono">'+esc(u.actor||"?")+'</td>'
+        +'<td><code>'+esc(u.tool+":"+u.label)+'</code></td>'
+        +'<td class="mono">'+esc(((u.method||"")+" "+(u.path||"")).trim())+'</td>'
+        +'<td>'+(u.status==null?"\\u2014":esc(String(u.status)))+'</td></tr>';
+    }).join("");
+  }catch(e){
+    tb.innerHTML='<tr><td colspan="5" class="empty">Could not reach the team server — '+esc(e.message)+'</td></tr>';
+  }
+}
+
 function activateTab(name){
   var tabs=document.querySelectorAll(".tab");
   for(var i=0;i<tabs.length;i++){
@@ -1947,6 +2059,8 @@ function activateTab(name){
     panels[j].classList.toggle("active",panels[j].getAttribute("data-panel")===name);
   }
   try{ localStorage.setItem("stm-tab",name); }catch(e){}
+  // Lazily load the Teams view (and its remote fetches) only when opened.
+  if(name==="teams")refreshTeams();
 }
 document.querySelectorAll(".tab").forEach(function(btn){
   btn.addEventListener("click",function(){ activateTab(btn.getAttribute("data-tab")); });

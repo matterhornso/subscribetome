@@ -65,6 +65,17 @@ async function run() {
     record("Dashboard sets a strict CSP (connect-src self)", ok, `got "${csp}"`);
   }
 
+  // 1f. Teams view API: with an isolated (empty) team config → configured:false.
+  {
+    const r = await fetch(`http://127.0.0.1:${PORT}/api/teams?token=${TOKEN}`);
+    const j = await r.json().catch(() => ({}));
+    record(
+      "GET /api/teams (no team) → configured:false",
+      r.status === 200 && j.configured === false && Array.isArray(j.teams),
+      `status=${r.status} configured=${j.configured}`,
+    );
+  }
+
   // ─── 2. Browser-level checks ────────────────────────────────────────────
   process.stdout.write("\nBrowser / UX:\n");
 
@@ -136,6 +147,24 @@ async function run() {
     );
     record("Active tab survives reload", projActive);
   }
+
+  // 2d-bis. Teams tab: opening it lazily loads /api/teams and renders the
+  // onboarding state (the sandbox has no team). Guards the whole Teams view
+  // wiring (tab → fetch → render) without needing a live team server.
+  await page.click('button.tab[data-tab="teams"]');
+  await page.waitForTimeout(300);
+  {
+    const teamsShown = await page.evaluate(() =>
+      document.querySelector('.tab-panel[data-panel="teams"]').classList.contains("active"),
+    );
+    const onboarded = await page.evaluate(() => {
+      const b = document.getElementById("teams-body");
+      return !!b && /not in a team yet/i.test(b.textContent || "");
+    });
+    record("Teams tab renders (onboarding when no team)", teamsShown && onboarded);
+  }
+  await page.click('button.tab[data-tab="keys"]'); // restore
+  await page.waitForTimeout(150);
 
   // 2e. Projects row layout — Enforce toggle exists and is NOT overlapping
   //     with the Edit scope button. We assert by getBoundingClientRect:

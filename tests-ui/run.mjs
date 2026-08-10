@@ -20,8 +20,11 @@ const DB = "/tmp/stm-ui.sqlite";
 const KC = "subscribetome-ui-test";
 const URL_FILE = "/tmp/stm-ui-url.txt";
 const DESC_FILE = `${process.env.HOME}/.subscribetome/daemon.json`;
+// Isolate the team config too, so the Teams view reads a sandbox file (empty →
+// the onboarding state) instead of the developer's real ~/.subscribetome/teams.json.
+const TEAMCFG = "/tmp/stm-ui-teams.json";
 
-const ENV = { ...process.env, STM_DB: DB, STM_KEYCHAIN_SERVICE: KC };
+const ENV = { ...process.env, STM_DB: DB, STM_KEYCHAIN_SERVICE: KC, STM_TEAM_CONFIG: TEAMCFG };
 
 function cli(args, opts = {}) {
   return spawnSync("bun", [CLI, ...args], {
@@ -105,7 +108,7 @@ async function setup() {
 async function teardown() {
   process.stdout.write("\n=== teardown\n");
   cli(["stop"]);
-  for (const p of [DB, DB + "-shm", DB + "-wal", URL_FILE]) {
+  for (const p of [DB, DB + "-shm", DB + "-wal", URL_FILE, TEAMCFG]) {
     try { if (existsSync(p)) rmSync(p); } catch {}
   }
   sweepKeystore();
