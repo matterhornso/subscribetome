@@ -17,7 +17,11 @@ import { keychainGet, keychainSet, keychainDelete } from "../keychain.ts";
 import { DATA_DIR, ensureDataDir } from "../paths.ts";
 import type { Store } from "../store.ts";
 
-const TEAM_CONFIG_FILE = process.env.STM_TEAM_CONFIG || join(DATA_DIR, "teams.json");
+/** Resolved at call time (like keychainService) so STM_TEAM_CONFIG can be
+ *  overridden in tests without a module-load race. */
+function teamConfigFile(): string {
+  return process.env.STM_TEAM_CONFIG || join(DATA_DIR, "teams.json");
+}
 /** Reserved keychain ref for the team passphrase (not a normal key placeholder). */
 const TEAM_PASSPHRASE_REF = "__stm_team_passphrase__";
 /** Current team-vault payload format. */
@@ -49,38 +53,184 @@ export interface TeamVaultPayload {
   keys: { tool: string; label: string; value: string }[];
 }
 
-// ---- local config + passphrase ------------------------------------------
+// ---- local config + passphrase (multi-team, M4b) ------------------------
 
-export function readTeamConfig(): TeamConfig | null {
+/** Current teams.json container format. */
+const TEAMS_FORMAT = 2 as const;
+
+/** A locally-named team: the on-disk TeamConfig plus a stable local handle used
+ *  by `--team <name>` and `stm teams use`. */
+export interface TeamRecord extends TeamConfig {
+  name: string;
+}
+
+interface TeamsFile {
+  stmTeams: typeof TEAMS_FORMAT;
+  current: string | null;
+  teams: TeamRecord[];
+}
+
+function slug(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "team";
+}
+function uniqueName(base: string, taken: string[]): string {
+  if (!taken.includes(base)) return base;
+  let i = 2;
+  while (taken.includes(`${base}-${i}`)) i++;
+  return `${base}-${i}`;
+}
+function isTeamConfigShape(x: any): boolean {
+  return x && typeof x.serverUrl === "string" && typeof x.teamToken === "string";
+}
+
+/**
+ * Pure: normalize any parsed `teams.json` into the multi-team container.
+ * Handles three inputs — the current container, the LEGACY single-TeamConfig
+ * file (wrapped into a one-team container, made current), and empty/garbage
+ * (an empty container). Exported so the migration is unit-testable off-disk.
+ */
+export function migrateTeamsData(raw: any): TeamsFile {
+  if (raw && raw.stmTeams === TEAMS_FORMAT && Array.isArray(raw.teams)) {
+    const taken: string[] = [];
+    const teams: TeamRecord[] = [];
+    for (const t of raw.teams) {
+      if (!isTeamConfigShape(t)) continue;
+      const name = uniqueName(typeof t.name === "string" && t.name ? slug(t.name) : slug(t.teamName || "team"), taken);
+      taken.push(name);
+      teams.push({ ...t, name });
+    }
+    const current = typeof raw.current === "string" && teams.some((t) => t.name === raw.current) ? raw.current : teams[0]?.name ?? null;
+    return { stmTeams: TEAMS_FORMAT, current, teams };
+  }
+  if (isTeamConfigShape(raw)) {
+    const name = slug(raw.teamName || (raw.teamId ? `team-${raw.teamId}` : "team"));
+    return { stmTeams: TEAMS_FORMAT, current: name, teams: [{ ...raw, name }] };
+  }
+  return { stmTeams: TEAMS_FORMAT, current: null, teams: [] };
+}
+
+function readTeamsFile(): TeamsFile {
   try {
-    const cfg = JSON.parse(readFileSync(TEAM_CONFIG_FILE, "utf8")) as TeamConfig;
-    if (cfg && typeof cfg.serverUrl === "string" && typeof cfg.teamToken === "string") return cfg;
-    return null;
+    return migrateTeamsData(JSON.parse(readFileSync(teamConfigFile(), "utf8")));
   } catch {
-    return null;
+    return { stmTeams: TEAMS_FORMAT, current: null, teams: [] };
   }
 }
 
-export function writeTeamConfig(cfg: TeamConfig): void {
+function writeTeamsFile(f: TeamsFile): void {
   ensureDataDir();
-  // Unlink then write with mode 0600 so the file is 0600 from creation (umask
-  // only clears bits). The dir is 0700, so there is no readable window; the file
-  // holds only the shareable team bearer token, never the team key.
-  try { unlinkSync(TEAM_CONFIG_FILE); } catch { /* absent */ }
-  writeFileSync(TEAM_CONFIG_FILE, JSON.stringify(cfg, null, 2), { mode: 0o600 });
-  try { chmodSync(TEAM_CONFIG_FILE, 0o600); } catch { /* non-POSIX */ }
+  // Unlink then write 0600 (umask only clears bits). The dir is 0700, so there
+  // is no readable window; the file holds only shareable bearer tokens, never a
+  // team key.
+  try { unlinkSync(teamConfigFile()); } catch { /* absent */ }
+  writeFileSync(teamConfigFile(), JSON.stringify(f, null, 2), { mode: 0o600 });
+  try { chmodSync(teamConfigFile(), 0o600); } catch { /* non-POSIX */ }
+}
+
+/** The active team (or a named one). Returns a TeamRecord (carries `.name`). */
+export function readTeamConfig(handle?: string): TeamConfig | null {
+  const f = readTeamsFile();
+  const name = handle ?? f.current;
+  const rec = f.teams.find((t) => t.name === name) ?? (handle == null ? f.teams[0] : undefined);
+  return rec ?? null;
+}
+
+/** Upsert a team record (by its `.name`, or an explicit handle). Used both to
+ *  add a team and to persist cursor/fingerprint updates for an existing one. */
+export function writeTeamConfig(cfg: TeamConfig, handle?: string): void {
+  const f = readTeamsFile();
+  const name = handle ?? (cfg as TeamRecord).name ?? f.current ?? uniqueName(slug(cfg.teamName || "team"), f.teams.map((t) => t.name));
+  const rec: TeamRecord = { ...(cfg as any), name };
+  const idx = f.teams.findIndex((t) => t.name === name);
+  if (idx >= 0) f.teams[idx] = rec;
+  else f.teams.push(rec);
+  if (f.current == null) f.current = name;
+  writeTeamsFile(f);
 }
 
 export function teamConfigured(): boolean {
-  return existsSync(TEAM_CONFIG_FILE) && readTeamConfig() != null;
+  return readTeamsFile().teams.length > 0;
 }
 
-/** Store the team passphrase in the OS keychain (never on disk in plaintext). */
-export function setTeamPassphrase(passphrase: string): void {
-  keychainSet(TEAM_PASSPHRASE_REF, passphrase);
+/** All teams this machine belongs to, current-flagged. */
+export function listTeams(): { name: string; current: boolean; serverUrl: string; teamName?: string; teamId?: number }[] {
+  const f = readTeamsFile();
+  return f.teams.map((t) => ({ name: t.name, current: t.name === f.current, serverUrl: t.serverUrl, teamName: t.teamName, teamId: t.teamId }));
 }
 
-export function getTeamPassphrase(): string | null {
+export function currentTeamName(): string | null {
+  return readTeamsFile().current;
+}
+
+/** Switch the active team. False if no such local name. */
+export function useTeam(handle: string): boolean {
+  const f = readTeamsFile();
+  if (!f.teams.some((t) => t.name === handle)) return false;
+  f.current = handle;
+  writeTeamsFile(f);
+  return true;
+}
+
+/** Add a team and make it current; returns the assigned local handle. */
+export function addTeam(cfg: TeamConfig, desiredName?: string): string {
+  const f = readTeamsFile();
+  const name = uniqueName(slug(desiredName || cfg.teamName || (cfg.teamId ? `team-${cfg.teamId}` : "team")), f.teams.map((t) => t.name));
+  f.teams.push({ ...cfg, name });
+  f.current = name;
+  writeTeamsFile(f);
+  return name;
+}
+
+/** Remove a team + its stored passphrase. If it was current, pick another. */
+export function removeTeam(handle: string): boolean {
+  const f = readTeamsFile();
+  const before = f.teams.length;
+  f.teams = f.teams.filter((t) => t.name !== handle);
+  if (f.teams.length === before) return false;
+  if (f.current === handle) f.current = f.teams[0]?.name ?? null;
+  writeTeamsFile(f);
+  try { keychainDelete(passphraseRef(handle)); } catch { /* absent */ }
+  return true;
+}
+
+/**
+ * One-time keychain migration: an old single-team file kept its team key under
+ * the shared ref. Once the file is rewritten as a container, move that key to
+ * the migrated team's per-team ref so `push`/`pull` keep working. Idempotent —
+ * after the first run the file is container-format and this is a no-op.
+ */
+export function ensureTeamsMigrated(): void {
+  let raw: any = null;
+  try { raw = JSON.parse(readFileSync(teamConfigFile(), "utf8")); } catch { return; }
+  if (!raw || raw.stmTeams === TEAMS_FORMAT || !isTeamConfigShape(raw)) return; // not a legacy file
+  const f = migrateTeamsData(raw);
+  writeTeamsFile(f);
+  if (f.current) {
+    const legacy = keychainGet(TEAM_PASSPHRASE_REF);
+    if (legacy != null) {
+      keychainSet(passphraseRef(f.current), legacy);
+      try { keychainDelete(TEAM_PASSPHRASE_REF); } catch { /* best-effort */ }
+    }
+  }
+}
+
+function passphraseRef(handle: string): string {
+  return `${TEAM_PASSPHRASE_REF}${handle}`;
+}
+
+/** Store a team's passphrase (team key) in the OS keychain, per team. */
+export function setTeamPassphrase(passphrase: string, handle?: string): void {
+  const name = handle ?? currentTeamName();
+  keychainSet(name ? passphraseRef(name) : TEAM_PASSPHRASE_REF, passphrase);
+}
+
+export function getTeamPassphrase(handle?: string): string | null {
+  const name = handle ?? currentTeamName();
+  if (name) {
+    const v = keychainGet(passphraseRef(name));
+    if (v != null) return v;
+  }
+  // Legacy fallback: a pre-multi-team single passphrase not yet migrated.
   return keychainGet(TEAM_PASSPHRASE_REF);
 }
 
@@ -109,9 +259,12 @@ export function teamKeyMatchesFingerprint(teamKey: string, expectedFp: string): 
   return norm(teamKeyFingerprint(teamKey)) === norm(expectedFp);
 }
 
-export function clearTeam(): void {
-  try { unlinkSync(TEAM_CONFIG_FILE); } catch { /* absent */ }
-  try { keychainDelete(TEAM_PASSPHRASE_REF); } catch { /* absent */ }
+/** Leave one team (the current one, or a named one): drop its record + key.
+ *  Returns false if there is no such team. Other teams are untouched. */
+export function clearTeam(handle?: string): boolean {
+  const name = handle ?? currentTeamName();
+  if (!name) return false;
+  return removeTeam(name);
 }
 
 // ---- server calls -------------------------------------------------------

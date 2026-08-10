@@ -404,7 +404,8 @@
     <tbody>
       <tr><td class="cmd"><code>stm teams serve</code></td><td>Run the self-hostable, zero-knowledge Teams server (configured via <code>STM_TEAM_*</code> env vars).</td></tr>
       <tr><td class="cmd"><code>stm teams init</code></td><td>Create a team (admin). Generates the team key, self-enrolls, prints the team token. <code>--server &lt;url&gt; --admin &lt;token&gt; [--name &lt;name&gt;]</code>.</td></tr>
-      <tr><td class="cmd"><code>stm teams join</code></td><td>Join a team from a member machine. <code>--server &lt;url&gt; --token &lt;team-token&gt;</code>.</td></tr>
+      <tr><td class="cmd"><code>stm teams join</code></td><td>Join a team from a member machine. <code>--server &lt;url&gt; --token &lt;team-token&gt; [--name &lt;handle&gt;]</code>. A machine can belong to several teams.</td></tr>
+      <tr><td class="cmd"><code>stm teams list</code> / <code>use &lt;name&gt;</code></td><td>List the teams this machine belongs to; switch the current one. Any command takes <code>--team &lt;name&gt;</code> to target another.</td></tr>
       <tr><td class="cmd"><code>stm teams enroll-request</code></td><td>Publish your public keys and request enrollment (nothing secret is sent).</td></tr>
       <tr><td class="cmd"><code>stm teams members</code></td><td>List team members and their enrollment status.</td></tr>
       <tr><td class="cmd"><code>stm teams enroll &lt;member-id&gt;</code></td><td>(Existing member) seal the team key to a joiner's key. The CLI verifies the key set matches the id before sealing.</td></tr>

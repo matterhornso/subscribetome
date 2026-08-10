@@ -1771,6 +1771,11 @@ async function teamsCmd(args: string[]): Promise<void> {
     process.stderr.write(s + "\n");
     process.exit(1);
   };
+  // One-time: fold a legacy single-team file into the multi-team container
+  // (and move its keychain passphrase to the per-team ref). No-op afterwards.
+  t.ensureTeamsMigrated();
+  // `--team <name>` selects which team a command operates on; default = current.
+  const teamSel = flag("team");
 
   switch (sub) {
     case "serve": {
@@ -1787,12 +1792,10 @@ async function teamsCmd(args: string[]): Promise<void> {
           "(--admin may instead be supplied via the STM_TEAM_ADMIN_TOKEN env var)");
       }
       const created = await t.createTeam(server!, admin!, name);
-      // Generate the team key first so its fingerprint can be persisted in the
-      // config from the start. The team key never leaves this machine except
-      // sealed to a member's public key; the fingerprint is public (commits to
-      // the key, reveals nothing) so it's fine on disk.
+      // The team key never leaves this machine except sealed to a member's
+      // public key; the fingerprint is public (commits to the key, reveals
+      // nothing) so it's fine on disk.
       const teamKey = t.generateTeamKey();
-      t.setTeamPassphrase(teamKey);
       const fp = t.teamKeyFingerprint(teamKey);
       const cfg = {
         serverUrl: server!,
@@ -1801,13 +1804,16 @@ async function teamsCmd(args: string[]): Promise<void> {
         teamName: created.name,
         teamKeyFp: fp,
       };
-      t.writeTeamConfig(cfg);
+      // Add the team (it becomes current) BEFORE storing the passphrase, so the
+      // key lands under this team's per-team keychain ref.
+      const handle = t.addTeam(cfg, name);
+      t.setTeamPassphrase(teamKey);
       // Self-enroll by sealing the team key to this machine's own identity key.
       const id = kp.ensureIdentity();
       await t.registerMember(cfg, id.memberId, id.sealPublicKeyB64, id.signPublicKeyB64);
       await t.uploadEnvelope(cfg, id.memberId, kp.seal(teamKey, id.sealPublicKeyB64));
       out(
-        `created team "${created.name}" (id ${created.id}); config saved (0600).\n` +
+        `created team "${created.name}" (id ${created.id}); saved locally as "${handle}" (now current).\n` +
           `you are enrolled (member ${id.memberId}); team key generated + stored in the keychain.\n\n` +
           `  team token       : ${created.token}\n` +
           `  team-key fingerprint : ${fp}\n\n` +
@@ -1829,9 +1835,9 @@ async function teamsCmd(args: string[]): Promise<void> {
       if (!server || !token) {
         die("usage: stm teams join --server <url> --token <team-token> [--fingerprint <fp>]");
       }
-      t.writeTeamConfig({ serverUrl: server!, teamToken: token!, teamKeyFp: fp });
+      const handle = t.addTeam({ serverUrl: server!, teamToken: token!, teamKeyFp: fp }, flag("name"));
       out(
-        `joined "${server}".` +
+        `joined "${server}" — saved locally as "${handle}" (now current).` +
           (fp ? ` Team-key fingerprint recorded — accept will verify it.\n` : `\n`) +
           (fp ? `` : `NOTE: no --fingerprint given. Get it out-of-band from an existing member so\n` +
             `\`accept\` can confirm the server didn't substitute the team key.\n`) +
@@ -1842,7 +1848,7 @@ async function teamsCmd(args: string[]): Promise<void> {
       return;
     }
     case "enroll-request": {
-      const cfg = t.readTeamConfig();
+      const cfg = t.readTeamConfig(teamSel);
       if (!cfg) die("teams: not configured. Run `stm teams join` first.");
       const id = kp.ensureIdentity();
       await t.registerMember(cfg!, id.memberId, id.sealPublicKeyB64, id.signPublicKeyB64);
@@ -1855,7 +1861,7 @@ async function teamsCmd(args: string[]): Promise<void> {
       return;
     }
     case "members": {
-      const cfg = t.readTeamConfig();
+      const cfg = t.readTeamConfig(teamSel);
       if (!cfg) die("teams: not configured.");
       const members = await t.listMembers(cfg!);
       if (members.length === 0) {
@@ -1869,9 +1875,9 @@ async function teamsCmd(args: string[]): Promise<void> {
     case "enroll": {
       const memberId = rest[0];
       if (!memberId) die("usage: stm teams enroll <member-id>");
-      const cfg = t.readTeamConfig();
+      const cfg = t.readTeamConfig(teamSel);
       if (!cfg) die("teams: not configured.");
-      const teamKey = t.getTeamPassphrase();
+      const teamKey = t.getTeamPassphrase(teamSel);
       if (!teamKey) die("you don't have the team key on this machine — accept your own enrollment first.");
       const member = await t.getMember(cfg!, memberId!);
       if (!member) die(`no member "${memberId}" — they must run \`stm teams enroll-request\` first.`);
@@ -1898,7 +1904,7 @@ async function teamsCmd(args: string[]): Promise<void> {
       return;
     }
     case "accept": {
-      const cfg = t.readTeamConfig();
+      const cfg = t.readTeamConfig(teamSel);
       if (!cfg) die("teams: not configured. Run `stm teams join` first.");
       if (!kp.hasIdentity()) die("no identity yet — run `stm teams enroll-request` first.");
       const id = kp.ensureIdentity();
@@ -1948,9 +1954,9 @@ async function teamsCmd(args: string[]): Promise<void> {
     }
     case "push":
     case "pull": {
-      const cfg = t.readTeamConfig();
+      const cfg = t.readTeamConfig(teamSel);
       if (!cfg) die("teams: not configured. Run `stm teams init` or `stm teams join` first.");
-      const pass = t.getTeamPassphrase();
+      const pass = t.getTeamPassphrase(teamSel);
       if (!pass) die("no team passphrase set. Run `stm teams passphrase` first.");
       const store = new Store();
       try {
@@ -2007,7 +2013,7 @@ async function teamsCmd(args: string[]): Promise<void> {
       return;
     }
     case "audit-push": {
-      const cfg = t.readTeamConfig();
+      const cfg = t.readTeamConfig(teamSel);
       if (!cfg) die("teams: not configured.");
       const store = new Store();
       try {
@@ -2027,7 +2033,7 @@ async function teamsCmd(args: string[]): Promise<void> {
       return;
     }
     case "usage-push": {
-      const cfg = t.readTeamConfig();
+      const cfg = t.readTeamConfig(teamSel);
       if (!cfg) die("teams: not configured.");
       const store = new Store();
       try {
@@ -2047,7 +2053,7 @@ async function teamsCmd(args: string[]): Promise<void> {
       return;
     }
     case "audit": {
-      const cfg = t.readTeamConfig();
+      const cfg = t.readTeamConfig(teamSel);
       if (!cfg) die("teams: not configured.");
       const limit = Number(flag("limit") ?? "50") || 50;
       const rows = await t.fetchTeamAudit(cfg!, limit);
@@ -2061,7 +2067,7 @@ async function teamsCmd(args: string[]): Promise<void> {
       return;
     }
     case "usage": {
-      const cfg = t.readTeamConfig();
+      const cfg = t.readTeamConfig(teamSel);
       if (!cfg) die("teams: not configured.");
       const limit = Number(flag("limit") ?? "50") || 50;
       const tool = flag("tool");
@@ -2097,25 +2103,63 @@ async function teamsCmd(args: string[]): Promise<void> {
       }
       return;
     }
+    case "list": {
+      const teams = t.listTeams();
+      if (teams.length === 0) {
+        out("no teams. Run `stm teams init` or `stm teams join`.\n");
+        return;
+      }
+      for (const tm of teams) {
+        out(
+          `${tm.current ? "* " : "  "}${tm.name.padEnd(18)} ` +
+            `${(tm.teamName ?? "").padEnd(18)} ${tm.serverUrl}\n`,
+        );
+      }
+      out(`\n(* = current; use \`stm teams use <name>\` to switch, \`--team <name>\` per command)\n`);
+      return;
+    }
+    case "use": {
+      const name = rest[0];
+      if (!name) die("usage: stm teams use <name>   (see `stm teams list`)");
+      if (!t.useTeam(name!)) die(`no team "${name}" on this machine. See \`stm teams list\`.`);
+      out(`switched to "${name}".\n`);
+      return;
+    }
     case "status": {
-      const cfg = t.readTeamConfig();
+      const cfg = t.readTeamConfig(teamSel);
       if (!cfg) {
         out("teams: not configured. Run `stm teams init` or `stm teams join`.\n");
         return;
       }
-      const hasPass = t.getTeamPassphrase() != null;
+      const rec = cfg as any; // a TeamRecord — carries the local handle
+      const hasPass = t.getTeamPassphrase(teamSel) != null;
+      const teams = t.listTeams();
       out(
-        `server : ${cfg.serverUrl}\n` +
-          `team   : ${cfg.teamName ?? "(joined)"}${cfg.teamId ? ` (id ${cfg.teamId})` : ""}\n` +
-          `pass   : ${hasPass ? "set" : "NOT set — run `stm teams passphrase`"}\n`,
+        `team   : ${rec.name}${rec.name === t.currentTeamName() ? " (current)" : ""}\n` +
+          `server : ${cfg.serverUrl}\n` +
+          `name   : ${cfg.teamName ?? "(joined)"}${cfg.teamId ? ` (id ${cfg.teamId})` : ""}\n` +
+          `pass   : ${hasPass ? "set" : "NOT set — run `stm teams passphrase`"}\n` +
+          (teams.length > 1 ? `\nthis machine is in ${teams.length} teams — \`stm teams list\`\n` : ``),
       );
       return;
     }
     case "leave": {
-      t.clearTeam();
-      kp.clearIdentity();
-      sig.clearSigningIdentity();
-      out("left the team; local config, team key, and identity cleared.\n");
+      const cfg = t.readTeamConfig(teamSel);
+      if (!cfg) die("teams: not configured.");
+      const name = (cfg as any).name as string;
+      t.clearTeam(name); // drop this team's record + its keychain passphrase
+      const remaining = t.listTeams();
+      let idNote = "";
+      if (remaining.length === 0) {
+        // No teams remain → the per-machine team identity is unused everywhere.
+        kp.clearIdentity();
+        sig.clearSigningIdentity();
+        idNote = " and cleared this machine's team identity";
+      }
+      out(
+        `left "${name}"${idNote}.` +
+          (remaining.length ? ` Current team is now "${t.currentTeamName()}".\n` : ` No teams remain.\n`),
+      );
       return;
     }
     case "help":
@@ -2128,7 +2172,9 @@ async function teamsCmd(args: string[]): Promise<void> {
           `                                  (env: STM_TEAM_DB, STM_TEAM_HOST, STM_TEAM_PORT,\n` +
           `                                   STM_TEAM_ADMIN_TOKEN)\n` +
           `  stm teams init --server <url> --admin <tok> [--name <n>]  create a team\n` +
-          `  stm teams join --server <url> --token <tok>               join an existing team\n` +
+          `  stm teams join --server <url> --token <tok> [--name <n>]  join an existing team\n` +
+          `  stm teams list                  list the teams this machine belongs to\n` +
+          `  stm teams use <name>            switch the current team\n` +
           `  stm teams enroll-request        publish your public key (ask to be enrolled)\n` +
           `  stm teams members               list members + enrollment status\n` +
           `  stm teams enroll <member-id>    seal the team key to a member (enroll them)\n` +
@@ -2142,8 +2188,9 @@ async function teamsCmd(args: string[]): Promise<void> {
           `  stm teams audit [--limit N]     view the team's combined key-use log\n` +
           `  stm teams usage-push            send local brokered-call usage records to the team log\n` +
           `  stm teams usage [--limit N]     view team usage; --tool/--member filter, --summary aggregates\n` +
-          `  stm teams status                show the configured team\n` +
-          `  stm teams leave                 clear local team config + passphrase\n\n` +
+          `  stm teams status                show the current team\n` +
+          `  stm teams leave                 leave the current team (identity clears with the last)\n\n` +
+          `Any command takes --team <name> to act on a team other than the current one.\n` +
           `Enrollment is public-key: the team key is sealed to each member's key and\n` +
           `never shared as a plaintext passphrase. The server only stores ciphertext.\n`,
       );
