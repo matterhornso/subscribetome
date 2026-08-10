@@ -1,12 +1,25 @@
 {
   "name": "subscribetome",
   "version": "1.4.0",
-  "description": "AI API key & subscription manager — a Claude Code plugin. Keys never touch the chat.",
+  "description": "Keychain-first API-key security for AI coding agents: keys never touch the chat, a credential broker for HTTP APIs, and a self-hostable zero-knowledge Teams server. A Claude Code plugin.",
+  "keywords": [
+    "claude-code",
+    "ai-agents",
+    "api-keys",
+    "secrets-management",
+    "credential-broker",
+    "keychain",
+    "zero-knowledge",
+    "security",
+    "cli",
+    "bun"
+  ],
   "type": "module",
   "license": "MIT",
   "author": "Abhinav Ramesh <abhinav@matterhorn.so>",
   "repository": "https://github.com/matterhornso/subscribetome",
   "homepage": "https://subscribetome.pro",
+  "bugs": "https://github.com/matterhornso/subscribetome/issues",
   "engines": {
     "bun": ">=1.0.0"
   },
