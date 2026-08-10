@@ -329,6 +329,13 @@
     <p>The Teams server is a plain Bun program and runs anywhere Bun does — a laptop for a trial, or a small server
     behind a TLS reverse proxy for real use. It is independent of the macOS-only runtime hooks.</p>
   </div>
+  <div class="callout note">
+    <div class="h">One machine, many teams</div>
+    <p>A machine can belong to several teams at once. Each <code>join</code>/<code>init</code> adds a team under a
+    local handle and makes it current; <code>stm teams list</code> shows them, <code>stm teams use &lt;name&gt;</code>
+    switches, and any command takes <code>--team &lt;name&gt;</code> to target another. Each team has its own key in the
+    keychain; your signing identity is one per machine and shared across teams.</p>
+  </div>
 
   <h2 id="prereqs">Prerequisites<a class="anchor" href="#prereqs" aria-label="Link to this section">#</a></h2>
   <ul>

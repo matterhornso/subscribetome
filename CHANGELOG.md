@@ -7,6 +7,13 @@ change behaviour. Format follows [Keep a Changelog](https://keepachangelog.com).
 
 ### Added
 
+- **Multi-team membership (Teams M4b).** A machine can now belong to several
+  teams at once. `teams.json` becomes a container of teams with a selected
+  **current** team (a legacy single-team file, and its keychain passphrase,
+  migrate automatically on first use). `stm teams list` shows them, `stm teams
+  use <name>` switches, and **any** teams command takes `--team <name>` to target
+  another. Each team keeps its own key in the keychain; the per-machine signing
+  identity is shared across teams, and `leave` only clears it with the last team.
 - **Per-key shared / personal scope (Teams M4a).** Keys are now **personal by
   default** — `stm teams push` shares only keys you explicitly mark, so a
   credential is never broadcast to a team by accident. `stm teams share
