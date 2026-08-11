@@ -5,6 +5,16 @@ change behaviour. Format follows [Keep a Changelog](https://keepachangelog.com).
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-08-11
+
+The Teams-in-the-dashboard release. The local dashboard gains a read-only **Teams**
+tab — the teams this machine belongs to, the current team's members, and the
+signed usage log ("who used which key", cryptographically attributed, never a key
+value). The README and full documentation are also brought up to date with the
+whole platform (the credential broker and STM Teams), which they had not yet
+covered. No behavior change to the individual, local workflow; scope is unchanged
+(macOS + Claude Code; other platforms experimental).
+
 ### Docs
 
 - **README and DOCS.md now cover the whole platform.** Both predated the
