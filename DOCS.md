@@ -109,6 +109,81 @@ Two guardrail hooks back it up:
 A fourth hook, **SessionStart**, teaches every new session how to use stm — so
 Claude knows to look keys up and use placeholders with no per-project setup.
 
+## The credential broker — HTTP APIs
+
+Substituting a key into a shell command has a ceiling: for the instant the
+command runs, the key is a real argv token (visible to `ps`, leakable if the
+command echoes its own arguments). For HTTP APIs, route the request through the
+local daemon instead of putting the key in the command at all:
+
+```
+curl http://127.0.0.1:<port>/proxy/<tool>/<label>/<upstream-path>
+# e.g.  curl http://127.0.0.1:<port>/proxy/openai/default/v1/models
+```
+
+`stm` resolves the credential from the keychain and attaches the real auth on the
+**outbound** request to the provider. The key never enters the command's argv,
+environment, or output. Invariants:
+
+- **SSRF guard** — the key is only ever sent to the target's own origin; a
+  crafted path can't redirect it elsewhere, and cross-origin redirects are not
+  followed with the key attached.
+- **Response scrub** — the key is stripped from the response body and headers
+  (including encoded forms) before it reaches the caller.
+- **Two-token boundary** — `stm broker` prints a loopback-only *capability
+  token* that authorizes `/proxy` only. It cannot read the inventory or open the
+  dashboard, exposes no secret, and resets on restart.
+- **Audited** — every brokered call is a first-class `broker` audit event
+  (method, upstream path, status — never the key).
+
+```
+stm broker [tool] [label]   print the base URL, capability token, and a ready curl
+```
+
+## STM Teams — self-hosted, zero-knowledge sharing
+
+Run your own sync server; it stores **only ciphertext it cannot decrypt**.
+Credentials are encrypted on a member's machine (AES-256-GCM) with a team key the
+server never sees. Members enroll by **public key** (an X25519 sealed box), so no
+shared passphrase is ever transmitted, and every usage report is **signed** with
+the member's Ed25519 identity — the team log attributes activity to a
+cryptographically-verified member, not a self-asserted name.
+
+```
+stm teams serve                run the self-hostable server (env: STM_TEAM_*)
+stm teams init                 create a team (admin); prints the team token + key fingerprint
+stm teams join                 join from a member machine (--fingerprint verifies the key)
+stm teams enroll-request       publish your public key to be enrolled
+stm teams enroll <member-id>   (existing member) seal the team key to a joiner
+stm teams accept               unwrap the team key sealed to you (verifies the fingerprint)
+stm teams share <tool>:<label> mark a key shared with the team  (keys are PERSONAL by default)
+stm teams unshare <tool>:<label>  hold a key back from the team
+stm teams push [--all]         encrypt + upload your shared keys; --all shares every active key
+stm teams pull                 download + decrypt + add new keys
+stm teams usage-push           send local brokered-call usage records (signed)
+stm teams usage                who used which key — --tool/--member filter, --summary aggregates
+stm teams audit-push / audit   push + view the combined key-use log
+stm teams list / use <name>    a machine can belong to several teams; switch the current one
+stm teams status / leave       show the current team, or leave it
+```
+
+Key properties:
+
+- **Personal by default.** A key you add is never shared with a team until you
+  `stm teams share` it; `push` holds back anything unscoped.
+- **Two-sided key-substitution defense.** The member id fingerprints both public
+  keys (so a server can't swap one), and `accept` verifies the unwrapped team key
+  against an out-of-band **team-key fingerprint** (so an active malicious server
+  can't seal a key it chose to your real public key).
+- **Multi-team.** One machine can belong to several teams at once; the local
+  config migrates automatically, and each team keeps its own key in the keychain.
+- **What the server learns.** Zero-knowledge applies to *credentials*, not all
+  metadata: the tool, label, and counts in the audit/usage logs are readable by
+  the server operator. Credentials and token values are not.
+
+The local dashboard also has a read-only **Teams** tab (members + the signed
+usage log). Full guide: [teams.html](https://subscribetome.pro/teams.html).
+
 ## Commands
 
 Slash commands (after installing the plugin):
@@ -133,6 +208,8 @@ stm rotate <tool> <l>   open provider dashboard, paste new key, swap in place
 stm policy <subcmd>     allow / deny / warn rules at PreToolUse
 stm project <subcmd>    per-project key scope
 stm audit               forensic log of PreToolUse decisions
+stm broker              print the broker base URL + loopback capability token (HTTP-API proxy)
+stm teams <subcmd>      self-hosted, zero-knowledge credential sharing + usage attribution
 stm sync [provider]     fetch real spend from configured providers
 stm codex [args...]     launch Codex with stm keys as env vars
 stm codex install-hooks install the UserPromptSubmit + SessionStart guardrails in ~/.codex/config.toml

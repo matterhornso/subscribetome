@@ -5,6 +5,14 @@ change behaviour. Format follows [Keep a Changelog](https://keepachangelog.com).
 
 ## [Unreleased]
 
+### Docs
+
+- **README and DOCS.md now cover the whole platform.** Both predated the
+  platform pivot and described only the v1 keychain key-manager. They now include
+  the credential broker and STM Teams (enrollment, per-key scope, multi-team,
+  signed usage attribution), and `package.json` gains platform-accurate
+  `description` + `keywords` + `bugs` for discoverability.
+
 ### Added
 
 - **Teams dashboard view.** The local dashboard gains a read-only **Teams** tab:
