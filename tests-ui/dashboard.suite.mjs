@@ -76,6 +76,27 @@ async function run() {
     );
   }
 
+  // 1g. Key scope toggle: POST /api/keys/scope persists; invalid scope → 400.
+  {
+    const bad = await fetch(`http://127.0.0.1:${PORT}/api/keys/scope?token=${TOKEN}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ tool: "openai", label: "default", scope: "bogus" }),
+    });
+    const set = await fetch(`http://127.0.0.1:${PORT}/api/keys/scope?token=${TOKEN}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ tool: "openai", label: "default", scope: "shared" }),
+    });
+    const inv = await fetch(`http://127.0.0.1:${PORT}/api/inventory?token=${TOKEN}`).then((x) => x.json());
+    const k = (inv.keys || []).find((x) => x.tool === "openai" && x.label === "default");
+    record(
+      "POST /api/keys/scope sets team_scope; rejects bad scope",
+      bad.status === 400 && set.status === 200 && k && k.team_scope === "shared",
+      `bad=${bad.status} set=${set.status} scope=${k && k.team_scope}`,
+    );
+  }
+
   // ─── 2. Browser-level checks ────────────────────────────────────────────
   process.stdout.write("\nBrowser / UX:\n");
 

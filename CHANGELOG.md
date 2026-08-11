@@ -5,6 +5,13 @@ change behaviour. Format follows [Keep a Changelog](https://keepachangelog.com).
 
 ## [Unreleased]
 
+### Added
+
+- **Key sharing toggle in the dashboard.** The Teams tab now has a **Sharing**
+  section: flip each key between **shared** and **personal** with a click
+  (`POST /api/keys/scope`), instead of only from the `stm teams share` CLI. Keys
+  stay personal by default; only shared keys go to the team on `push`.
+
 ## [1.5.0] - 2026-08-11
 
 The Teams-in-the-dashboard release. The local dashboard gains a read-only **Teams**

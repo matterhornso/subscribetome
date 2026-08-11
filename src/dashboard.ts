@@ -777,10 +777,23 @@ export function dashboardHTML(): string {
   <section class="card">
     <div class="card-head">
       <h2>Teams</h2>
-      <span class="meta">Read-only · self-hosted, zero-knowledge · managed via <code>stm teams</code></span>
+      <span class="meta">self-hosted, zero-knowledge · managed via <code>stm teams</code></span>
     </div>
     <div id="teams-body">
       <div class="empty" style="font-family:inherit">Loading team status…</div>
+    </div>
+  </section>
+
+  <section class="card" id="teams-sharing-card" style="display:none">
+    <div class="card-head">
+      <h2>Sharing</h2>
+      <span class="meta">keys are <b>personal</b> by default · only shared keys go to the team on <code>stm teams push</code></span>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Key</th><th>Scope</th><th></th></tr></thead>
+        <tbody id="teams-sharing"></tbody>
+      </table>
     </div>
   </section>
 
@@ -1875,6 +1888,10 @@ el("keys").addEventListener("click",function(e){
   var b=e.target.closest(".rev"); if(!b)return;
   revoke(b.dataset.tool,b.dataset.label);
 });
+el("teams-sharing").addEventListener("click",function(e){
+  var b=e.target.closest(".scope-toggle"); if(!b)return;
+  toggleKeyScope(b.dataset.tool,b.dataset.label,b.dataset.next);
+});
 el("tools").addEventListener("click",function(e){
   var ed=e.target.closest(".sub-edit");
   if(ed){editingTool=ed.dataset.tool;if(lastInv)renderTools(lastInv.tools);return;}
@@ -1975,9 +1992,32 @@ el("projects-list").addEventListener("change",function(e){
 function teamBadge(text,color){
   return '<span style="font-size:11px;font-weight:600;letter-spacing:.3px;color:'+color+'">'+text+'</span>';
 }
+function renderTeamSharing(){
+  var tb=el("teams-sharing");
+  var keys=lastInv?lastInv.keys.filter(function(k){return k.status==="active";}):[];
+  if(!keys.length){ tb.innerHTML='<tr><td colspan="3" class="empty">No active keys to share.</td></tr>'; return; }
+  tb.innerHTML=keys.map(function(k){
+    var shared=k.team_scope==="shared";
+    var scopeCell=shared?teamBadge("shared","var(--primary)"):teamBadge("personal","var(--text-muted)");
+    var next=shared?"personal":"shared";
+    var btn='<button class="btn-ghost scope-toggle" data-tool="'+esc(k.tool)+'" data-label="'+esc(k.label)
+      +'" data-next="'+next+'" style="padding:3px 9px;font-size:12px">'
+      +(shared?"Make personal":"Share with team")+'</button>';
+    return '<tr><td><code>'+esc(k.tool+":"+k.label)+'</code></td><td>'+scopeCell+'</td><td style="text-align:right">'+btn+'</td></tr>';
+  }).join("");
+}
+async function toggleKeyScope(tool,label,scope){
+  try{
+    await api("/api/keys/scope",{method:"POST",body:JSON.stringify({tool:tool,label:label,scope:scope})});
+    // Refresh inventory so team_scope is current, then re-render the sharing list.
+    lastInv=await api("/api/inventory");
+    renderTeamSharing();
+    toast(tool+":"+label+" is now "+scope);
+  }catch(e){ toast("Could not change scope: "+e.message); }
+}
 async function refreshTeams(){
   var body=el("teams-body");
-  var mCard=el("teams-members-card"), uCard=el("teams-usage-card");
+  var sCard=el("teams-sharing-card"), mCard=el("teams-members-card"), uCard=el("teams-usage-card");
   try{
     var r=await api("/api/teams");
     if(!r.configured){
@@ -1986,7 +2026,7 @@ async function refreshTeams(){
         +'<code>stm teams join</code>, then choose what to share with <code>stm teams share</code> and '
         +'<code>stm teams push</code>. STM Teams is self-hosted and zero-knowledge — the server only ever '
         +'stores ciphertext it cannot read.</div>';
-      mCard.style.display="none"; uCard.style.display="none";
+      sCard.style.display="none"; mCard.style.display="none"; uCard.style.display="none";
       return;
     }
     var rows=r.teams.map(function(t){
@@ -2006,11 +2046,11 @@ async function refreshTeams(){
     body.innerHTML=status
       +'<div class="table-wrap"><table><thead><tr><th>Local name</th><th>Team</th><th>Server</th></tr></thead>'
       +'<tbody>'+rows+'</tbody></table></div>';
-    mCard.style.display="block"; uCard.style.display="block";
-    loadTeamMembers(); loadTeamUsage();
+    sCard.style.display="block"; mCard.style.display="block"; uCard.style.display="block";
+    renderTeamSharing(); loadTeamMembers(); loadTeamUsage();
   }catch(e){
     body.innerHTML='<div class="v-head" style="color:var(--danger)">Failed to load teams: '+esc(e.message)+'</div>';
-    mCard.style.display="none"; uCard.style.display="none";
+    sCard.style.display="none"; mCard.style.display="none"; uCard.style.display="none";
   }
 }
 async function loadTeamMembers(){
