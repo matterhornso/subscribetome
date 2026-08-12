@@ -5,6 +5,14 @@ change behaviour. Format follows [Keep a Changelog](https://keepachangelog.com).
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-08-12
+
+Manage key sharing from the dashboard. The Teams tab gains a **Sharing** section
+so a member can flip each key between shared and personal with a click, instead
+of only from the `stm teams share` CLI. Keys remain personal by default; only
+shared keys go to the team on `push`. No other behavior change; scope is unchanged
+(macOS + Claude Code; other platforms experimental).
+
 ### Added
 
 - **Key sharing toggle in the dashboard.** The Teams tab now has a **Sharing**
