@@ -1,13 +1,16 @@
 # subscribetome
 
-> An open-source Claude Code plugin that keeps your API keys in the macOS Keychain
-> and feeds them to commands the agent runs — so Claude Code uses your keys
-> without the conversation ever holding one.
+> Open-source API-key security for AI coding agents: keys live in your OS
+> keychain, and a local credential broker injects them into outbound HTTP
+> calls — so the agent uses your keys without ever seeing one. Distributed as
+> a Claude Code plugin; the broker works with any HTTP-speaking agent.
 
-subscribetome (CLI: `stm`) is a Claude Code plugin built by Matterhorn Labs.
-It solves a specific problem in AI-assisted coding: an API key pasted into a
-chat is logged in that chat's transcript forever. Even if you redact your
-copy, you cannot un-leak it from any backup, screen-share, or shared session.
+subscribetome (CLI: `stm`) is an API-key security tool for AI-assisted coding,
+built by Matterhorn Labs and distributed as a Claude Code plugin. It solves a
+specific problem: an API key pasted into a chat is logged in that chat's
+transcript forever. Even if you redact your copy, you cannot un-leak it from
+any backup, screen-share, or shared session. Its credential broker (below) is
+agent-agnostic — any client that speaks HTTP can use it, not just Claude Code.
 
 The plugin keeps every key out of the conversation by design. Keys are entered
 out-of-band in a localhost dashboard, stored in the macOS Keychain, and
@@ -109,7 +112,14 @@ and headers are scrubbed of the key; client-supplied auth for the
 injected scheme is dropped; the response size is capped (16 MiB); every
 brokered call is a `broker` audit event (method, path, status — never
 the key). Built-in targets: openai, anthropic, groq, openrouter,
-replicate, fal, stripe (a data-driven, extensible registry).
+replicate, fal, stripe (a data-driven, extensible registry). Because
+`/proxy` is plain HTTP, the broker works from ANY agent or client that can
+set a base URL and send a header — the OpenAI SDKs, LangChain, LlamaIndex, a
+plain script, or curl — not only Claude Code. The client is handed a
+throwaway api key (the broker drops client auth for the injected scheme and
+attaches the real key server-side); the loopback capability token travels in
+the `x-stm-token` header or a `?token=` query param. See the "use the broker
+from any agent" guide for copy-paste recipes.
 
 **STM Teams** is self-hostable, zero-knowledge credential sharing plus
 usage attribution across a team. A team hosts the server with
@@ -155,6 +165,11 @@ runtime hooks are macOS + Claude Code (other platforms experimental).
   `stm broker` command, the `/proxy/<tool>/<label>/<path>` model with a
   curl example, the loopback capability token, the SSRF / redirect /
   scrub / size-cap invariants, and the built-in targets.
+- [Use the broker from any agent](https://subscribetome.pro/agents.html):
+  The one rule (base URL + `x-stm-token` capability header), getting the
+  values from `stm broker`, and copy-paste recipes for curl, the OpenAI SDKs
+  (Python + Node), plain requests/fetch, LangChain, and LlamaIndex — plus a
+  compatibility rule and a loopback forwarder for header-less clients.
 - [Self-hosting STM Teams](https://subscribetome.pro/teams.html): Run the
   zero-knowledge server (env vars), create a team, push/pull the
   encrypted vault, enroll members by public key, read the signed audit
