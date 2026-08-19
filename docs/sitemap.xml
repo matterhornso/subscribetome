@@ -30,6 +30,13 @@
     <xhtml:link rel="alternate" hreflang="en" href="https://subscribetome.pro/broker.html"/>
   </url>
   <url>
+    <loc>https://subscribetome.pro/agents.html</loc>
+    <lastmod>2026-08-16T00:00:00Z</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://subscribetome.pro/agents.html"/>
+  </url>
+  <url>
     <loc>https://subscribetome.pro/teams.html</loc>
     <lastmod>2026-08-02T00:00:00Z</lastmod>
     <changefreq>weekly</changefreq>

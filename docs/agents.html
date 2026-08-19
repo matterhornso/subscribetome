@@ -6,21 +6,21 @@
 <meta name="color-scheme" content="dark light">
 <meta name="theme-color" content="#0a0b0d">
 
-<title>The credential broker — subscribetome (stm)</title>
-<meta name="description" content="The subscribetome credential broker: route HTTP API calls through a local daemon that injects the real key on the outbound request, so the key never enters the command's argv, environment, or output. The /proxy model, the loopback capability token, and the SSRF / redirect / scrub / size-cap invariants.">
+<title>Use the broker from any agent — subscribetome (stm)</title>
+<meta name="description" content="The subscribetome broker is a loopback HTTP endpoint, so any agent that speaks HTTP can call your providers through it — the OpenAI SDKs, LangChain, LlamaIndex, a plain script, curl. Point at one base URL, send one capability header, and the real key never leaves your keychain. Copy-paste recipes for Python, Node, and framework clients.">
 <meta name="author" content="Matterhorn Labs">
 <meta name="application-name" content="subscribetome">
 <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
 
-<link rel="canonical" href="https://subscribetome.pro/broker.html">
+<link rel="canonical" href="https://subscribetome.pro/agents.html">
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <link rel="sitemap" type="application/xml" href="/sitemap.xml">
 
 <meta property="og:site_name" content="subscribetome">
-<meta property="og:title" content="The credential broker — subscribetome">
-<meta property="og:description" content="Route HTTP API calls through a local daemon that injects the real key on the outbound request. The key never enters the command.">
+<meta property="og:title" content="Use the broker from any agent — subscribetome">
+<meta property="og:description" content="One base URL, one capability header, and any HTTP-speaking agent calls your providers without ever seeing the key. Recipes for the OpenAI SDKs, LangChain, LlamaIndex, and plain HTTP.">
 <meta property="og:type" content="website">
-<meta property="og:url" content="https://subscribetome.pro/broker.html">
+<meta property="og:url" content="https://subscribetome.pro/agents.html">
 <meta property="og:image" content="https://subscribetome.pro/og.png">
 <meta property="og:locale" content="en_US">
 
@@ -180,6 +180,7 @@
   .copybox pre .c, pre.plain .c { color:var(--ink-faint); }
   .copybox pre .p, pre.plain .p { color:var(--acc); }
   .copybox pre .r, pre.plain .r { color:var(--warn); }
+  .copybox pre .k, pre.plain .k { color:var(--ink); font-weight:500; }
 
   .toc { border:1px solid var(--line); border-radius:13px; background:var(--bg-2); padding:20px 24px; margin:30px 0 0; }
   .toc .t { font-size:11px; letter-spacing:1.6px; text-transform:uppercase; color:var(--ink-faint); }
@@ -269,8 +270,8 @@
     <nav class="docnav" aria-label="Documentation">
       <a href="/docs.html">Overview</a>
       <a href="/security.html">Security</a>
-      <a href="/broker.html" aria-current="page">Broker</a>
-      <a href="/agents.html">Any agent</a>
+      <a href="/broker.html">Broker</a>
+      <a href="/agents.html" aria-current="page">Any agent</a>
       <a href="/teams.html">Teams</a>
       <a href="/cli.html">CLI</a>
       <a class="gh" href="https://github.com/matterhornso/subscribetome">GitHub →</a>
@@ -280,13 +281,13 @@
 
 <main id="main">
 <div class="bound doc">
-  <span class="kicker"><span class="d"></span>Credential broker</span>
-  <h1>The key never <em>enters the command.</em></h1>
+  <span class="kicker"><span class="d"></span>Any agent</span>
+  <h1>Not just Claude Code. <em>Any agent.</em></h1>
   <p class="lead">
-    Substituting a key <em>into</em> a shell command works everywhere but has a ceiling: for the moment the command runs,
-    the key is a real argv element. The broker removes that ceiling for HTTP APIs. Point the request at a
-    <b>local daemon</b>; the daemon injects the real auth on the <b>outbound</b> call to the provider. The key never
-    touches the command's argv, environment, or output.
+    The broker is a loopback HTTP endpoint — so <b>anything that speaks HTTP</b> can reach your providers through it:
+    the OpenAI SDKs, LangChain, LlamaIndex, a one-off script, <code>curl</code>, a cron job. Point the client at one
+    <b>base URL</b>, send one <b>capability header</b>, and the real key never leaves your keychain. STM stops being
+    "a Claude Code plugin" and becomes a credential broker for <em>every</em> agent you run.
   </p>
 </div>
 
@@ -295,139 +296,271 @@
   <nav class="toc" aria-label="On this page">
     <div class="t">On this page</div>
     <ul>
-      <li><a href="#why">Why the broker exists</a></li>
-      <li><a href="#start">Start the broker</a></li>
-      <li><a href="#proxy">The /proxy request model</a></li>
-      <li><a href="#example">A worked curl example</a></li>
-      <li><a href="#token">The loopback capability token</a></li>
-      <li><a href="#invariants">Security invariants</a></li>
-      <li><a href="#targets">Built-in targets</a></li>
-      <li><a href="#audit">Auditing brokered calls</a></li>
+      <li><a href="#rule">The one rule</a></li>
+      <li><a href="#get">Get your base URL + token</a></li>
+      <li><a href="#curl">curl / any shell</a></li>
+      <li><a href="#python">Python — OpenAI SDK</a></li>
+      <li><a href="#python-http">Python — plain HTTP</a></li>
+      <li><a href="#node">Node — OpenAI SDK</a></li>
+      <li><a href="#node-http">Node — plain fetch</a></li>
+      <li><a href="#frameworks">LangChain &amp; LlamaIndex</a></li>
+      <li><a href="#compat">Will my agent work?</a></li>
+      <li><a href="#beyond">Beyond LLMs</a></li>
     </ul>
   </nav>
 
-  <h2 id="why">Why the broker <em>exists</em><a class="anchor" href="#why" aria-label="Link to this section">#</a></h2>
+  <h2 id="rule">The <em>one rule</em><a class="anchor" href="#rule" aria-label="Link to this section">#</a></h2>
   <p>
-    The <a href="/security.html#substitution">PreToolUse substitution</a> keeps a key out of the <b>conversation</b>, but
-    at execution time the substituted key is an argument of the shell command — briefly visible to a local <code>ps</code>,
-    and printable by any command that echoes its own arguments. That is inherent to injecting a secret into a command.
+    Every recipe on this page is the same two moves. If your client can do both, it can use the broker — no matter the
+    language, framework, or vendor:
   </p>
+  <ol>
+    <li><b>Point it at the broker's base URL</b> instead of the provider's — <code>http://127.0.0.1:&lt;port&gt;/proxy/&lt;tool&gt;/&lt;label&gt;/&lt;upstream-path&gt;</code>.</li>
+    <li><b>Send the loopback capability token</b> as an <code>x-stm-token</code> header (or a <code>?token=</code> query param when you control the full URL).</li>
+  </ol>
   <p>
-    The broker sidesteps it. For an HTTP API you never put the key in the command at all. The agent sends its request to
-    a loopback daemon; the daemon resolves <code>&lt;tool&gt;:&lt;label&gt;</code> from the OS keychain and attaches the
-    real credential on the request <em>it</em> makes to the provider. The command the agent runs carries only a local,
-    loopback-only capability token — worthless off your machine.
+    That's it. The broker resolves <code>&lt;tool&gt;:&lt;label&gt;</code> from your OS keychain, attaches the real
+    credential on the <em>outbound</em> call to the provider, and streams the response back with the key scrubbed out.
+    Wherever the client normally wants an API key, you hand it a throwaway string — the broker <b>drops</b> whatever auth
+    the client sends and injects the real one itself. See <a href="/broker.html">the broker mechanism</a> for exactly how
+    that boundary is enforced.
   </p>
+  <div class="callout note">
+    <div class="h">Why this is safe to paste anywhere</div>
+    <p>The <code>x-stm-token</code> is a <b>capability</b>, not a secret. It authorizes <code>/proxy</code> calls on
+    loopback only — it can't read your inventory, open the dashboard, or reach off your machine — and it resets when the
+    daemon restarts. So it is safe in a script, a dotfile, or an editor's settings in a way a real key never is.</p>
+  </div>
 
-  <h2 id="start">Start the <em>broker</em><a class="anchor" href="#start" aria-label="Link to this section">#</a></h2>
-  <p>Run <code>stm broker</code>. It ensures the local daemon is up and prints the base URL, the capability-token header, and a ready-to-run curl example:</p>
+  <h2 id="get">Get your <em>base URL + token</em><a class="anchor" href="#get" aria-label="Link to this section">#</a></h2>
+  <p>Run <code>stm broker</code>. It ensures the local daemon is up and prints the exact base URL and capability token to drop into any client below:</p>
   <div class="copybox">
     <div class="copybar"><span>shell</span><button class="copy-btn">Copy</button></div>
-<pre>stm broker openai default</pre>
+<pre>stm broker</pre>
   </div>
   <pre class="plain"><span class="c">subscribetome broker</span>
 
-  base URL : http://127.0.0.1:&lt;port&gt;/proxy/&lt;tool&gt;/&lt;label&gt;/&lt;upstream-path&gt;
-  auth     : header  x-stm-token: &lt;broker-token&gt;
+  base URL : http://127.0.0.1:<span class="p">&lt;port&gt;</span>/proxy/<span class="p">&lt;tool&gt;</span>/<span class="p">&lt;label&gt;</span>/<span class="p">&lt;upstream-path&gt;</span>
+  auth     : header  x-stm-token: <span class="k">&lt;broker-token&gt;</span>
 
-  curl http://127.0.0.1:&lt;port&gt;/proxy/openai/default/v1/models \
-    -H "x-stm-token: &lt;broker-token&gt;"</pre>
-  <p>The <code>[tool]</code> and <code>[label]</code> arguments are optional — they only tailor the printed example. The broker can proxy any built-in target once the daemon is running.</p>
-
-  <h2 id="proxy">The <em>/proxy</em> request model<a class="anchor" href="#proxy" aria-label="Link to this section">#</a></h2>
-  <p>Every brokered request has the same shape:</p>
-  <pre class="plain">http://127.0.0.1:&lt;port&gt;/proxy/<span class="p">&lt;tool&gt;</span>/<span class="p">&lt;label&gt;</span>/<span class="p">&lt;upstream-path&gt;</span></pre>
-  <div class="tbl-wrap">
-  <table>
-    <thead><tr><th>Segment</th><th>Meaning</th></tr></thead>
-    <tbody>
-      <tr><td><code>&lt;tool&gt;</code></td><td>A built-in broker target (e.g. <code>openai</code>). Selects the upstream origin and the auth scheme.</td></tr>
-      <tr><td><code>&lt;label&gt;</code></td><td>Which key under that tool to use (e.g. <code>default</code>). The <code>(tool,&nbsp;label)</code> pair is resolved from the keychain.</td></tr>
-      <tr><td><code>&lt;upstream-path&gt;</code></td><td>The provider's own path, e.g. <code>v1/chat/completions</code>. Forwarded verbatim to the target's origin, with your query string preserved.</td></tr>
-    </tbody>
-  </table>
-  </div>
+  Supported targets: anthropic, fal, groq, openai, openrouter, replicate, stripe.</pre>
   <p>
-    The daemon looks up the target, resolves the credential, drops any client-supplied auth for the injected scheme,
-    attaches the real auth on the outbound request to the target's <b>own origin</b>, and streams back the response with
-    the key scrubbed out. Method, request body, and non-auth headers pass through.
+    In the snippets below, replace <code>&lt;port&gt;</code> and <code>&lt;broker-token&gt;</code> with the values it
+    printed. Both are <b>local and ephemeral</b> — the port is chosen at daemon start and the token resets on restart, so
+    read them from <code>stm broker</code> rather than hard-coding them for good.
   </p>
 
-  <h2 id="example">A worked <em>curl example</em><a class="anchor" href="#example" aria-label="Link to this section">#</a></h2>
-  <p>Calling OpenAI's chat-completions endpoint through the broker — note there is no <code>Authorization</code> header and no key anywhere in the command:</p>
+  <h2 id="curl">curl / <em>any shell</em><a class="anchor" href="#curl" aria-label="Link to this section">#</a></h2>
+  <p>The baseline. No <code>Authorization</code> header, no key anywhere in the command — only the loopback token:</p>
   <div class="copybox">
     <div class="copybar"><span>shell</span><button class="copy-btn">Copy</button></div>
-<pre>curl http://127.0.0.1:&lt;port&gt;/proxy/openai/default/v1/chat/completions \
-  -H "x-stm-token: &lt;broker-token&gt;" \
+<pre>curl http://127.0.0.1:<span class="p">&lt;port&gt;</span>/proxy/openai/default/v1/chat/completions \
+  -H "x-stm-token: <span class="k">&lt;broker-token&gt;</span>" \
   -H "Content-Type: application/json" \
   -d '{"model":"gpt-4o-mini","messages":[{"role":"user","content":"hello"}]}'</pre>
   </div>
   <p>
-    The broker resolves <code>openai:default</code> from your keychain and sends
-    <code>Authorization: Bearer &lt;real-key&gt;</code> on its own request to <code>https://api.openai.com</code>. Your
-    command — and anything that logs it — sees only the loopback token. In Claude Code you can simply ask the agent to
-    "call OpenAI chat completions through the stm broker"; the placeholder-free command is safe for the transcript.
+    When you control the whole URL you can also carry the token as a query param — handy for tools that only take a URL:
+    append <code>?token=&lt;broker-token&gt;</code>. The broker strips it before forwarding, so it never reaches the
+    provider.
   </p>
 
-  <h2 id="token">The loopback <em>capability token</em><a class="anchor" href="#token" aria-label="Link to this section">#</a></h2>
-  <p>The <code>x-stm-token</code> value is deliberately different from the dashboard token:</p>
-  <ul>
-    <li><b>It authorizes <code>/proxy</code> only.</b> It cannot read the key inventory, open the dashboard, or view metadata.</li>
-    <li><b>It exposes no secret.</b> It is a capability to <em>make brokered calls</em>, not a key — so it is safe to appear in a command, a script, or the chat.</li>
-    <li><b>It is loopback-only.</b> The daemon binds to <code>127.0.0.1</code>; the token is worthless to anyone off your machine.</li>
-    <li><b>It resets on restart.</b> A fresh token is generated each time the daemon starts, so it is naturally short-lived.</li>
-  </ul>
-
-  <h2 id="invariants">Security <em>invariants</em><a class="anchor" href="#invariants" aria-label="Link to this section">#</a></h2>
-  <p>The broker enforces these on every request. They are the reason routing a key through a proxy is safe:</p>
-  <div class="tbl-wrap">
-  <table>
-    <thead><tr><th>Invariant</th><th>What it prevents</th></tr></thead>
-    <tbody>
-      <tr><td><b>SSRF / origin guard</b></td><td>The upstream path must be server-relative and resolve to the target's <em>own</em> origin. A protocol-relative <code>//host</code>, an absolute URL, or a <code>\</code> is rejected, and the constructed origin is re-checked as a backstop — so a crafted path can never redirect the key to another host.</td></tr>
-      <tr><td><b>No auto-follow redirects</b></td><td>The outbound fetch uses <code>redirect: manual</code>. A 3xx is surfaced to the caller, never followed — so the injected credential can't ride a redirect to an off-origin host.</td></tr>
-      <tr><td><b>Response scrub</b></td><td>Every occurrence of the real key — literal and URL-encoded — is replaced with <code>[stm:redacted]</code> in the response body <em>and</em> headers, and in any network-error message. An upstream that echoes the credential back cannot leak it into your output.</td></tr>
-      <tr><td><b>Client auth dropped</b></td><td>Any caller-supplied header for the injected scheme is stripped before the real auth is attached — the caller can neither override nor read the credential.</td></tr>
-      <tr><td><b>Response size cap</b></td><td>The upstream body is bounded (16&nbsp;MiB). A hostile or compromised provider can't OOM the daemon with an unbounded response.</td></tr>
-      <tr><td><b>Never logs a key</b></td><td>The broker never writes a resolved key value to a log. A brokered call is audited by method, path, and status only.</td></tr>
-    </tbody>
-  </table>
-  </div>
-  <div class="callout note">
-    <div class="h">Same boundary as the rest of stm</div>
-    <p>The broker keeps the key off the command and out of your output. It does not defend a compromised local machine —
-    a process running as your user could talk to the loopback daemon directly. That is the same endpoint-trust boundary
-    described on the <a href="/security.html#limits">security page</a>.</p>
-  </div>
-
-  <h2 id="targets">Built-in <em>targets</em><a class="anchor" href="#targets" aria-label="Link to this section">#</a></h2>
-  <p>Targets are a data-driven registry — each is an origin plus an auth scheme. The launch set:</p>
-  <div class="tbl-wrap">
-  <table>
-    <thead><tr><th>Tool</th><th>Upstream origin</th><th>Auth attached on the outbound request</th></tr></thead>
-    <tbody>
-      <tr><td><code>openai</code></td><td><code>https://api.openai.com</code></td><td><code>Authorization: Bearer</code></td></tr>
-      <tr><td><code>anthropic</code></td><td><code>https://api.anthropic.com</code></td><td><code>x-api-key</code> header</td></tr>
-      <tr><td><code>groq</code></td><td><code>https://api.groq.com</code></td><td><code>Authorization: Bearer</code></td></tr>
-      <tr><td><code>openrouter</code></td><td><code>https://openrouter.ai</code></td><td><code>Authorization: Bearer</code></td></tr>
-      <tr><td><code>replicate</code></td><td><code>https://api.replicate.com</code></td><td><code>Authorization: Token &lt;key&gt;</code></td></tr>
-      <tr><td><code>fal</code></td><td><code>https://fal.run</code></td><td><code>Authorization: Key &lt;key&gt;</code></td></tr>
-      <tr><td><code>stripe</code></td><td><code>https://api.stripe.com</code></td><td><code>Authorization: Bearer</code></td></tr>
-    </tbody>
-  </table>
-  </div>
-  <p>The registry is extensible — adding a provider is a single data entry (origin + auth scheme).</p>
-
-  <h2 id="audit">Auditing brokered <em>calls</em><a class="anchor" href="#audit" aria-label="Link to this section">#</a></h2>
+  <h2 id="python">Python — <em>OpenAI SDK</em><a class="anchor" href="#python" aria-label="Link to this section">#</a></h2>
   <p>
-    Every brokered request is recorded as a first-class <code>broker</code> audit event — the method, the path, and the
-    response status, <b>never the key</b>. Filter for them with:
+    The official <code>openai</code> package accepts a <code>base_url</code> and <code>default_headers</code>. The
+    <code>api_key</code> is required by the constructor but ignored on the wire — the broker injects the real one:
+  </p>
+  <div class="copybox">
+    <div class="copybar"><span>python</span><button class="copy-btn">Copy</button></div>
+<pre><span class="k">from</span> openai <span class="k">import</span> OpenAI
+
+client = OpenAI(
+    base_url=<span class="p">"http://127.0.0.1:&lt;port&gt;/proxy/openai/default/v1"</span>,
+    api_key=<span class="r">"stm-broker"</span>,                 <span class="c"># ignored — broker injects the real key</span>
+    default_headers={<span class="p">"x-stm-token"</span>: <span class="k">"&lt;broker-token&gt;"</span>},
+)
+
+resp = client.chat.completions.create(
+    model=<span class="p">"gpt-4o-mini"</span>,
+    messages=[{<span class="p">"role"</span>: <span class="p">"user"</span>, <span class="p">"content"</span>: <span class="p">"hello"</span>}],
+)
+print(resp.choices[0].message.content)</pre>
+  </div>
+
+  <h2 id="python-http">Python — <em>plain HTTP</em><a class="anchor" href="#python-http" aria-label="Link to this section">#</a></h2>
+  <p>No SDK needed. Any HTTP library works the same way — here <code>requests</code>:</p>
+  <div class="copybox">
+    <div class="copybar"><span>python</span><button class="copy-btn">Copy</button></div>
+<pre><span class="k">import</span> requests
+
+r = requests.post(
+    <span class="p">"http://127.0.0.1:&lt;port&gt;/proxy/openai/default/v1/chat/completions"</span>,
+    headers={
+        <span class="p">"x-stm-token"</span>: <span class="k">"&lt;broker-token&gt;"</span>,
+        <span class="p">"Content-Type"</span>: <span class="p">"application/json"</span>,
+    },
+    json={<span class="p">"model"</span>: <span class="p">"gpt-4o-mini"</span>,
+          <span class="p">"messages"</span>: [{<span class="p">"role"</span>: <span class="p">"user"</span>, <span class="p">"content"</span>: <span class="p">"hello"</span>}]},
+)
+print(r.json())</pre>
+  </div>
+
+  <h2 id="node">Node — <em>OpenAI SDK</em><a class="anchor" href="#node" aria-label="Link to this section">#</a></h2>
+  <p>The <code>openai</code> package for JS/TS takes <code>baseURL</code> and <code>defaultHeaders</code>:</p>
+  <div class="copybox">
+    <div class="copybar"><span>typescript</span><button class="copy-btn">Copy</button></div>
+<pre><span class="k">import</span> OpenAI <span class="k">from</span> <span class="p">"openai"</span>;
+
+<span class="k">const</span> client = <span class="k">new</span> OpenAI({
+  baseURL: <span class="p">"http://127.0.0.1:&lt;port&gt;/proxy/openai/default/v1"</span>,
+  apiKey: <span class="r">"stm-broker"</span>,                    <span class="c">// ignored — broker injects the real key</span>
+  defaultHeaders: { <span class="p">"x-stm-token"</span>: <span class="k">"&lt;broker-token&gt;"</span> },
+});
+
+<span class="k">const</span> resp = <span class="k">await</span> client.chat.completions.create({
+  model: <span class="p">"gpt-4o-mini"</span>,
+  messages: [{ role: <span class="p">"user"</span>, content: <span class="p">"hello"</span> }],
+});
+console.log(resp.choices[0].message.content);</pre>
+  </div>
+
+  <h2 id="node-http">Node — <em>plain fetch</em><a class="anchor" href="#node-http" aria-label="Link to this section">#</a></h2>
+  <div class="copybox">
+    <div class="copybar"><span>typescript</span><button class="copy-btn">Copy</button></div>
+<pre><span class="k">const</span> resp = <span class="k">await</span> fetch(
+  <span class="p">"http://127.0.0.1:&lt;port&gt;/proxy/openai/default/v1/chat/completions"</span>,
+  {
+    method: <span class="p">"POST"</span>,
+    headers: {
+      <span class="p">"x-stm-token"</span>: <span class="k">"&lt;broker-token&gt;"</span>,
+      <span class="p">"content-type"</span>: <span class="p">"application/json"</span>,
+    },
+    body: JSON.stringify({
+      model: <span class="p">"gpt-4o-mini"</span>,
+      messages: [{ role: <span class="p">"user"</span>, content: <span class="p">"hello"</span> }],
+    }),
+  },
+);
+console.log(<span class="k">await</span> resp.json());</pre>
+  </div>
+
+  <h2 id="frameworks">LangChain &amp; <em>LlamaIndex</em><a class="anchor" href="#frameworks" aria-label="Link to this section">#</a></h2>
+  <p>
+    Both frameworks build on the OpenAI client, so they inherit its <code>base_url</code> + <code>default_headers</code>
+    overrides. Same two moves, same throwaway key.
+  </p>
+  <h3>LangChain</h3>
+  <div class="copybox">
+    <div class="copybar"><span>python</span><button class="copy-btn">Copy</button></div>
+<pre><span class="k">from</span> langchain_openai <span class="k">import</span> ChatOpenAI
+
+llm = ChatOpenAI(
+    model=<span class="p">"gpt-4o-mini"</span>,
+    base_url=<span class="p">"http://127.0.0.1:&lt;port&gt;/proxy/openai/default/v1"</span>,
+    api_key=<span class="r">"stm-broker"</span>,
+    default_headers={<span class="p">"x-stm-token"</span>: <span class="k">"&lt;broker-token&gt;"</span>},
+)
+print(llm.invoke(<span class="p">"hello"</span>).content)</pre>
+  </div>
+  <h3>LlamaIndex</h3>
+  <div class="copybox">
+    <div class="copybar"><span>python</span><button class="copy-btn">Copy</button></div>
+<pre><span class="k">from</span> llama_index.llms.openai <span class="k">import</span> OpenAI
+
+llm = OpenAI(
+    model=<span class="p">"gpt-4o-mini"</span>,
+    api_base=<span class="p">"http://127.0.0.1:&lt;port&gt;/proxy/openai/default/v1"</span>,
+    api_key=<span class="r">"stm-broker"</span>,
+    default_headers={<span class="p">"x-stm-token"</span>: <span class="k">"&lt;broker-token&gt;"</span>},
+)
+print(llm.complete(<span class="p">"hello"</span>))</pre>
+  </div>
+  <p>
+    Anthropic-native clients follow the same pattern — swap the path segment to
+    <code>/proxy/anthropic/default</code> and point the SDK's base URL there; the broker attaches the
+    <code>x-api-key</code> for you.
+  </p>
+
+  <h2 id="compat">Will my <em>agent work?</em><a class="anchor" href="#compat" aria-label="Link to this section">#</a></h2>
+  <p>One question decides it: <b>can the client set a custom base URL <em>and</em> a custom request header?</b></p>
+  <div class="tbl-wrap">
+  <table>
+    <thead><tr><th>The client can…</th><th>Then…</th></tr></thead>
+    <tbody>
+      <tr><td><b>Set base URL + custom header</b><br>(OpenAI SDKs, LangChain, LlamaIndex, the Vercel AI SDK, most HTTP libraries)</td><td>Works directly — use the recipes above.</td></tr>
+      <tr><td><b>Only lets you build the full request URL</b><br>(a raw HTTP call, a webhook field)</td><td>Works — carry the token as <code>?token=&lt;broker-token&gt;</code> in the URL.</td></tr>
+      <tr><td><b>Only lets you set a base URL, no headers</b><br>(some editor "custom OpenAI endpoint" fields)</td><td>Add the header with a tiny loopback forwarder — below.</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <details>
+    <summary>Escape hatch: a loopback forwarder for header-less clients</summary>
+    <p>
+      If an agent only exposes a base-URL field, run this ~10-line Bun shim. It listens on a fixed local port, stamps the
+      <code>x-stm-token</code> header on every request, and forwards to the broker. Point the header-less client at
+      <code>http://127.0.0.1:8787/proxy/openai/default/v1</code>:
+    </p>
+    <div class="copybox">
+      <div class="copybar"><span>bun · stm-forward.ts</span><button class="copy-btn">Copy</button></div>
+<pre><span class="k">const</span> TOKEN = process.env.STM_BROKER_TOKEN!;   <span class="c">// from `stm broker`</span>
+<span class="k">const</span> UPSTREAM = process.env.STM_BROKER_URL!;   <span class="c">// http://127.0.0.1:&lt;port&gt;</span>
+
+Bun.serve({
+  hostname: <span class="p">"127.0.0.1"</span>,
+  port: 8787,
+  <span class="k">async</span> fetch(req) {
+    <span class="k">const</span> u = <span class="k">new</span> URL(req.url);
+    <span class="k">const</span> headers = <span class="k">new</span> Headers(req.headers);
+    headers.set(<span class="p">"x-stm-token"</span>, TOKEN);
+    <span class="k">return</span> fetch(UPSTREAM + u.pathname + u.search, {
+      method: req.method, headers, body: req.body,
+    });
+  },
+});</pre>
+    </div>
+    <p>
+      It never sees a real key either — it only adds the capability token, exactly as the header recipes do. Keep it on
+      loopback; it is a convenience for local tools, not a public proxy.
+    </p>
+  </details>
+  <div class="callout warn">
+    <div class="h">The port and token are ephemeral</div>
+    <p>Both are re-generated when the daemon restarts, so a hard-coded config will break after a reboot. For anything you
+    run repeatedly, read them from <code>stm broker</code> at start-up (e.g. export <code>STM_BROKER_TOKEN</code>) rather
+    than pasting a fixed value.</p>
+  </div>
+
+  <h2 id="beyond">Beyond <em>LLMs</em><a class="anchor" href="#beyond" aria-label="Link to this section">#</a></h2>
+  <p>
+    The broker is not LLM-specific — it forwards any HTTP request to a configured target. The launch set already includes
+    non-model providers, and the same two moves apply. Calling Stripe through the broker, with no secret key in the
+    command:
   </p>
   <div class="copybox">
     <div class="copybar"><span>shell</span><button class="copy-btn">Copy</button></div>
-<pre>stm audit --event broker</pre>
+<pre>curl http://127.0.0.1:<span class="p">&lt;port&gt;</span>/proxy/stripe/default/v1/customers?limit=3 \
+  -H "x-stm-token: <span class="k">&lt;broker-token&gt;</span>"</pre>
   </div>
-  <p>See the <a href="/cli.html#audit">CLI reference</a> for the full audit filter set, and the <a href="/security.html">security page</a> for how the broker fits the overall model.</p>
+  <p>
+    Whatever the agent, whatever the API, the shape is identical: your keychain holds the key, the broker adds it on the
+    way out, and every brokered call is <a href="/cli.html#audit">audited</a> by method, path, and status — never by key.
+    Targets are a data-driven registry, so widening coverage is a single entry.
+  </p>
+
+  <div class="cards">
+    <a class="card-link" href="/broker.html">
+      <span class="ct">Mechanism</span>
+      <h3>How the broker works</h3>
+      <p>The <code>/proxy</code> model, the capability token, and the SSRF / redirect / scrub / size-cap invariants that make routing a key through a proxy safe.</p>
+      <span class="go">Read the broker →</span>
+    </a>
+    <a class="card-link" href="/security.html">
+      <span class="ct">Threat model</span>
+      <h3>The security boundary</h3>
+      <p>What stm defends — keys out of the transcript, off the command — and the endpoint-trust line it does not cross.</p>
+      <span class="go">Read the security model →</span>
+    </a>
+  </div>
 
 </div>
 </main>
