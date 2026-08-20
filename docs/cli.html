@@ -403,6 +403,7 @@
   <table>
     <thead><tr><th>Command</th><th>Purpose</th></tr></thead>
     <tbody>
+      <tr><td class="cmd"><code>stm teams quickstart</code></td><td><b>The guided path — run this first.</b> <code>quickstart create</code> makes a team + prints a copy-paste invite; <code>quickstart join</code> joins and requests enrollment in one step; <code>quickstart finish</code> accepts the team key (verifying the fingerprint) and pulls the vault. Same commands and cryptography as the steps below, fewer to remember.</td></tr>
       <tr><td class="cmd"><code>stm teams serve</code></td><td>Run the self-hostable, zero-knowledge Teams server (configured via <code>STM_TEAM_*</code> env vars).</td></tr>
       <tr><td class="cmd"><code>stm teams init</code></td><td>Create a team (admin). Generates the team key, self-enrolls, prints the team token. <code>--server &lt;url&gt; --admin &lt;token&gt; [--name &lt;name&gt;]</code>.</td></tr>
       <tr><td class="cmd"><code>stm teams join</code></td><td>Join a team from a member machine. <code>--server &lt;url&gt; --token &lt;team-token&gt; [--name &lt;handle&gt;]</code>. A machine can belong to several teams.</td></tr>

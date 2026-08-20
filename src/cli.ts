@@ -1945,6 +1945,165 @@ async function teamsCmd(args: string[]): Promise<void> {
       );
       return;
     }
+    case "quickstart": {
+      // The guided path. Enrollment is really five ordered steps across two
+      // people; quickstart collapses each side to one command and auto-fills
+      // the next command's values, so nobody has to memorize the sequence or
+      // the crypto rationale. It calls the exact same client primitives the
+      // individual subcommands do — same security, fewer moves.
+      const mode = rest[0];
+      const rule = "  ───────────────────────────────────────────────\n";
+      if (mode === "create") {
+        const server = flag("server");
+        const admin = flag("admin") ?? process.env.STM_TEAM_ADMIN_TOKEN;
+        const name = flag("name") ?? "team";
+        if (!server || !admin) {
+          die(
+            "usage: stm teams quickstart create --server <url> --admin <admin-token> [--name <name>]\n" +
+              "(--admin may instead be supplied via the STM_TEAM_ADMIN_TOKEN env var)",
+          );
+        }
+        // Same steps as `stm teams init`: create the team, generate + store the
+        // team key, self-enroll by sealing it to our own identity.
+        const created = await t.createTeam(server!, admin!, name);
+        const teamKey = t.generateTeamKey();
+        const fp = t.teamKeyFingerprint(teamKey);
+        const cfg = {
+          serverUrl: server!,
+          teamToken: created.token,
+          teamId: created.id,
+          teamName: created.name,
+          teamKeyFp: fp,
+        };
+        const handle = t.addTeam(cfg, name);
+        t.setTeamPassphrase(teamKey);
+        const id = kp.ensureIdentity();
+        await t.registerMember(cfg, id.memberId, id.sealPublicKeyB64, id.signPublicKeyB64);
+        await t.uploadEnvelope(cfg, id.memberId, kp.seal(teamKey, id.sealPublicKeyB64));
+        out(
+          `✓ Team "${created.name}" created — you're enrolled as member ${id.memberId}.\n` +
+            `  The team key was generated and stored in your OS keychain (saved locally as "${handle}", now current).\n\n` +
+            `Send teammates this invite. The server URL and token are safe to share (they\n` +
+            `decrypt nothing); deliver the fingerprint OUT-OF-BAND (in person, Signal, …) so a\n` +
+            `hostile server can't swap the team key:\n\n` +
+            rule +
+            `  stm teams quickstart join \\\n` +
+            `    --server ${server} \\\n` +
+            `    --token ${created.token} \\\n` +
+            `    --fingerprint ${fp}\n` +
+            rule +
+            `\nWhen a teammate runs that, it prints their member-id and they send it to you.\n` +
+            `Enroll them:      stm teams enroll <their-member-id>\n` +
+            `They finish with: stm teams quickstart finish\n\n` +
+            `Share your keys with the team:\n` +
+            `  stm teams share <tool>:<label>   mark which keys are shared\n` +
+            `  stm teams push                   encrypt + upload the shared keys\n`,
+        );
+        return;
+      }
+      if (mode === "join") {
+        const server = flag("server");
+        const token = flag("token");
+        const fp = flag("fingerprint");
+        if (!server || !token) {
+          die("usage: stm teams quickstart join --server <url> --token <team-token> [--fingerprint <fp>]");
+        }
+        // join + enroll-request, folded into one step.
+        const handle = t.addTeam({ serverUrl: server!, teamToken: token!, teamKeyFp: fp }, flag("name"));
+        const cfg = t.readTeamConfig(); // the team we just added is now current
+        const id = kp.ensureIdentity();
+        await t.registerMember(cfg!, id.memberId, id.sealPublicKeyB64, id.signPublicKeyB64);
+        out(
+          `✓ Joined ${server} (saved locally as "${handle}", now current).\n` +
+            `✓ Enrollment requested — your public key is published.\n\n` +
+            `1. Send this member-id to an existing team member:\n\n` +
+            `     ${id.memberId}\n\n` +
+            `   They run:  stm teams enroll ${id.memberId}\n\n` +
+            `2. Once they've enrolled you, finish setup with:\n\n` +
+            (fp
+              ? `     stm teams quickstart finish\n`
+              : `     stm teams quickstart finish --fingerprint <fp>\n\n` +
+                `   NOTE: you didn't pass --fingerprint. Get it out-of-band from a member (they\n` +
+                `   see it when they run \`stm teams enroll\`) and pass it to finish so it can\n` +
+                `   verify the team key before trusting it.\n`),
+        );
+        return;
+      }
+      if (mode === "finish") {
+        // accept + pull, folded into one step.
+        const cfg = t.readTeamConfig(teamSel);
+        if (!cfg) die("teams: not configured. Run `stm teams quickstart join` first.");
+        if (!kp.hasIdentity()) die("no identity yet — run `stm teams quickstart join` first.");
+        const id = kp.ensureIdentity();
+        const envelope = await t.fetchEnvelope(cfg!, id.memberId);
+        if (!envelope) {
+          die(
+            `not enrolled yet — ask an existing member to run\n` +
+              `  stm teams enroll ${id.memberId}\n` +
+              `then re-run \`stm teams quickstart finish\`.`,
+          );
+        }
+        const teamKey = kp.open(envelope!);
+        // The server is UNTRUSTED: `open` proves the envelope was sealed to us,
+        // not that it wraps the real team key. Verify against the out-of-band
+        // fingerprint before trusting it (identical guard to `accept`).
+        const expectedFp = flag("fingerprint") ?? cfg!.teamKeyFp;
+        if (expectedFp) {
+          if (!t.teamKeyMatchesFingerprint(teamKey, expectedFp)) {
+            die(
+              `refusing to finish: the unwrapped team key does NOT match the fingerprint\n` +
+                `"${expectedFp}". The server may have substituted a key it controls.\n` +
+                `Re-confirm the fingerprint out-of-band with an existing member.`,
+            );
+          }
+        } else if (!rest.includes("--unverified")) {
+          die(
+            `refusing to finish without a fingerprint to verify the team key against.\n` +
+              `A malicious server can seal a key it knows to your public key, so an\n` +
+              `unverified finish can leak everything you push afterward.\n\n` +
+              `Get the fingerprint out-of-band from an existing member (they see it when\n` +
+              `they run \`stm teams enroll\`), then:  stm teams quickstart finish --fingerprint <fp>\n` +
+              `To proceed anyway (NOT recommended):  stm teams quickstart finish --unverified`,
+          );
+        }
+        t.setTeamPassphrase(teamKey);
+        if (expectedFp) { cfg!.teamKeyFp = t.teamKeyFingerprint(teamKey); t.writeTeamConfig(cfg!); }
+        const store = new Store();
+        try {
+          const r = await t.pullVault({ store, cfg: cfg!, passphrase: teamKey });
+          out(
+            (expectedFp
+              ? `✓ Accepted — fingerprint verified; team key stored in your OS keychain.\n`
+              : `✓ Accepted (UNVERIFIED — fingerprint not checked); team key stored in your OS keychain.\n`) +
+              (r.version == null
+                ? `  No team vault on the server yet — nothing to pull.\n`
+                : `✓ Pulled vault v${r.version}: added ${r.added}, skipped ${r.skipped} (already present).\n`) +
+              `\nYou're set up. From now on:  stm teams pull   (get new shared keys)\n` +
+              `                             stm teams push   (share your own)\n`,
+          );
+        } finally {
+          store.close();
+        }
+        return;
+      }
+      // No/unknown mode → the guided overview.
+      out(
+        `subscribetome teams quickstart — the guided path (fewer steps, same security)\n\n` +
+          `Creating a team?\n` +
+          `  stm teams quickstart create --server <url> --admin <tok> [--name <n>]\n` +
+          `    → creates the team, enrolls you, and prints a copy-paste invite.\n\n` +
+          `Joining a team?\n` +
+          `  stm teams quickstart join --server <url> --token <tok> [--fingerprint <fp>]\n` +
+          `    → joins AND requests enrollment in one step; prints your member-id.\n` +
+          `  (an existing member then runs:  stm teams enroll <your-member-id>)\n` +
+          `  stm teams quickstart finish [--fingerprint <fp>]\n` +
+          `    → unwraps the team key (verifying the fingerprint) and pulls the vault.\n\n` +
+          `The one manual handoff — a member approving you — is a security property, not\n` +
+          `missing automation: the team key is sealed to your public key by a human who\n` +
+          `checks your id. Everything around it is now a single command per side.\n`,
+      );
+      return;
+    }
     case "passphrase": {
       const p = await readAllStdin();
       if (!p) die("empty passphrase — nothing stored");
@@ -2168,6 +2327,10 @@ async function teamsCmd(args: string[]): Promise<void> {
     case undefined:
       out(
         `subscribetome teams — self-hosted, zero-knowledge credential sharing\n\n` +
+          `  stm teams quickstart            the guided path — run it first\n` +
+          `      quickstart create ...         create a team + print an invite\n` +
+          `      quickstart join ...           join + request enrollment in one step\n` +
+          `      quickstart finish             accept the team key + pull the vault\n\n` +
           `  stm teams serve                 run the self-hostable sync server\n` +
           `                                  (env: STM_TEAM_DB, STM_TEAM_HOST, STM_TEAM_PORT,\n` +
           `                                   STM_TEAM_ADMIN_TOKEN)\n` +

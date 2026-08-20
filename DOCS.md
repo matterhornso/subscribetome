@@ -149,6 +149,28 @@ shared passphrase is ever transmitted, and every usage report is **signed** with
 the member's Ed25519 identity — the team log attributes activity to a
 cryptographically-verified member, not a self-asserted name.
 
+**Start with `stm teams quickstart`.** Enrollment is five ordered steps across
+two people; quickstart collapses each side to a single command and auto-fills the
+next command's values — same commands, same cryptography, far less to remember:
+
+```
+# Creating a team:
+stm teams quickstart create --server <url> --admin <tok> [--name <n>]
+  → creates the team, enrolls you, and prints a copy-paste invite for teammates.
+
+# Joining a team:
+stm teams quickstart join --server <url> --token <tok> [--fingerprint <fp>]
+  → joins AND requests enrollment in one step; prints your member-id.
+#   (an existing member then runs:  stm teams enroll <your-member-id>)
+stm teams quickstart finish [--fingerprint <fp>]
+  → unwraps the team key (verifying the fingerprint) and pulls the vault.
+```
+
+The one manual handoff — a member approving you — is a security property, not
+missing automation: the team key is sealed to your public key by a human who
+checks your id. The lower-level commands below still exist for scripting and for
+understanding exactly what each step does.
+
 ```
 stm teams serve                run the self-hostable server (env: STM_TEAM_*)
 stm teams init                 create a team (admin); prints the team token + key fingerprint

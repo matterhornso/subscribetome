@@ -5,6 +5,18 @@ change behaviour. Format follows [Keep a Changelog](https://keepachangelog.com).
 
 ## [Unreleased]
 
+### Added
+
+- **`stm teams quickstart` — the guided enrollment path.** Team enrollment is
+  five ordered steps across two people; quickstart collapses each side to a
+  single command and auto-fills the next command's values. `quickstart create`
+  makes the team and prints a copy-paste invite; `quickstart join` joins AND
+  requests enrollment in one step (printing your member-id); `quickstart finish`
+  unwraps the team key (verifying the fingerprint) and pulls the vault. Same
+  client primitives, same cryptography, same fingerprint-verification gate — it
+  just removes the need to memorize the sequence. The lower-level `init` / `join`
+  / `enroll-request` / `accept` / `pull` commands are unchanged.
+
 ## [1.6.0] - 2026-08-12
 
 Manage key sharing from the dashboard. The Teams tab gains a **Sharing** section
