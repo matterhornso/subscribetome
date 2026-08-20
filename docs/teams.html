@@ -306,6 +306,7 @@
     <div class="t">On this page</div>
     <ul>
       <li><a href="#how">How it fits together</a></li>
+      <li><a href="#quickstart">Quickstart (the fast path)</a></li>
       <li><a href="#prereqs">Prerequisites</a></li>
       <li><a href="#serve">Run the server</a></li>
       <li><a href="#env">Environment variables</a></li>
@@ -336,6 +337,45 @@
     local handle and makes it current; <code>stm teams list</code> shows them, <code>stm teams use &lt;name&gt;</code>
     switches, and any command takes <code>--team &lt;name&gt;</code> to target another. Each team has its own key in the
     keychain; your signing identity is one per machine and shared across teams.</p>
+  </div>
+
+  <h2 id="quickstart">Quickstart <em>(the fast path)</em><a class="anchor" href="#quickstart" aria-label="Link to this section">#</a></h2>
+  <p>
+    Enrollment is five ordered steps across two people. <code>stm teams quickstart</code> collapses each side to a
+    single command and auto-fills the next command's values — the <b>same</b> commands and the <b>same</b> cryptography
+    as the detailed walkthrough below, with far less to remember. Once your server is running, this is all most members
+    ever need.
+  </p>
+  <h3>Create a team</h3>
+  <div class="copybox">
+    <div class="copybar"><span>shell · creator</span><button class="copy-btn">Copy</button></div>
+<pre>stm teams quickstart create \
+  --server https://teams.example.com \
+  --admin "$STM_TEAM_ADMIN_TOKEN" \
+  --name acme</pre>
+  </div>
+  <p>It creates the team, enrolls you, and prints a <b>copy-paste invite</b> — the exact <code>quickstart join</code> command teammates run, pre-filled with the server URL, team token, and team-key fingerprint.</p>
+  <h3>Join a team</h3>
+  <div class="copybox">
+    <div class="copybar"><span>shell · joiner</span><button class="copy-btn">Copy</button></div>
+<pre><span class="c"># 1. paste the invite from the creator — joins AND requests enrollment,</span>
+<span class="c">#    then prints your member-id to send back to them.</span>
+stm teams quickstart join \
+  --server https://teams.example.com \
+  --token <span class="p">&lt;team-token&gt;</span> \
+  --fingerprint <span class="p">&lt;team-key-fingerprint&gt;</span>
+
+<span class="c"># 2. an existing member enrolls you:  stm teams enroll &lt;your-member-id&gt;</span>
+
+<span class="c"># 3. finish — unwraps the team key (verifying the fingerprint) + pulls the vault.</span>
+stm teams quickstart finish</pre>
+  </div>
+  <div class="callout note">
+    <div class="h">The one manual handoff is on purpose</div>
+    <p>A member approving you is a <b>security property</b>, not missing automation: the team key is sealed to your
+    public key by a human who verifies your member-id. Quickstart automates everything <em>around</em> that human check —
+    it does not remove it. The lower-level commands (<code>init</code> / <code>join</code> / <code>enroll-request</code>
+    / <code>accept</code> / <code>pull</code>) still exist for scripting and are documented below.</p>
   </div>
 
   <h2 id="prereqs">Prerequisites<a class="anchor" href="#prereqs" aria-label="Link to this section">#</a></h2>
@@ -500,7 +540,7 @@ team creation ENABLED (admin token set)</pre>
     <a class="card-link" href="/cli.html#teams">
       <span class="ct">CLI</span>
       <h3>Every teams subcommand</h3>
-      <p>The full <code>stm teams</code> surface — serve, init, join, enroll, accept, push, pull, audit, and more.</p>
+      <p>The full <code>stm teams</code> surface — quickstart, serve, init, join, enroll, accept, push, pull, audit, and more.</p>
       <span class="go">Read the CLI reference →</span>
     </a>
   </div>

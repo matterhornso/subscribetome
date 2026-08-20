@@ -141,6 +141,10 @@ self-certifying). Flow: `stm teams join` → `stm teams enroll-request`
 <member-id>` (seals the team key to that member via an X25519 sealed box:
 ephemeral ECDH → HKDF-SHA256 → AES-256-GCM; the CLI verifies the key set
 matches the id before sealing) → `stm teams accept` → `stm teams pull`.
+`stm teams quickstart` is the guided path over this flow: `quickstart create`
+= init + a copy-paste invite; `quickstart join` = join + enroll-request in one
+step (prints the member-id); `quickstart finish` = accept (fingerprint-verified)
++ pull. Same primitives and cryptography, one command per side.
 Usage attribution: `stm teams audit-push` sends local key-use events
 (placeholder commands only, never a resolved key) SIGNED with the
 member's Ed25519 key; the server verifies the signature and attributes
