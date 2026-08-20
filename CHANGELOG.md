@@ -5,6 +5,16 @@ change behaviour. Format follows [Keep a Changelog](https://keepachangelog.com).
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-08-20
+
+Guided Teams onboarding. Enrollment used to be five ordered steps across two
+people; the new `stm teams quickstart` collapses each side to a single command
+and auto-fills the next command's values — the same commands and the same
+cryptography, with far less to remember. This release also adds a "use the
+broker from any agent" documentation guide, reframing the broker as usable from
+any HTTP client, not only Claude Code. Scope is unchanged (macOS + Claude Code
+runtime hooks; the broker and Teams server run anywhere Bun does).
+
 ### Added
 
 - **`stm teams quickstart` — the guided enrollment path.** Team enrollment is
@@ -16,6 +26,14 @@ change behaviour. Format follows [Keep a Changelog](https://keepachangelog.com).
   client primitives, same cryptography, same fingerprint-verification gate — it
   just removes the need to memorize the sequence. The lower-level `init` / `join`
   / `enroll-request` / `accept` / `pull` commands are unchanged.
+
+### Documentation
+
+- **"Use the broker from any agent" guide.** The broker is plain loopback HTTP,
+  so any HTTP-speaking client — the OpenAI SDKs, LangChain, LlamaIndex, a
+  script, `curl` — can call your providers through it. A new docs page collects
+  copy-paste recipes and reframes STM as a credential broker for any agent, not
+  only a Claude Code plugin. `llms.txt` and the docs nav were updated to match.
 
 ## [1.6.0] - 2026-08-12
 
