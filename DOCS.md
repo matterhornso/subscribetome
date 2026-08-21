@@ -34,7 +34,7 @@ Register a project (path + name), pick which keys are in scope, optionally flip 
 
 Glob-matched allow / deny / warn rules evaluated at PreToolUse. Test a command against the active rules before you save. The audit log is a forensic record of every PreToolUse decision (substitute / policy.deny / policy.warn / unresolved / malformed) — and crucially, it never holds a real key value.
 
-**Browse services — 50 services pre-configured**
+**Browse services — 80+ services pre-configured**
 
 ![Browse services](docs/screenshots/browse-services.png)
 

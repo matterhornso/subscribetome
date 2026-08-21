@@ -5,6 +5,19 @@ change behaviour. Format follows [Keep a Changelog](https://keepachangelog.com).
 
 ## [Unreleased]
 
+### Added
+
+- **36 more pre-configured services in the catalog** (50 → 86). New entries span
+  every category: AI (Cohere, Together AI, Perplexity, DeepSeek, xAI, Deepgram,
+  Hugging Face, Stability AI, AssemblyAI, Voyage AI), databases (Turso, Convex,
+  Xata), hosting (Render, Akamai/Linode), auth (WorkOS, Stytch), payments
+  (PayPal, Razorpay, Square), email (Loops, Mailchimp), comms (Vonage, Pusher),
+  social (LinkedIn, Buffer), sales (HubSpot, Hunter), search (SerpApi, Brave
+  Search), monitoring (Datadog, Axiom, Mixpanel), and dev tools (GitLab,
+  Airtable, Jira). Each carries its canonical key-page URL and suggested
+  credential labels. Data-only: the dashboard "Add keys" picker and "Browse
+  services" browser pick them up automatically.
+
 ## [1.7.0] - 2026-08-20
 
 Guided Teams onboarding. Enrollment used to be five ordered steps across two

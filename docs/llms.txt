@@ -26,7 +26,7 @@ Three other hooks back this up:
 - `SessionStart` teaches every new Claude Code session how to use stm-managed
   keys, with no per-project setup.
 
-The dashboard ships with 50 services pre-configured (OpenAI, Anthropic,
+The dashboard ships with 80+ services pre-configured (OpenAI, Anthropic,
 Google Gemini, Groq, Mistral, OpenRouter, fal.ai, Replicate, ElevenLabs,
 Supabase, Neon, MongoDB Atlas, Upstash Redis, Firebase, PlanetScale,
 Vercel, Netlify, Railway, Cloudflare, AWS, Fly.io, DigitalOcean, Clerk,
