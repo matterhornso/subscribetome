@@ -1,6 +1,6 @@
 {
   "name": "subscribetome",
-  "version": "1.7.0",
+  "version": "1.8.0",
   "description": "Keychain-first API-key security for AI coding agents: keys never touch the chat, a credential broker for HTTP APIs, and a self-hostable zero-knowledge Teams server. A Claude Code plugin.",
   "keywords": [
     "claude-code",
