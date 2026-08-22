@@ -5,6 +5,16 @@ change behaviour. Format follows [Keep a Changelog](https://keepachangelog.com).
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-08-22
+
+A bigger service catalog. The dashboard's "Add keys" picker and "Browse
+services" browser now ship with 86 providers pre-configured (up from 50) —
+each with the right pre-labelled credential fields and a one-click link to
+that provider's key page. This is a data-only release: no runtime behavior
+changes, and every label still obeys the placeholder grammar. Scope is
+unchanged (macOS + Claude Code runtime hooks; the broker and Teams server
+run anywhere Bun does).
+
 ### Added
 
 - **36 more pre-configured services in the catalog** (50 → 86). New entries span
