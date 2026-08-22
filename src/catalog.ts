@@ -169,6 +169,76 @@ export const CATALOG: ServiceDef[] = [
     category: "ai",
     url: "https://elevenlabs.io/app/settings/api-keys",
   },
+  {
+    id: "cohere",
+    name: "Cohere",
+    credentials: ["api-key"],
+    category: "ai",
+    url: "https://dashboard.cohere.com/api-keys",
+  },
+  {
+    id: "together",
+    name: "Together AI",
+    credentials: ["api-key"],
+    category: "ai",
+    url: "https://api.together.xyz/settings/api-keys",
+  },
+  {
+    id: "perplexity",
+    name: "Perplexity",
+    credentials: ["api-key"],
+    category: "ai",
+    url: "https://www.perplexity.ai/settings/api",
+  },
+  {
+    id: "deepseek",
+    name: "DeepSeek",
+    credentials: ["api-key"],
+    category: "ai",
+    url: "https://platform.deepseek.com/api_keys",
+  },
+  {
+    id: "xai",
+    name: "xAI (Grok)",
+    credentials: ["api-key"],
+    category: "ai",
+    url: "https://console.x.ai/",
+  },
+  {
+    id: "deepgram",
+    name: "Deepgram",
+    credentials: ["api-key"],
+    category: "ai",
+    url: "https://console.deepgram.com/",
+  },
+  {
+    id: "huggingface",
+    name: "Hugging Face",
+    credentials: ["access-token"],
+    category: "ai",
+    url: "https://huggingface.co/settings/tokens",
+  },
+  {
+    id: "stability",
+    name: "Stability AI",
+    credentials: ["api-key"],
+    category: "ai",
+    url: "https://platform.stability.ai/account/keys",
+  },
+  {
+    id: "assemblyai",
+    name: "AssemblyAI",
+    credentials: ["api-key"],
+    category: "ai",
+    url: "https://www.assemblyai.com/app",
+  },
+  {
+    id: "voyage",
+    name: "Voyage AI",
+    credentials: ["api-key"],
+    category: "ai",
+    url: "https://dashboard.voyageai.com/",
+  },
 
   // ---- Databases / backends ----
   {
@@ -222,6 +292,27 @@ export const CATALOG: ServiceDef[] = [
     category: "database",
     url: "https://app.planetscale.com/settings/service-tokens",
   },
+  {
+    id: "turso",
+    name: "Turso",
+    credentials: ["database-url", "auth-token"],
+    category: "database",
+    url: "https://app.turso.tech/",
+  },
+  {
+    id: "convex",
+    name: "Convex",
+    credentials: ["deploy-key"],
+    category: "database",
+    url: "https://dashboard.convex.dev/",
+  },
+  {
+    id: "xata",
+    name: "Xata",
+    credentials: ["api-key"],
+    category: "database",
+    url: "https://app.xata.io/settings",
+  },
 
   // ---- Deployment / hosting ----
   {
@@ -273,6 +364,20 @@ export const CATALOG: ServiceDef[] = [
     category: "hosting",
     url: "https://cloud.digitalocean.com/account/api/tokens",
   },
+  {
+    id: "render",
+    name: "Render",
+    credentials: ["api-key"],
+    category: "hosting",
+    url: "https://dashboard.render.com/u/settings#api-keys",
+  },
+  {
+    id: "linode",
+    name: "Akamai (Linode)",
+    credentials: ["personal-access-token"],
+    category: "hosting",
+    url: "https://cloud.linode.com/profile/tokens",
+  },
 
   // ---- Auth ----
   {
@@ -292,6 +397,20 @@ export const CATALOG: ServiceDef[] = [
     credentials: ["domain", "client-id", "client-secret"],
     category: "auth",
     url: "https://manage.auth0.com/dashboard",
+  },
+  {
+    id: "workos",
+    name: "WorkOS",
+    credentials: ["api-key", "client-id"],
+    category: "auth",
+    url: "https://dashboard.workos.com/api-keys",
+  },
+  {
+    id: "stytch",
+    name: "Stytch",
+    credentials: ["project-id", "secret"],
+    category: "auth",
+    url: "https://stytch.com/dashboard/api-keys",
   },
 
   // ---- Payments ----
@@ -315,6 +434,27 @@ export const CATALOG: ServiceDef[] = [
     credentials: ["api-key"],
     category: "payments",
     url: "https://vendors.paddle.com/authentication-v2",
+  },
+  {
+    id: "paypal",
+    name: "PayPal",
+    credentials: ["client-id", "client-secret"],
+    category: "payments",
+    url: "https://developer.paypal.com/dashboard/applications",
+  },
+  {
+    id: "razorpay",
+    name: "Razorpay",
+    credentials: ["key-id", "key-secret"],
+    category: "payments",
+    url: "https://dashboard.razorpay.com/app/keys",
+  },
+  {
+    id: "square",
+    name: "Square",
+    credentials: ["access-token"],
+    category: "payments",
+    url: "https://developer.squareup.com/apps",
   },
 
   // ---- Email ----
@@ -353,6 +493,20 @@ export const CATALOG: ServiceDef[] = [
     category: "email",
     url: "https://app.mailgun.com/settings/api_security",
   },
+  {
+    id: "loops",
+    name: "Loops",
+    credentials: ["api-key"],
+    category: "email",
+    url: "https://app.loops.so/settings?page=api",
+  },
+  {
+    id: "mailchimp",
+    name: "Mailchimp",
+    credentials: ["api-key"],
+    category: "email",
+    url: "https://admin.mailchimp.com/account/api/",
+  },
 
   // ---- Comms / messaging ----
   {
@@ -383,6 +537,20 @@ export const CATALOG: ServiceDef[] = [
     category: "comms",
     url: "https://discord.com/developers/applications",
   },
+  {
+    id: "vonage",
+    name: "Vonage",
+    credentials: ["api-key", "api-secret"],
+    category: "comms",
+    url: "https://dashboard.nexmo.com/settings",
+  },
+  {
+    id: "pusher",
+    name: "Pusher",
+    credentials: ["app-id", "key", "secret"],
+    category: "comms",
+    url: "https://dashboard.pusher.com/",
+  },
 
   // ---- Social ----
   {
@@ -412,6 +580,20 @@ export const CATALOG: ServiceDef[] = [
     category: "social",
     url: "https://app.postiz.com/settings",
   },
+  {
+    id: "linkedin",
+    name: "LinkedIn",
+    credentials: ["client-id", "client-secret"],
+    category: "social",
+    url: "https://www.linkedin.com/developers/apps",
+  },
+  {
+    id: "buffer",
+    name: "Buffer",
+    credentials: ["access-token"],
+    category: "social",
+    url: "https://buffer.com/developers/apps",
+  },
 
   // ---- Sales & outreach ----
   {
@@ -427,6 +609,20 @@ export const CATALOG: ServiceDef[] = [
     credentials: ["api-key"],
     category: "sales",
     url: "https://app.clay.com/workspaces",
+  },
+  {
+    id: "hubspot",
+    name: "HubSpot",
+    credentials: ["private-app-token"],
+    category: "sales",
+    url: "https://app.hubspot.com/private-apps",
+  },
+  {
+    id: "hunter",
+    name: "Hunter",
+    credentials: ["api-key"],
+    category: "sales",
+    url: "https://hunter.io/api-keys",
   },
 
   // ---- Search & web ----
@@ -458,6 +654,20 @@ export const CATALOG: ServiceDef[] = [
     category: "search",
     url: "https://platform.parallel.ai/",
   },
+  {
+    id: "serpapi",
+    name: "SerpApi",
+    credentials: ["api-key"],
+    category: "search",
+    url: "https://serpapi.com/manage-api-key",
+  },
+  {
+    id: "brave-search",
+    name: "Brave Search",
+    credentials: ["api-key"],
+    category: "search",
+    url: "https://api-dashboard.search.brave.com/app/keys",
+  },
 
   // ---- Monitoring / analytics ----
   {
@@ -473,6 +683,27 @@ export const CATALOG: ServiceDef[] = [
     credentials: ["project-api-key"],
     category: "monitoring",
     url: "https://app.posthog.com/project/settings",
+  },
+  {
+    id: "datadog",
+    name: "Datadog",
+    credentials: ["api-key", "app-key"],
+    category: "monitoring",
+    url: "https://app.datadoghq.com/organization-settings/api-keys",
+  },
+  {
+    id: "axiom",
+    name: "Axiom",
+    credentials: ["api-token"],
+    category: "monitoring",
+    url: "https://app.axiom.co/",
+  },
+  {
+    id: "mixpanel",
+    name: "Mixpanel",
+    credentials: ["project-token"],
+    category: "monitoring",
+    url: "https://mixpanel.com/settings/project",
   },
 
   // ---- Dev tools ----
@@ -496,5 +727,26 @@ export const CATALOG: ServiceDef[] = [
     credentials: ["internal-integration-token"],
     category: "vcs",
     url: "https://www.notion.so/profile/integrations",
+  },
+  {
+    id: "gitlab",
+    name: "GitLab",
+    credentials: ["personal-access-token"],
+    category: "vcs",
+    url: "https://gitlab.com/-/user_settings/personal_access_tokens",
+  },
+  {
+    id: "airtable",
+    name: "Airtable",
+    credentials: ["personal-access-token"],
+    category: "vcs",
+    url: "https://airtable.com/create/tokens",
+  },
+  {
+    id: "jira",
+    name: "Jira",
+    credentials: ["api-token"],
+    category: "vcs",
+    url: "https://id.atlassian.com/manage-profile/security/api-tokens",
   },
 ];

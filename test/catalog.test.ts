@@ -33,8 +33,8 @@ test("catalog covers the services the dashboard advertises", () => {
 
 // ---- v0.2.6: catalog browser ---------------------------------------------
 
-test("catalog has exactly 50 entries after the catalog-browser expansion", () => {
-  expect(CATALOG.length).toBe(50);
+test("catalog has exactly 86 entries after the provider expansion", () => {
+  expect(CATALOG.length).toBe(86);
 });
 
 test("every catalog service has a category and a url", () => {
@@ -73,6 +73,65 @@ test("the 14 net-new entries are all present with their canonical ids", () => {
     "clay",
     "digitalocean",
   ];
+  const ids = new Set(CATALOG.map((s) => s.id));
+  for (const id of expectedNew) {
+    expect(ids.has(id)).toBe(true);
+  }
+});
+
+test("the 36 provider-expansion entries are all present with their canonical ids", () => {
+  // The batch this release adds, pinned so a future rename gets noticed.
+  const expectedNew = [
+    // ai
+    "cohere",
+    "together",
+    "perplexity",
+    "deepseek",
+    "xai",
+    "deepgram",
+    "huggingface",
+    "stability",
+    "assemblyai",
+    "voyage",
+    // database
+    "turso",
+    "convex",
+    "xata",
+    // hosting
+    "render",
+    "linode",
+    // auth
+    "workos",
+    "stytch",
+    // payments
+    "paypal",
+    "razorpay",
+    "square",
+    // email
+    "loops",
+    "mailchimp",
+    // comms
+    "vonage",
+    "pusher",
+    // social
+    "linkedin",
+    "buffer",
+    // sales
+    "hubspot",
+    "hunter",
+    // search
+    "serpapi",
+    "brave-search",
+    // monitoring
+    "datadog",
+    "axiom",
+    "mixpanel",
+    // vcs
+    "gitlab",
+    "airtable",
+    "jira",
+  ];
+  expect(expectedNew.length).toBe(36);
   const ids = new Set(CATALOG.map((s) => s.id));
   for (const id of expectedNew) {
     expect(ids.has(id)).toBe(true);
