@@ -1050,13 +1050,17 @@ function codexHelp(): void {
       `  stm codex --dry-run [codex-args...]  print the injection plan and the\n` +
       `                                       exact argv codex would receive,\n` +
       `                                       then exit without launching\n` +
-      `  stm codex install-hooks [--dry-run]  write the UserPromptSubmit +\n` +
+      `  stm codex install [--dry-run]        one-shot setup: writes BOTH the\n` +
+      `                                       hooks guardrail block and the MCP\n` +
+      `                                       server block into ~/.codex/config.toml\n` +
+      `  stm codex install --remove           remove both managed blocks\n` +
+      `  stm codex install-hooks [--dry-run]  write only the UserPromptSubmit +\n` +
       `                                       SessionStart guardrail block into\n` +
       `                                       ~/.codex/config.toml (idempotent)\n` +
       `  stm codex install-hooks --remove     remove the managed block from\n` +
       `                                       ~/.codex/config.toml (leaves a backup)\n` +
-      `  stm codex install-mcp [--dry-run]    register the higher-assurance Option-2\n` +
-      `                                       MCP server (~/.codex/config.toml,\n` +
+      `  stm codex install-mcp [--dry-run]    register only the higher-assurance\n` +
+      `                                       Option-2 MCP server (~/.codex/config.toml,\n` +
       `                                       [mcp_servers.subscribetome])\n` +
       `  stm codex install-mcp --remove       remove the MCP block\n` +
       `  stm codex mcp-server                 (internal) Codex spawns this — runs\n` +
@@ -1134,6 +1138,18 @@ function codexInstallHooksCmd(args: string[]): void {
       `until you approve, the hook is silently skipped. Press y when prompted.\n` +
       `See: https://developers.openai.com/codex/hooks#trust\n`,
   );
+}
+
+/**
+ * One-shot combinator: writes both the hooks guardrail block and the MCP
+ * server block in a single command, so a copy-paste install prompt (README)
+ * doesn't need to know about the two independent tracks. Each sub-installer
+ * is already idempotent, so running this again just refreshes both blocks.
+ */
+function codexInstallCmd(args: string[]): void {
+  codexInstallHooksCmd(args);
+  process.stdout.write("\n");
+  codexInstallMcpCmd(args);
 }
 
 function codexDoctorCmd(): void {
@@ -1232,6 +1248,9 @@ async function codexCmd(args: string[]): Promise<void> {
   // `--dry-run`. Anything else is forwarded to codex verbatim.
   if (args[0] === "--help" || args[0] === "-h" || args[0] === "help") {
     return codexHelp();
+  }
+  if (args[0] === "install") {
+    return codexInstallCmd(args.slice(1));
   }
   if (args[0] === "install-hooks") {
     return codexInstallHooksCmd(args.slice(1));
@@ -2376,6 +2395,7 @@ function helpCmd(): void {
       `  stm policy <list|add|remove|test>  allow/deny rules at PreToolUse\n` +
       `  stm audit [--tail N] [--event] [--tool] [--since]  PreToolUse decision log\n` +
       `  stm sync [provider]             fetch real spend from configured providers\n` +
+      `  stm codex install               one-shot setup: wires both the hooks and MCP guardrails\n` +
       `  stm codex [codex-args...]       launch Codex with stm-managed keys (session-env mode)\n` +
       `                                  see \`stm codex --help\` for install-hooks / install-mcp / doctor\n` +
       `  stm doctor                      diagnose which keystore tier is active and how to upgrade\n` +

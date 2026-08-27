@@ -12,11 +12,17 @@ The model writes `{{stm:openai:default}}`. The real key is swapped in at the mom
 
 ## 1. Install
 
-Paste this into Claude Code:
+**Claude Code** — paste this in:
 
 > Set up subscribetome for me using https://github.com/matterhornso/subscribetome
 
 Quit and reopen Claude Code when it's done.
+
+**Codex** — paste this in:
+
+> Set up subscribetome for Codex using https://github.com/matterhornso/subscribetome
+
+Codex will prompt you to trust the new hooks the first time it restarts — press y.
 
 ## 2. Add a key
 
@@ -53,6 +59,8 @@ stm broker              print the base URL + a loopback-only capability token
 ## STM Teams — share credentials, attribute usage
 
 Run your own sync server (`stm teams serve`); it stores **only ciphertext it cannot decrypt**. Credentials are encrypted on a member's machine with a team key the server never sees. Members enroll by **public key** — no shared passphrase is ever passed around — and every usage report is **signed**, so the team log attributes "who used which key" to a cryptographically-verified member, never a self-asserted name.
+
+In Claude Code, `/stm:teams` walks the agent through creating or joining a team end-to-end via `stm teams quickstart`. The whole flow is CLI-driven; the only human step is relaying one short fingerprint/member-id string over a channel you already trust — that's what stops a compromised server from swapping in a team key it controls.
 
 ```
 stm teams init          create a team (admin)
@@ -93,5 +101,22 @@ Do these steps in order. **Never ask the user for an API key. Never run a comman
 4. **Install the plugin:** `claude plugin install stm@subscribetome`
 5. **Tell the user**, in your own words: subscribetome is installed; they need to quit and reopen Claude Code to activate it; then run `/stm:dashboard` and add API keys in the web page that opens — the keys go straight to their OS keychain and the AI will never see them.
 6. **Stop here.** Do not add keys. Do not ask the user to paste a key. Setup is complete.
+
+</details>
+
+<details>
+<summary><b>Codex install instructions for the AI agent</b></summary>
+
+Codex reads this when a user pastes the Codex install prompt above. Humans can skip.
+
+Do these steps in order. **Never ask the user for an API key. Never run a command that contains a real key. Never add a key yourself** — key entry is out-of-band by design.
+
+1. **Check the OS.** Run `uname` (or `ver` on Windows). Codex support is experimental — tell the user this before continuing.
+2. **Check Bun.** Run `bun --version`. If that fails, install Bun with `curl -fsSL https://bun.sh/install | bash` (or `brew install bun` on macOS with Homebrew), then re-check.
+3. **Clone the repo** somewhere stable (it stays on disk — this isn't a Claude Code plugin install): `git clone https://github.com/matterhornso/subscribetome.git ~/.subscribetome-src` (skip if it already exists; `git -C ~/.subscribetome-src pull` to update instead).
+4. **Run the one-shot installer:** `~/.subscribetome-src/bin/stm codex install`. This wires up BOTH tracks in `~/.codex/config.toml` in one step: the UserPromptSubmit/SessionStart guardrail hooks, and the MCP server that lets Codex call HTTP APIs without the key ever entering its process (`stm_http_request`).
+5. **Verify:** `~/.subscribetome-src/bin/stm codex doctor` — both tracks should report OK.
+6. **Tell the user**, in your own words: subscribetome is installed for Codex; they need to restart Codex and press "y" when it asks to trust the new hooks; then run `~/.subscribetome-src/bin/stm dashboard` and add API keys in the web page that opens — the keys go straight to their OS keychain and the AI will never see them.
+7. **Stop here.** Do not add keys. Do not ask the user to paste a key. Setup is complete.
 
 </details>

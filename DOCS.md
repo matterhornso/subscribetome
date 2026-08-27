@@ -234,8 +234,9 @@ stm broker              print the broker base URL + loopback capability token (H
 stm teams <subcmd>      self-hosted, zero-knowledge credential sharing + usage attribution
 stm sync [provider]     fetch real spend from configured providers
 stm codex [args...]     launch Codex with stm keys as env vars
-stm codex install-hooks install the UserPromptSubmit + SessionStart guardrails in ~/.codex/config.toml
-stm codex install-mcp   register Codex Option 2 (MCP-wrapped, higher assurance — key never in agent process)
+stm codex install       one-shot setup: hooks + MCP guardrails in a single command
+stm codex install-hooks install only the UserPromptSubmit + SessionStart guardrails in ~/.codex/config.toml
+stm codex install-mcp   register only Codex Option 2 (MCP-wrapped, higher assurance — key never in agent process)
 stm codex doctor        verify both Codex hooks AND MCP are wired up
 stm doctor              diagnose which keystore tier is active and how to upgrade
 stm vault <subcmd>      backup/restore the entire inventory + keys; manage Tier 3 vault
@@ -342,6 +343,10 @@ Cursor, opencode, and the MCP-wrapped Codex mode (Option 2 of
 `specs/cross-platform-and-codex.md` §6) are roadmap; the agent surface
 is now plural and they plug into it without breaking either of the
 modes above.
+
+**One-shot setup:** `stm codex install` runs both installers below in a
+single command (and `stm codex install --remove` undoes both) — use it
+unless you specifically need to install just one track.
 
 ### Codex guardrails — UserPromptSubmit + SessionStart
 
