@@ -71,9 +71,14 @@ export function hookScriptPaths(rootOverride?: string): {
  * STM_MARKER_CURRENT and STM_END_MARKER so reinstall + rewrite is
  * one find-and-replace.
  *
- * `features.hooks = true` is set inside our block — if the user
- * already set it elsewhere we override-to-the-same-value, which is
- * harmless.
+ * `features.hooks = true` is set inside our block by default — BUT TOML
+ * forbids declaring the same table (`[features]`) twice in one file, so if
+ * the user's config already has a `[features]` table elsewhere (e.g. from
+ * the ChatGPT desktop app), emitting our own header here would produce
+ * invalid TOML and break the user's ENTIRE config, not just our block.
+ * `installHooks` detects that case and passes `includeFeaturesHeader:
+ * false`, merging `hooks = true` into the existing table instead — see
+ * `mergeHooksIntoExistingFeaturesTable` below.
  */
 /**
  * Escape a value for a TOML basic (double-quoted) string. Escapes the
@@ -91,7 +96,10 @@ export function tomlEscape(s: string): string {
     .replace(/\t/g, "\\t");
 }
 
-export function renderManagedBlock(paths: ReturnType<typeof hookScriptPaths>): string {
+export function renderManagedBlock(
+  paths: ReturnType<typeof hookScriptPaths>,
+  includeFeaturesHeader: boolean = true,
+): string {
   const u = tomlEscape(paths.userPromptSubmit);
   const s = tomlEscape(paths.sessionStart);
   return [
@@ -100,9 +108,7 @@ export function renderManagedBlock(paths: ReturnType<typeof hookScriptPaths>): s
     "# changes are overwritten on reinstall. Run `stm codex install-hooks --remove`",
     "# to clean these out.",
     "",
-    "[features]",
-    "hooks = true",
-    "",
+    ...(includeFeaturesHeader ? ["[features]", "hooks = true", ""] : []),
     "[[hooks.UserPromptSubmit]]",
     "[[hooks.UserPromptSubmit.hooks]]",
     'type = "command"',
@@ -119,6 +125,85 @@ export function renderManagedBlock(paths: ReturnType<typeof hookScriptPaths>): s
     "",
     STM_END_MARKER,
   ].join("\n");
+}
+
+/**
+ * Line range of our own managed block (marker to marker, inclusive), or
+ * null if it isn't present. Shared by the external-`[features]`-table scan
+ * below, so it can correctly ignore our own (possibly stale) header instead
+ * of mistaking it for an externally-owned table.
+ */
+function ownBlockLineRange(
+  lines: string[],
+): { start: number; end: number } | null {
+  let start = -1;
+  let end = -1;
+  for (let i = 0; i < lines.length; i++) {
+    if (start === -1 && lines[i].startsWith(STM_MARKER_PREFIX)) {
+      start = i;
+      continue;
+    }
+    if (start !== -1 && lines[i] === STM_END_MARKER) {
+      end = i;
+      break;
+    }
+  }
+  return start !== -1 && end !== -1 ? { start, end } : null;
+}
+
+/**
+ * Line range of the first top-level `[features]` table OUTSIDE our own
+ * managed block — from its header (inclusive) to the line before the next
+ * table header (or EOF). Null if no such table exists. Line-based, not a
+ * TOML parser: matches this module's zero-dependency, marker-splice
+ * approach elsewhere.
+ */
+function externalFeaturesTableRange(
+  lines: string[],
+): { headerIndex: number; bodyEnd: number } | null {
+  const own = ownBlockLineRange(lines);
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].trim() !== "[features]") continue;
+    if (own && i >= own.start && i <= own.end) continue; // it's our own header, skip it
+    let bodyEnd = lines.length;
+    for (let j = i + 1; j < lines.length; j++) {
+      if (lines[j].trim().startsWith("[")) {
+        bodyEnd = j;
+        break;
+      }
+    }
+    return { headerIndex: i, bodyEnd };
+  }
+  return null;
+}
+
+/**
+ * If `current` already has a `[features]` table OUTSIDE our own managed
+ * block, ensure it sets `hooks = true` (inserting the line if absent,
+ * leaving `current` byte-identical if already present) and return the
+ * edited text. Returns `current` unchanged if no external `[features]`
+ * table exists — callers use that as the signal to fall back to emitting
+ * our own header instead.
+ *
+ * Operates on the FULL text (not a copy with our block stripped) so an
+ * already-merged, unchanged run returns the exact same string — that's
+ * what keeps `installHooks` idempotent (no needless rewrite/backup) once
+ * the merge has already happened once.
+ */
+export function mergeHooksIntoExistingFeaturesTable(current: string): string {
+  const lines = current.split("\n");
+  const range = externalFeaturesTableRange(lines);
+  if (!range) return current;
+  const body = lines.slice(range.headerIndex + 1, range.bodyEnd);
+  const alreadySet = body.some((l) => /^\s*hooks\s*=\s*true\s*$/.test(l));
+  if (alreadySet) return current;
+  lines.splice(range.bodyEnd, 0, "hooks = true");
+  return lines.join("\n");
+}
+
+/** True when `lines` has a top-level `[features]` table outside our block. */
+function hasExternalFeaturesTable(lines: string[]): boolean {
+  return externalFeaturesTableRange(lines) !== null;
 }
 
 export interface InstallResult {
@@ -154,15 +239,25 @@ export function installHooks(opts: {
 }): InstallResult {
   const configPath = opts.configPath ?? defaultCodexConfigPath();
   const paths = hookScriptPaths(opts.rootOverride);
-  const block = renderManagedBlock(paths);
 
   let current = "";
   if (existsSync(configPath)) {
     current = readFileSync(configPath, "utf8");
   }
 
+  // TOML forbids declaring the same table twice. Check for an EXTERNAL
+  // [features] table (i.e. one outside our own managed block) before
+  // deciding whether our block may emit its own [features] header — and if
+  // one exists, merge `hooks = true` into IT instead. Both operate on
+  // `current` directly (not a stripped copy) so an already-merged, already
+  // up-to-date file round-trips byte-identical — that's what keeps this
+  // idempotent instead of rewriting (and backing up) on every single run.
+  const hasExternal = hasExternalFeaturesTable(current.split("\n"));
+  const block = renderManagedBlock(paths, !hasExternal);
+  const base = hasExternal ? mergeHooksIntoExistingFeaturesTable(current) : current;
+
   const updated = rewriteOrAppendBlock(
-    current,
+    base,
     block,
     STM_MARKER_PREFIX,
     STM_END_MARKER,
@@ -260,10 +355,16 @@ export function doctor(opts: {
 } = {}): DoctorVerdict {
   const configPath = opts.configPath ?? defaultCodexConfigPath();
   const paths = hookScriptPaths(opts.rootOverride);
-  const expected = renderManagedBlock(paths);
 
   const configPresent = existsSync(configPath);
   const current = configPresent ? readFileSync(configPath, "utf8") : "";
+  // Match installHooks' choice of block shape: no [features] header of our
+  // own when the file already has an external [features] table, otherwise
+  // `blockUpToDate` would false-negative on an otherwise-healthy install.
+  const expected = renderManagedBlock(
+    paths,
+    !hasExternalFeaturesTable(current.split("\n")),
+  );
   const blockPresent =
     current.includes(STM_MARKER_CURRENT) || current.includes(STM_MARKER_PREFIX);
   const blockUpToDate = current.includes(expected);

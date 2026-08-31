@@ -267,3 +267,56 @@ test("doctor reports scriptsPresent=false when hooks dir doesn't exist for the o
   expect(v.ok).toBe(false);
   try { rmSync(fakeRoot, { recursive: true }); } catch { /* ignore */ }
 });
+
+// ---- external [features] table (dogfood-found regression) -----------------
+//
+// Found by dogfooding against a real ~/.codex/config.toml that already had a
+// [features] table (written by the ChatGPT desktop app). The old installer
+// always emitted its own `[features]` header, producing TWO `[features]`
+// tables in one file — invalid TOML (a parser must reject a table declared
+// twice), which would have broken the user's ENTIRE Codex config, not just
+// our block. These tests assert at most one `[features]` header ever
+// appears, and that hooks=true lands inside the pre-existing table.
+
+function countFeaturesHeaders(text: string): number {
+  return text.split("\n").filter((l) => l.trim() === "[features]").length;
+}
+
+test("installHooks merges into a pre-existing [features] table instead of declaring a second one", () => {
+  const cfg = configPath("external-features.toml");
+  const before = ["[features]", "js_repl = false", "", "[other]", 'x = "y"', ""].join("\n");
+  writeFileSync(cfg, before, "utf8");
+  installHooks({ configPath: cfg, now: FAKE_NOW });
+  const after = readFileSync(cfg, "utf8");
+  expect(countFeaturesHeaders(after)).toBe(1);
+  expect(after).toContain("js_repl = false"); // pre-existing key preserved
+  expect(after).toContain("hooks = true"); // merged into the same table
+  expect(after).toContain('x = "y"'); // unrelated content preserved
+  // hooks=true must be INSIDE the [features] table, i.e. before [other].
+  expect(after.indexOf("hooks = true")).toBeLessThan(after.indexOf("[other]"));
+});
+
+test("installHooks with an external [features] table is idempotent (no rewrite, no backup on reinstall)", () => {
+  const cfg = configPath("external-features-idempotent.toml");
+  const before = ["[features]", "js_repl = false", ""].join("\n");
+  writeFileSync(cfg, before, "utf8");
+  installHooks({ configPath: cfg, now: FAKE_NOW });
+  const afterFirst = readFileSync(cfg, "utf8");
+  const r2 = installHooks({ configPath: cfg, now: () => 1700000099999 });
+  const afterSecond = readFileSync(cfg, "utf8");
+  expect(r2.changed).toBe(false);
+  expect(afterSecond).toBe(afterFirst);
+  expect(countFeaturesHeaders(afterSecond)).toBe(1);
+});
+
+test("installHooks leaves an already-true hooks flag in an external [features] table untouched", () => {
+  const cfg = configPath("external-features-already-true.toml");
+  const before = ["[features]", "hooks = true", "js_repl = false", ""].join("\n");
+  writeFileSync(cfg, before, "utf8");
+  const r = installHooks({ configPath: cfg, now: FAKE_NOW });
+  const after = readFileSync(cfg, "utf8");
+  expect(countFeaturesHeaders(after)).toBe(1);
+  // Only one `hooks = true` line — we didn't append a duplicate.
+  expect(after.split("\n").filter((l) => l.trim() === "hooks = true").length).toBe(1);
+  expect(r.changed).toBe(true); // still true: our own marker block gets appended
+});
