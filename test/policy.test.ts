@@ -667,3 +667,49 @@ test("PreToolUse: audit log never contains a real key value across the scope-enf
   s3.removeProject(acme.id);
   s3.close();
 });
+
+// ---- `stm policy add` rejects unrecognized flags ---------------------------
+//
+// Found by dogfooding: a QA pass typed --when-tool (not a real flag) instead
+// of --when-key. parseFlags silently accepted it as an unknown key, so
+// policyAddCmd fell back to matching every substitution — turning a
+// tool-scoped deny into a deny-everything rule with no error at all. Same
+// risk in reverse for an allow rule. Fixed by rejecting unknown flags.
+
+function runCli(args: string[]): HookResult {
+  try {
+    const stdout = execFileSync(process.execPath, [CLI, ...args], {
+      env: ENV,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    return { code: 0, stdout, stderr: "" };
+  } catch (e: any) {
+    return {
+      code: e.status ?? 1,
+      stdout: e.stdout?.toString() ?? "",
+      stderr: e.stderr?.toString() ?? "",
+    };
+  }
+}
+
+test("policy add: rejects an unrecognized flag instead of silently widening the rule", () => {
+  const before = runCli(["policy", "list"]).stdout;
+  const r = runCli(["policy", "add", "--then", "deny", "--when-tool", "qa-fake-svc"]);
+  expect(r.code).not.toBe(0);
+  expect(r.stderr).toContain("unrecognized flag");
+  expect(r.stderr).toContain("--when-tool");
+  // No rule was created — the file's rule count is unchanged.
+  const after = runCli(["policy", "list"]).stdout;
+  expect(after).toBe(before);
+});
+
+test("policy add: the correct flag name still works and scopes narrowly", () => {
+  const r = runCli(["policy", "add", "--then", "deny", "--when-key", "qa-fake-svc:*", "--reason", "test"]);
+  expect(r.code).toBe(0);
+  expect(r.stdout).toContain("key=qa-fake-svc:*");
+  expect(r.stdout).not.toContain("key=*");
+  // clean up the rule we just added
+  const m = r.stdout.match(/added policy #(\d+)/);
+  if (m) runCli(["policy", "remove", m[1]]);
+});

@@ -387,14 +387,36 @@ function policyListCmd(): void {
   }
 }
 
+const POLICY_ADD_FLAGS = new Set([
+  "then",
+  "when-key",
+  "when-command",
+  "when-agent",
+  "when-project",
+  "reason",
+  "order",
+]);
+
 function policyAddCmd(args: string[]): void {
   const { flags } = parseFlags(args);
+  const usage =
+    "usage: stm policy add --then <allow|deny|warn> [--when-key g] " +
+    "[--when-command g] [--when-agent g] [--when-project g] [--reason \"...\"] [--order n]\n";
+  // A typo'd or stale flag name (e.g. --when-tool instead of --when-key) must
+  // not be silently ignored: parseFlags would otherwise accept it and this
+  // command falls back to matching every substitution, so a scoping mistake
+  // here produces a deny-everything (or allow-everything) rule instead of the
+  // intended narrow one — a silent fail-open/fail-closed, not a syntax error.
+  const unknown = Object.keys(flags).filter((k) => !POLICY_ADD_FLAGS.has(k));
+  if (unknown.length > 0) {
+    process.stderr.write(
+      `error: unrecognized flag(s): ${unknown.map((k) => `--${k}`).join(", ")}\n${usage}`,
+    );
+    process.exit(1);
+  }
   const then = flags.then;
   if (then !== "allow" && then !== "deny" && then !== "warn") {
-    process.stderr.write(
-      "usage: stm policy add --then <allow|deny|warn> [--when-key g] " +
-        "[--when-command g] [--when-agent g] [--when-project g] [--reason \"...\"] [--order n]\n",
-    );
+    process.stderr.write(usage);
     process.exit(1);
   }
   const order = flags.order ? Number(flags.order) : undefined;
