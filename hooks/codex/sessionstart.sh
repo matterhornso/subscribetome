@@ -13,5 +13,9 @@
 # So this wrapper is identical to hooks/sessionstart.sh — the hook
 # logic in src/hooks.ts works on Codex unchanged.
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-BUN="$(command -v bun || echo "$HOME/.bun/bin/bun")"
+. "$ROOT/hooks/resolve-bun.sh"
+if ! stm_resolve_bun; then
+  stm_bun_missing "SessionStart hook (codex)"
+  exit 0
+fi
 exec "$BUN" "$ROOT/src/cli.ts" hook sessionstart

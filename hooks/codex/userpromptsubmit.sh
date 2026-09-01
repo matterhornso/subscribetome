@@ -11,5 +11,9 @@
 # kept as separate files so Codex's config can reference an absolute
 # path under hooks/codex/ (`stm codex install-hooks` writes it).
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-BUN="$(command -v bun || echo "$HOME/.bun/bin/bun")"
+. "$ROOT/hooks/resolve-bun.sh"
+if ! stm_resolve_bun; then
+  stm_bun_missing "UserPromptSubmit hook (codex)"
+  exit 0
+fi
 exec "$BUN" "$ROOT/src/cli.ts" hook userpromptsubmit

@@ -14,7 +14,7 @@
 // `stm doctor` exits 0 when the active tier is healthy, 1 otherwise.
 
 import { spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, accessSync, constants as fsConstants } from "node:fs";
 import type { SpawnFn, WhichFn } from "./keystores/types.ts";
 import { probeLinuxSecretService } from "./keystores/linux-secret-service.ts";
 import { probeLinuxPass } from "./keystores/linux-pass.ts";
@@ -36,17 +36,94 @@ export interface TierStatus {
   fix?: string;
 }
 
+/**
+ * Whether the shell entrypoints can find the `bun` runtime, and where.
+ *
+ * The hooks are spawned by the agent host, whose PATH is often NOT the
+ * user's interactive shell PATH. When bun can't be resolved the hooks
+ * degrade quietly (the paste guard stops scanning), so doctor has to
+ * surface it — this mirrors hooks/resolve-bun.sh's candidate list.
+ */
+export interface RuntimeStatus {
+  /** True when an executable bun was found. */
+  found: boolean;
+  /** Absolute path to the resolved bun, when found. */
+  path?: string;
+  /** How it was found: on PATH, or at a known install location. */
+  via?: "PATH" | "fallback";
+  /** Locations checked, for the "not found" message. */
+  checked: string[];
+}
+
 export interface DoctorReport {
   /** "darwin" | "linux" | "win32" | other. */
   platform: NodeJS.Platform;
-  /** True when at least one tier is reachable. */
+  /** True when at least one tier is reachable AND the bun runtime resolves. */
   ok: boolean;
   /** Tiers in order; first reachable one is the active tier. */
   tiers: TierStatus[];
   /** Convenience: which tier is currently active, or null. */
   activeTier: TierStatus | null;
+  /** Can the hooks find bun? */
+  runtime: RuntimeStatus;
   /** Extra notes for the user. */
   notes: string[];
+}
+
+/**
+ * Candidate bun locations. MUST stay in sync with hooks/resolve-bun.sh —
+ * doctor's whole job here is to report what the hooks will actually do.
+ */
+export function bunCandidates(home?: string): string[] {
+  const h = home ?? process.env.HOME ?? "";
+  return [
+    `${h}/.bun/bin/bun`,
+    "/opt/homebrew/bin/bun",
+    "/usr/local/bin/bun",
+    "/home/linuxbrew/.linuxbrew/bin/bun",
+    "/snap/bin/bun",
+  ];
+}
+
+/** Resolve bun the same way hooks/resolve-bun.sh does. */
+export function runtimeStatus(opts: {
+  home?: string;
+  /** Injected for tests: true when the path is an executable file. */
+  isExecutable?: (p: string) => boolean;
+  /** Injected for tests: resolved `command -v bun`, or null. */
+  onPath?: () => string | null;
+} = {}): RuntimeStatus {
+  const isExec =
+    opts.isExecutable ??
+    ((p: string) => {
+      try {
+        accessSync(p, fsConstants.X_OK);
+        return true;
+      } catch {
+        return false;
+      }
+    });
+  const onPath =
+    opts.onPath ??
+    (() => {
+      try {
+        const r = spawnSync("command", ["-v", "bun"], { encoding: "utf8", shell: true });
+        const out = String(r.stdout ?? "").trim().split("\n")[0];
+        return out.startsWith("/") ? out : null;
+      } catch {
+        return null;
+      }
+    });
+
+  const checked = bunCandidates(opts.home);
+  const fromPath = onPath();
+  if (fromPath && isExec(fromPath)) {
+    return { found: true, path: fromPath, via: "PATH", checked };
+  }
+  for (const c of checked) {
+    if (isExec(c)) return { found: true, path: c, via: "fallback", checked };
+  }
+  return { found: false, checked };
 }
 
 export interface DoctorOptions {
@@ -204,11 +281,16 @@ export function doctorReport(opts: DoctorOptions = {}): DoctorReport {
   }
 
   const activeTier = tiers.find((t) => t.reachable) ?? null;
+  const runtime = runtimeStatus({ home: env.HOME });
   return {
     platform,
-    ok: activeTier !== null,
+    // A reachable keystore is useless if the hooks can't start: without bun
+    // nothing substitutes and the paste guard never scans, so that counts as
+    // not-ok even when a tier is fine.
+    ok: activeTier !== null && runtime.found,
     tiers,
     activeTier,
+    runtime,
     notes,
   };
 }
@@ -234,6 +316,21 @@ export function formatDoctorReport(r: DoctorReport): string {
       }
     }
   }
+  lines.push("");
+  lines.push("agent runtime (what the hooks execute):");
+  if (r.runtime.found) {
+    const via = r.runtime.via === "PATH" ? "on PATH" : "known install location";
+    lines.push(`  ✓ bun — ${r.runtime.path}  (${via})`);
+  } else {
+    lines.push(`  ✗ bun — not found`);
+    lines.push(`      The hooks cannot start: placeholders are NOT substituted`);
+    lines.push(`      and the paste guard does NOT scan prompts.`);
+    lines.push(`      Checked PATH and:`);
+    for (const c of r.runtime.checked) lines.push(`        ${c}`);
+    lines.push(`      Fix: install bun (https://bun.sh), or symlink an existing`);
+    lines.push(`           bun into one of the paths above.`);
+  }
+
   if (r.notes.length > 0) {
     lines.push("");
     lines.push("Notes:");
@@ -241,7 +338,11 @@ export function formatDoctorReport(r: DoctorReport): string {
   }
   if (!r.ok) {
     lines.push("");
-    lines.push("No keystore tier is reachable. Pick a fix above and re-run.");
+    if (!r.activeTier) {
+      lines.push("No keystore tier is reachable. Pick a fix above and re-run.");
+    } else {
+      lines.push("The bun runtime is missing — stm's hooks cannot run. Fix above and re-run.");
+    }
   }
   return lines.join("\n") + "\n";
 }
