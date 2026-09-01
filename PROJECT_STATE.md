@@ -13,7 +13,7 @@ _Snapshot taken 2026-09-01. A point-in-time orientation doc for picking the proj
 ## Status as of this snapshot
 
 - Branch `main`. **v1.9.0 is prepared but NOT yet tagged/published** — manifests, landing footer, and CHANGELOG all say 1.9.0; cutting the tag + GitHub release is a user-gated step (see the release checklist at the end of this file).
-- Tests: **516 pass / 0 fail** across 42 files (`bun test`; use `STM_KEYCHAIN_SERVICE=subscribetome-test` and `ulimit -n 4096`). CI runs bun test (macOS + Linux) + Playwright UI (macOS).
+- Tests: **524 pass / 0 fail** across 42 files (`bun test`; use `STM_KEYCHAIN_SERVICE=subscribetome-test` and `ulimit -n 4096`). CI runs bun test (macOS + Linux) + Playwright UI (macOS).
 - A full end-to-end QA pass (CLI sandbox sweep, live dashboard/broker leak + SSRF + auth-boundary checks, manifest/docs audit) came back clean on 2026-08-31.
 - Codex support: two modes (session-env; MCP-wrapped via STM's own stdio MCP server) wired by `stm codex install`. Per-command rewrite parity is blocked upstream (openai/codex#18491).
 - Working tree may carry an **intentionally uncommitted** MiniMax/GMI broker-provider change set (src/broker.ts, src/catalog.ts, catalog test bump, two minimax test files) — parked by explicit instruction, neither commit nor discard without asking.
@@ -52,7 +52,8 @@ Done:
 - [x] `package.json`, `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json` → `1.9.0`
 - [x] `docs/index.html` footer + JSON-LD `softwareVersion` + `dateModified`
 - [x] `CHANGELOG.md` `[1.9.0]` section written (Added / Changed / Fixed)
-- [x] Full suite green (516 pass / 0 fail), CI green on `main`
+- [x] Full suite green (524 pass / 0 fail), CI green on `main`
+- [x] Adversarial security review of the v1.8.0..HEAD diff: **no key leak**; four hardening findings fixed
 - [x] `stm --version` reports `1.9.0`
 
 Remaining (run these yourself):
