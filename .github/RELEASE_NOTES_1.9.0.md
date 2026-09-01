@@ -27,8 +27,9 @@ states plainly that stm is not running and the guard is not scanning.
   and retires the old key at the source. Rotation is two-phase (mint → store →
   retire) so a failure can never leave your placeholder pointing at a deleted
   key; the old key is matched by last-4 and never guess-deleted when the match
-  is ambiguous. Audited as `rotate.issued` / `rotate.failed`. The manual
-  paste-on-stdin flow is unchanged and remains the path for other providers.
+  is ambiguous. `--dry-run` rehearses the whole thing read-only first.
+  Audited as `rotate.issued` / `rotate.failed`. The manual paste-on-stdin flow
+  is unchanged and remains the path for other providers.
 - **One-shot Codex setup: `stm codex install`** — runs the hooks and MCP
   installers in a single idempotent command, with a copy-paste Codex install
   prompt in the README mirroring the Claude Code one.
@@ -49,7 +50,9 @@ states plainly that stm is not running and the guard is not scanning.
 ## Notes
 
 Provider-side rotation is built against OpenAI's documented Admin API with
-offline tests; it has not yet been exercised against the live API. See
-`FIELD_VERIFICATION.md` §8 for the verification checklist.
+offline tests; it has not yet been exercised against the live API. Run
+`stm rotate openai default --provider --dry-run` first — it exercises auth and
+both read endpoints without minting or deleting anything. See
+`FIELD_VERIFICATION.md` §8 for the full checklist.
 
 Full detail in [CHANGELOG.md](./CHANGELOG.md).

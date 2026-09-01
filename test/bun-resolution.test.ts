@@ -173,3 +173,24 @@ test("doctor is not ok when the runtime is missing, even with a reachable tier",
   expect(typeof r.runtime.found).toBe("boolean");
   if (r.runtime.found) expect(r.ok).toBe(true);
 });
+
+test("runtimeStatus works on win32 (regression: POSIX-only lookup failed healthy installs)", () => {
+  // An earlier cut shelled `command -v` and checked only POSIX paths, so a
+  // healthy Windows install reported not-ok and `stm doctor` exited 1.
+  const r = runtimeStatus({
+    platform: "win32",
+    onPath: () => "C:\\Users\\x\\.bun\\bin\\bun.exe",
+    isExecutable: () => true,
+  });
+  expect(r.found).toBe(true);
+  expect(r.via).toBe("PATH");
+
+  // Relative/garbage output from `where` is rejected, same as alias output on POSIX.
+  const bad = runtimeStatus({ platform: "win32", onPath: () => "bun", isExecutable: () => false });
+  expect(bad.found).toBe(false);
+
+  // Windows candidates are Windows-shaped, not POSIX ones.
+  const cands = bunCandidates("C:\\Users\\x", "win32");
+  expect(cands.some((c) => c.includes("\\"))).toBe(true);
+  expect(cands.some((c) => c.startsWith("/opt/"))).toBe(false);
+});

@@ -237,6 +237,125 @@ test("DURABILITY: mint issues no destructive call, so a mint failure changes not
   expect(calls.some((c) => c.init?.method === "DELETE")).toBe(false);
 });
 
+// ---- preflight (--dry-run) ------------------------------------------------
+
+test("preflight reports the plan and issues NO destructive call", async () => {
+  const { fn, calls } = fakeFetch([
+    projectsRoute([{ id: "proj_only", name: "Main" }]),
+    mintRoute(), // present but must NOT be hit
+    listKeysRoute([
+      { id: "key_other", redacted_value: "sk-...zz99" },
+      { id: "key_old", redacted_value: "sk-...ab12" },
+    ]),
+    deleteRoute(), // present but must NOT be hit
+  ]);
+  const pf = await openaiRotationProvider.preflight(ADMIN, { oldValue: OLD_KEY }, { fetch: fn });
+  expect(pf.projectId).toBe("proj_only");
+  expect(pf.projectCount).toBe(1);
+  expect(pf.keyCount).toBe(2);
+  expect(pf.oldKeyMatch).toBe("would-delete");
+  expect(pf.matchedKeyId).toBe("key_old");
+  // The whole point: read-only.
+  expect(calls.some((c) => c.init?.method === "POST")).toBe(false);
+  expect(calls.some((c) => c.init?.method === "DELETE")).toBe(false);
+});
+
+test("preflight surfaces an ambiguous match without acting", async () => {
+  const { fn, calls } = fakeFetch([
+    projectsRoute([{ id: "proj_only" }]),
+    listKeysRoute([
+      { id: "key_1", redacted_value: "sk-...ab12" },
+      { id: "key_2", redacted_value: "sk-live-...ab12" },
+    ]),
+  ]);
+  const pf = await openaiRotationProvider.preflight(ADMIN, { oldValue: OLD_KEY }, { fetch: fn });
+  expect(pf.oldKeyMatch).toBe("ambiguous");
+  expect(pf.matchedKeyId).toBeUndefined();
+  expect(calls.some((c) => c.init?.method === "DELETE")).toBe(false);
+});
+
+test("preflight fails the same way a real run would on bad auth", async () => {
+  const { fn } = fakeFetch([{ match: () => true, respond: () => json({}, 401) }]);
+  await expect(
+    openaiRotationProvider.preflight(ADMIN, { oldValue: OLD_KEY }, { fetch: fn }),
+  ).rejects.toThrow(/auth failed/);
+});
+
+test("preflight and mint resolve the SAME project (shared resolver)", async () => {
+  // If these drifted, a dry run would rehearse against a different project
+  // than the real run touches — worse than no dry run at all.
+  const routes = [projectsRoute([{ id: "proj_shared" }]), mintRoute(), listKeysRoute([])];
+  const a = await openaiRotationProvider.preflight(ADMIN, { oldValue: OLD_KEY }, { fetch: fakeFetch(routes).fn });
+  const b = await openaiRotationProvider.mint(ADMIN, { oldValue: OLD_KEY }, { fetch: fakeFetch(routes).fn, now: FIXED_NOW });
+  expect(a.projectId).toBe(b.projectId);
+
+  // And both refuse identically when the project is ambiguous.
+  const multi = [projectsRoute([{ id: "p_a" }, { id: "p_b" }])];
+  await expect(
+    openaiRotationProvider.preflight(ADMIN, { oldValue: OLD_KEY }, { fetch: fakeFetch(multi).fn }),
+  ).rejects.toThrow(/--project/);
+  await expect(
+    openaiRotationProvider.mint(ADMIN, { oldValue: OLD_KEY }, { fetch: fakeFetch(multi).fn, now: FIXED_NOW }),
+  ).rejects.toThrow(/--project/);
+});
+
+// ---- provider-controlled text hardening -----------------------------------
+
+test("SECURITY: hostile project names cannot inject control chars into errors", async () => {
+  // Project names are attacker-influenceable and this error text can be
+  // persisted in audit_log.reason, which `stm audit` prints back into the
+  // agent's context. ANSI escapes and newlines must not survive.
+  const { fn } = fakeFetch([
+    projectsRoute([
+      { id: "proj_a", name: "ok" },
+      { id: "proj_b", name: "evil[31m\nrotate.issued  FORGED LOG LINE" },
+    ]),
+  ]);
+  let msg = "";
+  try {
+    await openaiRotationProvider.mint(ADMIN, { oldValue: OLD_KEY }, { fetch: fn, now: FIXED_NOW });
+  } catch (e: any) {
+    msg = String(e.message);
+  }
+  expect(msg).toContain("proj_b");
+  expect(msg).not.toContain(""); // no ANSI escape
+  expect(msg).not.toContain(""); // no bell
+  expect(msg).not.toContain("FORGED LOG LINE");
+  // The only newlines are the ones we put between candidate lines: the
+  // injected name must not have added its own.
+  expect(msg.split("\n").length).toBe(3); // header + 2 projects
+});
+
+test("SECURITY: hostile ids are sanitized before they reach printed results", async () => {
+  const { fn } = fakeFetch([
+    { match: (u, i) => u.endsWith("/service_accounts") && i?.method === "POST",
+      respond: () => json({ id: "svc[2Jclear", api_key: { value: NEW_KEY } }) },
+  ]);
+  const m = await openaiRotationProvider.mint(
+    ADMIN,
+    { oldValue: OLD_KEY, projectId: "proj_x" },
+    { fetch: fn, now: FIXED_NOW },
+  );
+  expect(m.serviceAccountId).not.toContain("");
+  expect(m.newValue).toBe(NEW_KEY); // the key itself is untouched
+});
+
+test("path segments are URL-encoded so a crafted id can't reach another endpoint", async () => {
+  const { fn, calls } = fakeFetch([
+    listKeysRoute([{ id: "key_old", redacted_value: "sk-...ab12" }]),
+    deleteRoute(),
+  ]);
+  await openaiRotationProvider.retire(
+    ADMIN,
+    { projectId: "../../evil", oldValue: OLD_KEY },
+    { fetch: fn },
+  );
+  for (const c of calls) {
+    expect(c.url.startsWith("https://api.openai.com/v1/organization/")).toBe(true);
+    expect(c.url).not.toContain("../");
+  }
+});
+
 test("registry: openai resolves, unknown tools do not", () => {
   expect(getRotationProvider("openai")).toBe(openaiRotationProvider);
   expect(getRotationProvider("stripe")).toBeNull();

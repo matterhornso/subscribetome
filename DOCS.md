@@ -227,12 +227,15 @@ stm subscription <t>    set plan/cost/renewal + funding card (last-4 only) + cad
 stm import [dir]        scan .env files for keys to import
 stm revoke <tool> <l>   mark a key revoked
 stm rotate <tool> <l>   open provider dashboard, paste new key, swap in place
-stm rotate <tool> <l> --provider [--project <id>]
+stm rotate <tool> <l> --provider [--project <id>] [--dry-run]
                         mint the new key via the provider's admin API and
                         best-effort delete the old one at the source
                         (openai today; needs openai:admin-key, the same
                         credential spend sync uses; audited as
-                        rotate.issued / rotate.failed)
+                        rotate.issued / rotate.failed).
+                        --dry-run rehearses read-only: confirms auth, the
+                        project, and the old-key match without minting or
+                        deleting. Run it first.
 stm policy <subcmd>     allow / deny / warn rules at PreToolUse
 stm project <subcmd>    per-project key scope
 stm audit               forensic log of PreToolUse decisions

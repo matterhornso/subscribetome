@@ -418,6 +418,18 @@ Needs one run against the live API by someone with an org admin key.
 ```bash
 # Prereqs: an openai:default runtime key AND an openai:admin-key
 # (sk-admin-..., same credential spend sync uses) in the keychain.
+
+# STEP 1 — read-only rehearsal. Mints nothing, deletes nothing. This alone
+# verifies the contract that matters most: auth, the project listing, the
+# api-keys listing, and whether the old key is matchable by last-4.
+stm rotate openai default --provider --dry-run
+# EXPECTED: prints the project it would use, the key count, and one of
+# "would delete the old key (key_...)" / "no key matches its last 4" /
+# "more than one key shares its last 4". Nothing is changed.
+# If this errors, report it — the real run would have failed the same way,
+# but destructively.
+
+# STEP 2 — the real rotation, only after step 1 looks right.
 stm rotate openai default --provider
 # EXPECTED:
 # - a new service-account key is minted (named stm-rotate-<date>) and

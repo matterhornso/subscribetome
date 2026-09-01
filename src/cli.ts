@@ -1619,7 +1619,7 @@ async function rotateCmd(args: string[]): Promise<void> {
   if (args.length < 2 || args[0]?.startsWith("-")) {
     process.stderr.write(
       "usage: stm rotate <tool> <label> [--open|--no-open]\n" +
-        "       stm rotate <tool> <label> --provider [--project <id>]\n\n" +
+        "       stm rotate <tool> <label> --provider [--project <id>] [--dry-run]\n\n" +
         "Rotate a key in place: the placeholder {{stm:tool:label}} keeps\n" +
         "working, but the value behind it is replaced.\n\n" +
         "Default (manual): we open the provider's dashboard so you can\n" +
@@ -1630,6 +1630,9 @@ async function rotateCmd(args: string[]): Promise<void> {
         "admin credential in the keychain (e.g. openai:admin-key — the same\n" +
         "one spend sync uses). Outbound network only on this user-initiated\n" +
         "command. Supported today: openai.\n\n" +
+        "--dry-run (with --provider): read-only rehearsal. Confirms auth,\n" +
+        "which project would be used, and whether the old key can be matched\n" +
+        "for deletion — without minting or deleting anything. Run this first.\n\n" +
         "Old key bytes are deleted from the keystore after the new ones\n" +
         "land in inventory. The old (tool, label) is NOT separately\n" +
         "revoked — it's the same inventory row, repointed.\n",
@@ -1811,6 +1814,37 @@ async function rotateViaProviderCmd(tool: string, label: string, rest: string[])
     }
     const oldValue = store.resolve(tool, label);
 
+    // --dry-run: read-only rehearsal. Confirms auth, project resolution, and
+    // the old-key match against the live API without minting or deleting
+    // anything — the safe way to check the contract before a real rotation.
+    if (rest.includes("--dry-run")) {
+      let pf: Awaited<ReturnType<typeof provider.preflight>>;
+      try {
+        pf = await provider.preflight(adminKey, { oldValue, projectId });
+      } catch (e: any) {
+        const msg = String(e?.message ?? e);
+        process.stderr.write(`\nstm rotate --dry-run: ${msg}\n`);
+        process.exit(1);
+      }
+      const wouldDo =
+        pf.oldKeyMatch === "would-delete"
+          ? `delete the old key (${pf.matchedKeyId}) after the new one is stored`
+          : pf.oldKeyMatch === "not-found"
+            ? `leave the old key alone — no key in this project matches its last 4 characters`
+            : pf.oldKeyMatch === "ambiguous"
+              ? `leave the old key alone — more than one key shares its last 4 characters, and stm never guess-deletes`
+              : `leave the old key alone — no stored old value to match against`;
+      process.stdout.write(
+        `(dry run) ${tool}:${label} — nothing was changed.\n\n` +
+          `  project:        ${pf.projectId}${pf.projectCount > 1 ? "" : "  (auto-selected — the admin key sees exactly one)"}\n` +
+          `  keys in project: ${pf.keyCount}\n` +
+          `  would mint:     a new service-account key, stored under the same placeholder\n` +
+          `  would then:     ${wouldDo}\n\n` +
+          `Auth and both read endpoints worked. Drop --dry-run to rotate for real.\n`,
+      );
+      return;
+    }
+
     process.stdout.write(
       `Rotating ${tool}:${label} via the provider API.\n` +
         `Placeholder ${existing.placeholder} stays the same; value behind it changes.\n`,
@@ -1838,11 +1872,16 @@ async function rotateViaProviderCmd(tool: string, label: string, rest: string[])
       store.rotateKey({ tool, label, newValue: minted.newValue });
     } catch (e: any) {
       const msg = String(e?.message ?? e);
+      // The audit row gets a GENERIC reason on purpose. On Linux this message
+      // can carry the keystore helper's stderr verbatim, and that helper is
+      // handed the secret on stdin — so the detailed text stays on the
+      // terminal and never gets persisted where `stm audit` would read it
+      // back into the agent's context.
       store.recordAudit({
         event: "rotate.failed",
         tool,
         label,
-        reason: `keychain write failed after mint: ${msg}`.slice(0, 200),
+        reason: "keychain write failed after mint",
       });
       process.stderr.write(
         `\nstm rotate: minted a new key but FAILED to store it: ${msg}\n` +

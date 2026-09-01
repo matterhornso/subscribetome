@@ -74,7 +74,20 @@ export interface DoctorReport {
  * Candidate bun locations. MUST stay in sync with hooks/resolve-bun.sh —
  * doctor's whole job here is to report what the hooks will actually do.
  */
-export function bunCandidates(home?: string): string[] {
+export function bunCandidates(home?: string, platform?: NodeJS.Platform): string[] {
+  const p = platform ?? process.platform;
+  if (p === "win32") {
+    // The POSIX shell hooks don't run natively on Windows (see README —
+    // Windows is experimental), but `stm` itself does, so look where the
+    // Windows installers actually put bun. An explicitly passed home wins
+    // over the ambient env so this is testable off-Windows.
+    const up = home ?? process.env.USERPROFILE ?? "";
+    const local = process.env.LOCALAPPDATA ?? (up ? `${up}\\AppData\\Local` : "");
+    const out: string[] = [];
+    if (up) out.push(`${up}\\.bun\\bin\\bun.exe`);
+    if (local) out.push(`${local}\\bun\\bun.exe`);
+    return out;
+  }
   const h = home ?? process.env.HOME ?? "";
   return [
     `${h}/.bun/bin/bun`,
@@ -85,14 +98,23 @@ export function bunCandidates(home?: string): string[] {
   ];
 }
 
-/** Resolve bun the same way hooks/resolve-bun.sh does. */
+/**
+ * Resolve bun the same way hooks/resolve-bun.sh does.
+ *
+ * Platform-aware on purpose: an earlier cut shelled the POSIX-only
+ * `command -v` and checked only POSIX paths, so a perfectly healthy Windows
+ * install reported not-ok. A doctor that cries wolf teaches users to ignore
+ * it, which defeats the point of adding the check.
+ */
 export function runtimeStatus(opts: {
   home?: string;
+  platform?: NodeJS.Platform;
   /** Injected for tests: true when the path is an executable file. */
   isExecutable?: (p: string) => boolean;
   /** Injected for tests: resolved `command -v bun`, or null. */
   onPath?: () => string | null;
 } = {}): RuntimeStatus {
+  const platform = opts.platform ?? process.platform;
   const isExec =
     opts.isExecutable ??
     ((p: string) => {
@@ -107,15 +129,25 @@ export function runtimeStatus(opts: {
     opts.onPath ??
     (() => {
       try {
-        const r = spawnSync("command", ["-v", "bun"], { encoding: "utf8", shell: true });
-        const out = String(r.stdout ?? "").trim().split("\n")[0];
-        return out.startsWith("/") ? out : null;
+        // `where` on Windows, `command -v` on POSIX. Both argv elements are
+        // literals — nothing interpolated — so `shell: true` carries no
+        // injection surface here.
+        const r =
+          platform === "win32"
+            ? spawnSync("where", ["bun"], { encoding: "utf8" })
+            : spawnSync("command", ["-v", "bun"], { encoding: "utf8", shell: true });
+        const out = String(r.stdout ?? "").trim().split(/\r?\n/)[0];
+        if (!out) return null;
+        // Absolute-path check, per platform: rejects shell alias/function
+        // output on POSIX and relative junk on Windows.
+        const absolute = platform === "win32" ? /^[A-Za-z]:\\/.test(out) : out.startsWith("/");
+        return absolute ? out : null;
       } catch {
         return null;
       }
     });
 
-  const checked = bunCandidates(opts.home);
+  const checked = bunCandidates(opts.home, platform);
   const fromPath = onPath();
   if (fromPath && isExec(fromPath)) {
     return { found: true, path: fromPath, via: "PATH", checked };
@@ -281,7 +313,7 @@ export function doctorReport(opts: DoctorOptions = {}): DoctorReport {
   }
 
   const activeTier = tiers.find((t) => t.reachable) ?? null;
-  const runtime = runtimeStatus({ home: env.HOME });
+  const runtime = runtimeStatus({ home: env.HOME, platform });
   return {
     platform,
     // A reachable keystore is useless if the hooks can't start: without bun

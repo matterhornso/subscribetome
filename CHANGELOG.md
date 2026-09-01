@@ -44,9 +44,12 @@ server run anywhere Bun does).
   key listing, refusing to guess when zero or multiple keys match. Uses the
   same `openai:admin-key` credential as spend sync; outbound network only on
   the user-initiated command; the new value goes straight to the keychain and
-  is never printed. New audit event classes `rotate.issued` / `rotate.failed`
-  (older DBs migrate automatically). The manual paste-on-stdin flow is
-  unchanged and remains the path for every other provider.
+  is never printed. `--dry-run` rehearses the whole thing read-only — it
+  confirms auth, which project would be used, and whether the old key can be
+  matched for deletion, without minting or deleting anything. New audit event
+  classes `rotate.issued` / `rotate.failed` (older DBs migrate automatically).
+  The manual paste-on-stdin flow is unchanged and remains the path for every
+  other provider.
 
 ### Changed
 
@@ -80,6 +83,23 @@ server run anywhere Bun does).
   the hooks will execute and where it was found; doctor reports not-ok when the
   runtime is unresolvable, since a reachable keystore is useless if the hooks
   can't start.
+- **Security review hardening (found by an adversarial review of this
+  release).** Provider-supplied strings (project names and ids) are stripped of
+  control characters and clamped before they can reach an error message, the
+  terminal, or `audit_log.reason` — that column is printed back into the
+  agent's context by `stm audit`, so a hostile project name could otherwise
+  forge log lines or inject escapes. A keychain-write failure now records a
+  generic audit reason, keeping keystore-helper stderr (which on Linux is
+  produced by a process handed the secret on stdin) out of the database. All
+  provider path segments are URL-encoded. And `/stm:teams` no longer instructs
+  the agent to put the team admin token in a command: an inline
+  `VAR=value cmd` assignment is still part of the command string, so it landed
+  in the transcript, `ps`, and shell history — the user now enters it
+  out-of-band with `read -rs`, matching how STM treats every other credential.
+- **`stm doctor` no longer fails healthy Windows installs.** The new runtime
+  check shelled the POSIX-only `command -v` and looked at POSIX paths only, so
+  a working Windows Credential Manager install reported not-ok. It now uses
+  `where` and Windows install locations on win32.
 - **Provider-side rotation can no longer strand a placeholder on a deleted
   key.** The first cut deleted the old upstream key before the minted value
   reached the keychain, so a failed keychain write left the placeholder

@@ -11,18 +11,28 @@ membership. Adding keys still happens via `/stm:dashboard`.
 
 ## Creating a team (admin)
 
-Ask the user for: the team server URL, the admin token they configured for
-that `stm teams serve` instance (**not** a value stm generates — the person
-running the server set it via `STM_TEAM_ADMIN_TOKEN`), and a team name.
+Ask the user for the team server URL and a team name. **Do NOT ask for the
+admin token, and never put it in a command you run.** The admin token is a
+bearer secret for their team server; the same rule that applies to API keys
+applies to it — it must not pass through the chat.
 
-Run this in a Bash command, passing the admin token via env var, not `--admin`
-— an argv value is visible to `ps` and shell history:
+An inline `STM_TEAM_ADMIN_TOKEN=… stm …` assignment does NOT solve this: the
+assignment is part of the command string, so it still lands in the transcript,
+in `ps`, and in shell history.
+
+Instead, give the user this to run **themselves, in their own terminal**, and
+tell them to paste back only the output:
 
 ```
-STM_TEAM_ADMIN_TOKEN=<their-token> stm teams quickstart create --server <url> --name <name>
+read -rs STM_TEAM_ADMIN_TOKEN && export STM_TEAM_ADMIN_TOKEN && stm teams quickstart create --server <url> --name <name>
 ```
 
-The output includes a ready-to-run invite block:
+`read -rs` keeps the token off the screen and out of shell history; `export`
+hands it to the command through the environment rather than the command line.
+
+Their output includes a ready-to-run invite block (ask them to paste it back —
+it carries the team token and fingerprint, both safe to share with the
+teammate, but not the admin token):
 `stm teams quickstart join --server ... --token ... --fingerprint ...`
 
 **Show that exact block to the user and tell them to send it to the new
