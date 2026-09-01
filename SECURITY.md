@@ -33,8 +33,19 @@ conversation transcript. Everything below serves that.
 - **Network exposure of the dashboard.** The daemon binds to `127.0.0.1`,
   requires a per-run token, and enforces a Host/Origin allowlist (DNS-rebinding
   defence).
-- **Hook failure.** Hooks fail safe: on any internal error a hook substitutes
-  nothing and exits 0. A failure can never leak a key.
+- **Hook failure during substitution.** On any internal error the `PreToolUse`
+  hook substitutes nothing and exits 0 — a substitution failure cannot put a
+  key into a command, so it cannot leak one.
+
+  Be precise about the limit of that guarantee: it covers the *substitution*
+  path, not the *detection* paths. `UserPromptSubmit` and `PostToolUse` are
+  scanners, and a scanner that cannot run does not block anything. If the
+  hooks cannot start at all — for example the `bun` runtime is not resolvable
+  in the environment the agent host spawns hooks in — then pasted keys are not
+  blocked and leaked output is not flagged. That is a fail-open, and it is why
+  a missing runtime is now loud (each entrypoint says stm is not running) and
+  why `stm doctor` reports the runtime and returns not-ok when it is missing.
+  See CHANGELOG 1.9.0; versions before 1.9.0 failed this silently.
 
 ### What it does NOT protect against — by design
 
@@ -50,19 +61,32 @@ conversation transcript. Everything below serves that.
   Credential Manager — run `stm doctor` to see which is active); anything that
   can read that store (malware running as you, physical access to an unlocked
   machine) can read them. subscribetome is not a defence against that.
-- **The provider side.** `stm revoke` is a metadata flag; it does not call a
-  provider API to rotate the key. Revoke at the provider too.
+- **The provider side (mostly).** `stm revoke` is a metadata flag: it marks the
+  key unusable locally and does not call any provider API. Revoke at the
+  provider too. The one exception is `stm rotate <tool> <label> --provider`,
+  which does mint a replacement and retire the old key through the provider's
+  own admin API — OpenAI only today, and only on that explicit user-initiated
+  command.
 
 ## Data handling
 
 subscribetome has **no servers and no backend of its own**, and **no
-telemetry** — it never phones home. The one exception is deliberate and
-user-initiated: when you run `stm sync` (or click **Fetch live spend**), it
-calls the billing/usage API of **the providers you have configured** — today
-OpenAI and Anthropic — to pull your month-to-date spend, using an admin key
-you added. Nothing is sent in the background, on a schedule, or to us. If you
-never run sync, subscribetome makes zero outbound network calls. (See
-`specs/spend-visibility.md` §2 for the exact rule.)
+telemetry** — it never phones home. Every outbound call is deliberate and
+user-initiated, and there are exactly three:
+
+- `stm sync` (or **Fetch live spend**) calls the billing/usage API of **the
+  providers you have configured** — today OpenAI and Anthropic — to pull your
+  month-to-date spend, using an admin key you added. (See
+  `specs/spend-visibility.md` §2 for the exact rule.)
+- `stm rotate … --provider` calls the provider's key-management API to mint a
+  replacement key and retire the old one (OpenAI only today).
+- The **credential broker**, when you point a request at it, forwards that
+  request to the provider you addressed — that is its entire purpose.
+
+Nothing is sent in the background, on a schedule, or to us. If you run none of
+the above, subscribetome makes zero outbound network calls. STM Teams is
+self-hosted: if you run `stm teams serve`, that server is yours, and it stores
+only ciphertext it cannot decrypt.
 
 - Key values: your OS keychain (service name `subscribetome`), OS-encrypted —
   never in the database, never in the chat, never in argv logs.
