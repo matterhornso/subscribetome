@@ -18,6 +18,16 @@ change behaviour. Format follows [Keep a Changelog](https://keepachangelog.com).
   agent to never relay it itself.
 - **`DESIGN.md`.** The landing page's design system (tokens, typography,
   component vocabulary, hard don'ts), inferred from the shipped page.
+- **Provider-side key rotation (OpenAI).** `stm rotate openai <label>
+  --provider [--project <id>]` mints a fresh key via OpenAI's Admin API
+  (service-account create), repoints the same placeholder, and best-effort
+  deletes the old key at the source — matched by last-4 against the redacted
+  key listing, refusing to guess when zero or multiple keys match. Uses the
+  same `openai:admin-key` credential as spend sync; outbound network only on
+  the user-initiated command; the new value goes straight to the keychain and
+  is never printed. New audit event classes `rotate.issued` / `rotate.failed`
+  (older DBs migrate automatically). The manual paste-on-stdin flow is
+  unchanged and remains the path for every other provider.
 
 ### Changed
 

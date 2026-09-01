@@ -36,26 +36,23 @@ manager in particular.
 - Dashboard shows the pointer + an "↻ live" badge.
 - `stm doctor` reports whether each configured manager is reachable.
 
-## Provider-side key rotation
+## Provider-side key rotation — OpenAI shipped, others pending
 
-v1 `stm revoke` is a metadata flag — it marks the key as not-to-be-used
-locally but does not call the provider's API to actually issue a new
-key + revoke the old one. Real rotation is provider-specific surface
-area: OpenAI, Anthropic, Stripe, etc. all expose key-management APIs
-with different shapes.
+`stm rotate <tool> <label> --provider` mints the new key via the
+provider's admin API (service-account create), repoints the same
+placeholder, and best-effort deletes the old key at the source
+(matched by last-4 against the redacted listing; refuses to
+guess-delete on 0 or >1 matches). Audited as `rotate.issued` /
+`rotate.failed`; outbound network only on the user-initiated command.
+Implementation: `src/providers/openai-rotate.ts` +
+`test/rotate-provider.test.ts`. OpenAI only; built against the
+documented Admin API contract with offline tests — needs one
+real-hardware field run (see FIELD_VERIFICATION.md).
 
-**Why not built yet:** deferred until there's a concrete provider to
-support first, so we don't ship five half-baked integrations. Most
-likely first target: OpenAI's admin API (already used for spend sync,
-so the credential pattern is already wired).
-
-**Acceptance criteria for a future build:**
-- `stm rotate <tool> <label>` — issues a new key via the provider API,
-  writes it to the keychain under the same label, marks the old key
-  revoked.
-- Audit-log event class: `rotate.issued` / `rotate.failed`.
-- Network-posture rule still holds: outbound only on user-initiated
-  `stm rotate` (same shape as `stm sync`).
+**Still pending:** Anthropic / Stripe rotation providers — the
+`ROTATION_PROVIDERS` registry makes each one module + one entry +
+tests, but each provider's key-management API has its own shape.
+Add when there's a concrete ask.
 
 ## Retroactive subscription discovery
 

@@ -812,6 +812,8 @@ const AUDIT_EVENTS = new Set([
   "unresolved",
   "malformed",
   "broker",
+  "rotate.issued",
+  "rotate.failed",
 ]);
 
 function auditHelp(): void {
@@ -1613,15 +1615,21 @@ async function policyCmd(args: string[]): Promise<void> {
   }
 }
 
-function rotateCmd(args: string[]): void {
+async function rotateCmd(args: string[]): Promise<void> {
   if (args.length < 2 || args[0]?.startsWith("-")) {
     process.stderr.write(
-      "usage: stm rotate <tool> <label> [--open|--no-open]\n\n" +
+      "usage: stm rotate <tool> <label> [--open|--no-open]\n" +
+        "       stm rotate <tool> <label> --provider [--project <id>]\n\n" +
         "Rotate a key in place: the placeholder {{stm:tool:label}} keeps\n" +
-        "working, but the value behind it is replaced. We open the\n" +
-        "provider's dashboard so you can create a fresh key, then read\n" +
-        "the new value from stdin (out-of-band — never argv, never the\n" +
-        "chat transcript).\n\n" +
+        "working, but the value behind it is replaced.\n\n" +
+        "Default (manual): we open the provider's dashboard so you can\n" +
+        "create a fresh key, then read the new value from stdin\n" +
+        "(out-of-band — never argv, never the chat transcript).\n\n" +
+        "--provider: mint the new key via the provider's own admin API and\n" +
+        "best-effort delete the old one at the source. Needs the provider's\n" +
+        "admin credential in the keychain (e.g. openai:admin-key — the same\n" +
+        "one spend sync uses). Outbound network only on this user-initiated\n" +
+        "command. Supported today: openai.\n\n" +
         "Old key bytes are deleted from the keystore after the new ones\n" +
         "land in inventory. The old (tool, label) is NOT separately\n" +
         "revoked — it's the same inventory row, repointed.\n",
@@ -1630,6 +1638,9 @@ function rotateCmd(args: string[]): void {
   }
   const tool = args[0];
   const label = args[1];
+  if (args.includes("--provider")) {
+    return rotateViaProviderCmd(tool, label, args.slice(2));
+  }
   const open =
     !args.includes("--no-open") && process.env.STM_NO_OPEN !== "1";
 
@@ -1744,6 +1755,107 @@ function rotateCmd(args: string[]): void {
         : `  WARN: old keystore entry was already missing (or delete failed).\n`) +
       `  the placeholder ${existing.placeholder} now resolves to the new value.\n`,
   );
+}
+
+/**
+ * `stm rotate <tool> <label> --provider [--project <id>]` — provider-side
+ * rotation (TODOS.md). Mints the new key via the provider's admin API,
+ * repoints the same inventory row (placeholder unchanged), and best-effort
+ * deletes the old key at the source. Audited as rotate.issued / rotate.failed.
+ * The new key value goes straight from the API response to the keychain —
+ * it is never printed and never enters the transcript.
+ */
+async function rotateViaProviderCmd(tool: string, label: string, rest: string[]): Promise<void> {
+  const { getRotationProvider } = await import("./providers/openai-rotate.ts");
+  const pi = rest.indexOf("--project");
+  const projectId = pi >= 0 ? (rest[pi + 1] ?? null) : null;
+  if (pi >= 0 && (!projectId || projectId.startsWith("--"))) {
+    process.stderr.write("stm rotate: --project needs a value (proj_...)\n");
+    process.exit(1);
+  }
+
+  const provider = getRotationProvider(tool.toLowerCase());
+  if (!provider) {
+    process.stderr.write(
+      `stm rotate: no provider-side rotation for "${tool}" yet (supported: openai).\n` +
+        `Use the manual flow instead: stm rotate ${tool} ${label}\n`,
+    );
+    process.exit(1);
+  }
+
+  const store = new Store();
+  try {
+    const existing = store.viewKey(tool, label);
+    if (!existing) {
+      process.stderr.write(`stm rotate: no such key ${tool}:${label}. Use \`stm add\` first.\n`);
+      process.exit(1);
+    }
+    if (existing.status === "revoked") {
+      process.stderr.write(`stm rotate: ${tool}:${label} is already marked revoked.\n`);
+      process.exit(1);
+    }
+
+    const adminKey = store.resolve(tool, provider.adminCredentialLabel);
+    if (!adminKey) {
+      store.recordAudit({
+        event: "rotate.failed",
+        tool,
+        label,
+        reason: `no ${tool}:${provider.adminCredentialLabel} credential`,
+      });
+      process.stderr.write(
+        `stm rotate: missing the admin credential ${tool}:${provider.adminCredentialLabel}.\n` +
+          `${provider.credentialHint}\n`,
+      );
+      process.exit(1);
+    }
+    const oldValue = store.resolve(tool, label);
+
+    process.stdout.write(
+      `Rotating ${tool}:${label} via the provider API.\n` +
+        `Placeholder ${existing.placeholder} stays the same; value behind it changes.\n`,
+    );
+
+    let result: Awaited<ReturnType<typeof provider.rotate>>;
+    try {
+      result = await provider.rotate(adminKey, { oldValue, projectId });
+    } catch (e: any) {
+      const msg = String(e?.message ?? e);
+      store.recordAudit({ event: "rotate.failed", tool, label, reason: msg.slice(0, 200) });
+      process.stderr.write(`\nstm rotate failed: ${msg}\n`);
+      process.exit(1);
+    }
+
+    // The mint succeeded — land the new value in the keychain before anything
+    // else can go wrong. Same in-place swap as the manual flow.
+    store.rotateKey({ tool, label, newValue: result.newValue });
+    store.recordAudit({
+      event: "rotate.issued",
+      tool,
+      label,
+      reason: `project=${result.projectId} old-key=${result.oldKey}`,
+    });
+
+    const oldKeyLine =
+      result.oldKey === "deleted"
+        ? `  old provider-side key deleted.\n`
+        : result.oldKey === "not-found"
+          ? `  old provider-side key not found in ${result.projectId} — if it exists elsewhere, delete it in the provider dashboard.\n`
+          : result.oldKey === "ambiguous"
+            ? `  multiple provider-side keys share the old key's last 4 characters — refusing to guess; delete the old one in the provider dashboard.\n`
+            : result.oldKey === "delete-failed"
+              ? `  WARN: deleting the old provider-side key failed — delete it in the provider dashboard.\n`
+              : `  old provider-side key left in place (no stored old value to match).\n`;
+
+    process.stdout.write(
+      `\nrotated ${tool}:${label} (provider-side).\n` +
+        `  new key minted in ${result.projectId} (service account ${result.serviceAccountId}) — stored in your keychain, never printed.\n` +
+        oldKeyLine +
+        `  the placeholder ${existing.placeholder} now resolves to the new value.\n`,
+    );
+  } finally {
+    store.close();
+  }
 }
 
 function uninstallCmd(args: string[]): void {

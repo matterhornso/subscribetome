@@ -405,6 +405,45 @@ stm codex doctor
 
 ---
 
+## 8. Provider-side rotation — OpenAI (unreleased)
+
+**Surface:** `stm rotate openai <label> --provider [--project <id>]`
+(`src/providers/openai-rotate.ts`). Status: 🧪 smoke-tested — written
+against OpenAI's documented Admin API (project listing, service-account
+create, api-key listing + delete) with offline canned-response tests.
+Needs one run against the live API by someone with an org admin key.
+
+### Steps
+
+```bash
+# Prereqs: an openai:default runtime key AND an openai:admin-key
+# (sk-admin-..., same credential spend sync uses) in the keychain.
+stm rotate openai default --provider
+# EXPECTED:
+# - a new service-account key is minted (named stm-rotate-<date>) and
+#   stored under the SAME placeholder; the value is never printed
+# - the old provider-side key is deleted when exactly one key's
+#   redacted value matches the old key's last 4 chars; otherwise the
+#   command says so and tells you to finish in the dashboard
+# - `stm audit --event rotate.issued` shows the event (or
+#   rotate.failed with a short reason on any failure)
+# - a follow-up call through the broker/hook using the placeholder
+#   works with the NEW key
+```
+
+### Failure modes to file
+
+- The mint succeeds but the response shape differs from
+  `{ id, api_key: { value } }` — the command fails with "unexpected
+  response shape" (deliberately content-free); file with the HTTP
+  status only, never the body.
+- The old key is deleted but was NOT the right one (a last-4
+  collision that slipped the ambiguity guard) — file immediately.
+- Any output, error message, or audit row containing a real key
+  value — file immediately, security regression.
+
+---
+
 ## What to include in a report
 
 When something fails:

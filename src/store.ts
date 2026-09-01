@@ -138,7 +138,8 @@ CREATE TABLE IF NOT EXISTS audit_log (
   ts         TEXT    NOT NULL,
   event      TEXT    NOT NULL CHECK(event IN (
                        'substitute','policy.deny','policy.warn',
-                       'unresolved','malformed','broker')),
+                       'unresolved','malformed','broker',
+                       'rotate.issued','rotate.failed')),
   tool       TEXT,
   label      TEXT,
   command    TEXT,
@@ -201,7 +202,9 @@ export type AuditEvent =
   | "policy.warn"
   | "unresolved"
   | "malformed"
-  | "broker";
+  | "broker"
+  | "rotate.issued"
+  | "rotate.failed";
 
 export interface Project {
   id: number;
@@ -351,18 +354,20 @@ export class Store {
   }
 
   /**
-   * Add the 'broker' event class to audit_log's CHECK constraint on DBs created
-   * before the broker existed. A CHECK can't be altered in place, so we rebuild
-   * the table (the standard SQLite recipe) — copy rows into a new table with the
-   * expanded constraint, drop, rename, recreate indexes. Idempotent: a no-op
-   * once 'broker' is already allowed (and on a fresh DB, whose CREATE TABLE
-   * already includes it). Wrapped in a transaction so it fails closed.
+   * Expand audit_log's CHECK constraint on DBs created before newer event
+   * classes existed ('broker' in v1.x, 'rotate.issued'/'rotate.failed' after).
+   * A CHECK can't be altered in place, so we rebuild the table (the standard
+   * SQLite recipe) — copy rows into a new table with the expanded constraint,
+   * drop, rename, recreate indexes. Idempotent: keyed on the NEWEST event
+   * class, so one rebuild upgrades any older schema generation in a single
+   * pass (and a fresh DB, whose CREATE TABLE already includes everything, is
+   * a no-op). Wrapped in a transaction so it fails closed.
    */
   private migrateAuditEventCheck(): void {
     const row = this.db
       .query(`SELECT sql FROM sqlite_master WHERE type='table' AND name='audit_log'`)
       .get() as { sql: string } | null;
-    if (!row || row.sql.includes("'broker'")) return; // absent or already current
+    if (!row || row.sql.includes("'rotate.issued'")) return; // absent or already current
     this.db.exec("BEGIN");
     try {
       this.db.exec(`
@@ -371,7 +376,8 @@ export class Store {
           ts         TEXT    NOT NULL,
           event      TEXT    NOT NULL CHECK(event IN (
                                'substitute','policy.deny','policy.warn',
-                               'unresolved','malformed','broker')),
+                               'unresolved','malformed','broker',
+                               'rotate.issued','rotate.failed')),
           tool       TEXT,
           label      TEXT,
           command    TEXT,

@@ -227,6 +227,12 @@ stm subscription <t>    set plan/cost/renewal + funding card (last-4 only) + cad
 stm import [dir]        scan .env files for keys to import
 stm revoke <tool> <l>   mark a key revoked
 stm rotate <tool> <l>   open provider dashboard, paste new key, swap in place
+stm rotate <tool> <l> --provider [--project <id>]
+                        mint the new key via the provider's admin API and
+                        best-effort delete the old one at the source
+                        (openai today; needs openai:admin-key, the same
+                        credential spend sync uses; audited as
+                        rotate.issued / rotate.failed)
 stm policy <subcmd>     allow / deny / warn rules at PreToolUse
 stm project <subcmd>    per-project key scope
 stm audit               forensic log of PreToolUse decisions
@@ -497,7 +503,9 @@ placeholder intact and fails harmlessly (never leaks a key).
 - **`revoke` is a metadata flag.** It marks the key inactive in stm's
   inventory but does not call a provider API. Use `stm rotate` to
   actually swap a key value in place (opens the provider dashboard, you
-  paste the new value, the placeholder address stays the same).
+  paste the new value, the placeholder address stays the same) — or
+  `stm rotate <tool> <label> --provider` to mint + retire the key via the
+  provider's own admin API (OpenAI today; other providers still manual).
 - **Spend sync covers OpenAI and Anthropic admin APIs.** Other providers
   don't expose programmatic usage; their spend is whatever you declared
   via `stm add --cost`.

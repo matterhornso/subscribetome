@@ -463,7 +463,7 @@ async function apiRoute(path: string, req: Request, store: Store): Promise<Respo
     const event = u.searchParams.get("event") || undefined;
     if (
       event !== undefined &&
-      !["substitute", "policy.deny", "policy.warn", "unresolved", "malformed", "broker"].includes(event)
+      !["substitute", "policy.deny", "policy.warn", "unresolved", "malformed", "broker", "rotate.issued", "rotate.failed"].includes(event)
     ) {
       return json({ error: "unknown event class" }, 400);
     }
