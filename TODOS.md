@@ -9,7 +9,7 @@ Items in [`specs/`](./specs/) take precedence over anything here. When
 something here grows enough scope to need a design doc, move it to
 `specs/` and link back.
 
-Last updated: **2026-05-25** (v0.7.1 sweep). Everything previously listed
+Last updated: **2026-09-01** (post-1.8.0 sweep). Everything previously listed
 under "shipped in subsequent releases" was removed; items below are the
 genuinely-pending backlog.
 
@@ -122,6 +122,10 @@ need a small spec before building.
 - **Spend forecasting** — the v0.3.0 spend sync gives us month-to-
   date data; projecting month-end + warning when a budget is crossed
   is a Subscriptions-card extension. No spec yet.
+- **Local Playwright provisioning** — the UI suite can't launch
+  Chromium locally (browser/version skew vs CI); every local QA pass
+  leans on CI or a live-dashboard workaround. Pin or vendor the
+  browser so `tests-ui/` runs identically on a dev machine.
 
 ## Field verification (smoke-tested but unverified on real hardware)
 
@@ -138,10 +142,11 @@ backlog doesn't accidentally pretend otherwise:
 
 - **Mobile / browser agents** — explicit non-goal in
   `specs/cross-platform-and-codex.md` §1.
-- **Hosted / cloud / sync component** — explicit non-goal in the
-  same spec. stm stays local-only, no servers.
-- **Team mode** — depends on hosted/sync, so same non-goal until
-  the non-goal itself is revisited.
+- **A hosted-by-us cloud service** — stm ships no servers we run.
+  (STM Teams, shipped v1.2–v1.6, is *self-hosted* — `stm teams serve`
+  on the user's own machine, storing only ciphertext — which stays
+  inside this non-goal. The older blanket "no sync, no team mode"
+  wording predated Teams and is superseded.)
 - **Telemetry of any kind** — stated invariant in README "Security
   model". The reason we have no PostToolUse data and no spend
   forecasts based on user populations.

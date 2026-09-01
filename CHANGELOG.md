@@ -5,6 +5,38 @@ change behaviour. Format follows [Keep a Changelog](https://keepachangelog.com).
 
 ## [Unreleased]
 
+### Added
+
+- **One-shot Codex setup: `stm codex install`.** Runs the hooks installer and the
+  MCP installer in a single idempotent command (`--dry-run` / `--remove`
+  supported), and the README now carries a copy-paste Codex install prompt
+  mirroring the Claude Code one.
+- **`/stm:teams` slash command.** Walks the agent through
+  `stm teams quickstart create/join/finish` end to end. The one human step —
+  relaying the fingerprint/member-id over a trusted channel — is preserved
+  deliberately: it is the anti-MITM guarantee, and the command instructs the
+  agent to never relay it itself.
+- **`DESIGN.md`.** The landing page's design system (tokens, typography,
+  component vocabulary, hard don'ts), inferred from the shipped page.
+
+### Changed
+
+- **Landing page sequencing.** A filled "Get started →" nav CTA anchors to the
+  install steps; the trust strip moved from the footer to directly under the
+  hero; the stale footer version string was corrected.
+
+### Fixed
+
+- **`stm codex install-hooks` no longer emits a duplicate `[features]` table.**
+  If `~/.codex/config.toml` already had a `[features]` table (e.g. written by
+  the ChatGPT desktop app), the installer produced invalid TOML that broke the
+  entire Codex config. It now merges `hooks = true` into the existing table.
+  Found by dogfooding against a real config.
+- **`stm policy add` rejects unrecognized flags.** A typo'd flag (e.g.
+  `--when-tool` instead of `--when-key`) was silently ignored, turning an
+  intended narrow rule into a match-everything rule. Unknown flags now error
+  up front, naming the flag.
+
 ## [1.8.0] - 2026-08-22
 
 A bigger service catalog. The dashboard's "Add keys" picker and "Browse
