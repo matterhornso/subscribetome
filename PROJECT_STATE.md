@@ -12,8 +12,8 @@ _Snapshot taken 2026-09-01. A point-in-time orientation doc for picking the proj
 
 ## Status as of this snapshot
 
-- Branch `main`, in sync with `origin/main` at `6443ce8`. Latest release tag: **v1.8.0** (86-provider catalog); four commits since are queued under CHANGELOG `[Unreleased]` (one-shot `stm codex install`, `/stm:teams`, landing-page resequencing + DESIGN.md, two fixes found by dogfooding).
-- Tests: **492 pass / 0 fail** across 40 files (`bun test`; use `STM_KEYCHAIN_SERVICE=subscribetome-test` and `ulimit -n 4096`). CI runs bun test (macOS + Linux) + Playwright UI (macOS).
+- Branch `main`. **v1.9.0 is prepared but NOT yet tagged/published** — manifests, landing footer, and CHANGELOG all say 1.9.0; cutting the tag + GitHub release is a user-gated step (see the release checklist at the end of this file).
+- Tests: **516 pass / 0 fail** across 42 files (`bun test`; use `STM_KEYCHAIN_SERVICE=subscribetome-test` and `ulimit -n 4096`). CI runs bun test (macOS + Linux) + Playwright UI (macOS).
 - A full end-to-end QA pass (CLI sandbox sweep, live dashboard/broker leak + SSRF + auth-boundary checks, manifest/docs audit) came back clean on 2026-08-31.
 - Codex support: two modes (session-env; MCP-wrapped via STM's own stdio MCP server) wired by `stm codex install`. Per-command rewrite parity is blocked upstream (openai/codex#18491).
 - Working tree may carry an **intentionally uncommitted** MiniMax/GMI broker-provider change set (src/broker.ts, src/catalog.ts, catalog test bump, two minimax test files) — parked by explicit instruction, neither commit nor discard without asking.
@@ -42,6 +42,32 @@ _Snapshot taken 2026-09-01. A point-in-time orientation doc for picking the proj
 - Real key values exist only in the keychain or ciphertext — never in transcript, logs, SQLite, or team/audit/usage records. Never have the user paste a credential into chat; key entry is out-of-band (stdin, dashboard).
 - QA/dogfooding runs in a sandbox: point `STM_DB`, `STM_DAEMON_FILE`, `STM_KEYCHAIN_SERVICE` (and for Teams, `STM_TEAM_CONFIG`) at throwaway paths.
 - Publishing GitHub releases is user-gated: prep everything, then hand over the command or wait for an explicit go.
+
+## Release checklist (v1.9.0 — prepared, awaiting your go)
+
+Everything below the line is already done and pushed. The remaining steps are
+user-gated on purpose: publishing a release is outward-facing and irreversible.
+
+Done:
+- [x] `package.json`, `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json` → `1.9.0`
+- [x] `docs/index.html` footer + JSON-LD `softwareVersion` + `dateModified`
+- [x] `CHANGELOG.md` `[1.9.0]` section written (Added / Changed / Fixed)
+- [x] Full suite green (516 pass / 0 fail), CI green on `main`
+- [x] `stm --version` reports `1.9.0`
+
+Remaining (run these yourself):
+
+```bash
+git tag -a v1.9.0 -m "v1.9.0 — rotation, one-shot Codex setup, hook fail-open fix"
+git push origin v1.9.0
+gh release create v1.9.0 --title "v1.9.0" --notes-file .github/RELEASE_NOTES_1.9.0.md
+```
+
+Note on the release notes: the headline item is a **security fix** (the paste
+guard could fail open when `bun` wasn't resolvable). Users who installed bun
+via Homebrew and launch their agent from the GUI may have had that guard
+silently not running. That is worth saying plainly in the announcement rather
+than burying under the feature list.
 
 ## Picking it back up after deleting the folder
 

@@ -5,6 +5,25 @@ change behaviour. Format follows [Keep a Changelog](https://keepachangelog.com).
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-09-01
+
+Rotation, one-shot Codex setup, and a fail-open fix in the hook runtime.
+
+`stm rotate --provider` makes rotation real for OpenAI: mint a new key through
+the provider's own admin API and retire the old one, instead of only swapping
+the value STM stores. `stm codex install` collapses Codex setup to one command,
+and `/stm:teams` walks an agent through team enrollment end to end.
+
+The most important entry is a **fix**: the hooks resolved the `bun` runtime in a
+way that missed Homebrew installs, and when it missed, the UserPromptSubmit
+paste guard exited without scanning — a security control failing open silently.
+If you installed bun with Homebrew and launch your agent from the GUI, that
+guard may not have been running. `stm doctor` now reports the runtime, so the
+state is visible either way.
+
+Scope is unchanged (macOS + Claude Code runtime hooks; the broker and Teams
+server run anywhere Bun does).
+
 ### Added
 
 - **One-shot Codex setup: `stm codex install`.** Runs the hooks installer and the
@@ -46,6 +65,28 @@ change behaviour. Format follows [Keep a Changelog](https://keepachangelog.com).
   `--when-tool` instead of `--when-key`) was silently ignored, turning an
   intended narrow rule into a match-everything rule. Unknown flags now error
   up front, naming the flag.
+- **Hooks no longer fail open when `bun` isn't on the host PATH.** Every shell
+  entrypoint resolved bun as `command -v bun || echo "$HOME/.bun/bin/bun"`,
+  which knew only the official-installer location (missing Homebrew's
+  `/opt/homebrew/bin/bun`, the path the README recommends) and never checked
+  the fallback was executable. Because hooks are spawned by the agent host —
+  whose PATH is often not your interactive shell's — a correct Homebrew install
+  could hit this. When it did, the **UserPromptSubmit paste guard exited
+  without scanning**, so a pasted key was not blocked and nothing said so. All
+  seven entrypoints now share `hooks/resolve-bun.sh`, which checks PATH plus
+  five known install locations for an *executable* bun and, on a genuine miss,
+  states plainly that stm is not running and the guard is not scanning.
+- **`stm doctor` reports the agent runtime.** New section showing which `bun`
+  the hooks will execute and where it was found; doctor reports not-ok when the
+  runtime is unresolvable, since a reachable keystore is useless if the hooks
+  can't start.
+- **Provider-side rotation can no longer strand a placeholder on a deleted
+  key.** The first cut deleted the old upstream key before the minted value
+  reached the keychain, so a failed keychain write left the placeholder
+  pointing at a key that no longer existed. Rotation is now two-phase
+  (mint → store → retire): minting is non-destructive, retiring runs only
+  after the new value is durably stored and never throws. Worst case is an
+  orphaned key the command names, instead of a dead placeholder.
 
 ## [1.8.0] - 2026-08-22
 

@@ -9,7 +9,7 @@ Items in [`specs/`](./specs/) take precedence over anything here. When
 something here grows enough scope to need a design doc, move it to
 `specs/` and link back.
 
-Last updated: **2026-09-01** (post-1.8.0 sweep). Everything previously listed
+Last updated: **2026-09-01** (1.9.0 prep sweep). Everything previously listed
 under "shipped in subsequent releases" was removed; items below are the
 genuinely-pending backlog.
 
