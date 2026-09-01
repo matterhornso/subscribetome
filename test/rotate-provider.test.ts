@@ -63,11 +63,12 @@ test("happy path: single project auto-selected, key minted, old key matched by l
     ]),
     deleteRoute(),
   ]);
-  const r = await openaiRotationProvider.rotate(ADMIN, { oldValue: OLD_KEY }, { fetch: fn, now: FIXED_NOW });
-  expect(r.newValue).toBe(NEW_KEY);
-  expect(r.projectId).toBe("proj_only");
-  expect(r.serviceAccountId).toBe("svc_acct_1");
-  expect(r.oldKey).toBe("deleted");
+  const m = await openaiRotationProvider.mint(ADMIN, { oldValue: OLD_KEY }, { fetch: fn, now: FIXED_NOW });
+  expect(m.newValue).toBe(NEW_KEY);
+  expect(m.projectId).toBe("proj_only");
+  expect(m.serviceAccountId).toBe("svc_acct_1");
+  const outcome = await openaiRotationProvider.retire(ADMIN, { projectId: m.projectId, oldValue: OLD_KEY }, { fetch: fn });
+  expect(outcome).toBe("deleted");
   // The DELETE hit the matched key id, and every call carried the admin key.
   const del = calls.find((c) => c.init?.method === "DELETE")!;
   expect(del.url).toContain("/api_keys/key_old");
@@ -81,7 +82,7 @@ test("happy path: single project auto-selected, key minted, old key matched by l
 
 test("explicit --project skips the project listing entirely", async () => {
   const { fn, calls } = fakeFetch([mintRoute(), listKeysRoute([]), deleteRoute()]);
-  const r = await openaiRotationProvider.rotate(
+  const r = await openaiRotationProvider.mint(
     ADMIN,
     { oldValue: OLD_KEY, projectId: "proj_given" },
     { fetch: fn, now: FIXED_NOW },
@@ -95,10 +96,10 @@ test("multiple projects without --project: refuses, lists candidates, never mint
     projectsRoute([{ id: "proj_a", name: "Alpha" }, { id: "proj_b", name: "Beta" }]),
   ]);
   await expect(
-    openaiRotationProvider.rotate(ADMIN, { oldValue: OLD_KEY }, { fetch: fn, now: FIXED_NOW }),
+    openaiRotationProvider.mint(ADMIN, { oldValue: OLD_KEY }, { fetch: fn, now: FIXED_NOW }),
   ).rejects.toThrow(/--project/);
   try {
-    await openaiRotationProvider.rotate(ADMIN, { oldValue: OLD_KEY }, { fetch: fn, now: FIXED_NOW });
+    await openaiRotationProvider.mint(ADMIN, { oldValue: OLD_KEY }, { fetch: fn, now: FIXED_NOW });
   } catch (e: any) {
     expect(e.message).toContain("proj_a");
     expect(e.message).toContain("proj_b");
@@ -112,8 +113,9 @@ test("old key not found by last-4: mint succeeds, oldKey=not-found, no DELETE is
     mintRoute(),
     listKeysRoute([{ id: "key_other", redacted_value: "sk-...zz99" }]),
   ]);
-  const r = await openaiRotationProvider.rotate(ADMIN, { oldValue: OLD_KEY }, { fetch: fn, now: FIXED_NOW });
-  expect(r.oldKey).toBe("not-found");
+  const m = await openaiRotationProvider.mint(ADMIN, { oldValue: OLD_KEY }, { fetch: fn, now: FIXED_NOW });
+  const r = await openaiRotationProvider.retire(ADMIN, { projectId: m.projectId, oldValue: OLD_KEY }, { fetch: fn });
+  expect(r).toBe("not-found");
   expect(calls.some((c) => c.init?.method === "DELETE")).toBe(false);
 });
 
@@ -126,8 +128,9 @@ test("ambiguous last-4 match: refuses to guess-delete", async () => {
       { id: "key_2", redacted_value: "sk-live-...ab12" },
     ]),
   ]);
-  const r = await openaiRotationProvider.rotate(ADMIN, { oldValue: OLD_KEY }, { fetch: fn, now: FIXED_NOW });
-  expect(r.oldKey).toBe("ambiguous");
+  const m = await openaiRotationProvider.mint(ADMIN, { oldValue: OLD_KEY }, { fetch: fn, now: FIXED_NOW });
+  const r = await openaiRotationProvider.retire(ADMIN, { projectId: m.projectId, oldValue: OLD_KEY }, { fetch: fn });
+  expect(r).toBe("ambiguous");
   expect(calls.some((c) => c.init?.method === "DELETE")).toBe(false);
 });
 
@@ -138,15 +141,17 @@ test("old-key delete failure never unwinds the mint", async () => {
     listKeysRoute([{ id: "key_old", redacted_value: "sk-...ab12" }]),
     deleteRoute(false),
   ]);
-  const r = await openaiRotationProvider.rotate(ADMIN, { oldValue: OLD_KEY }, { fetch: fn, now: FIXED_NOW });
-  expect(r.newValue).toBe(NEW_KEY);
-  expect(r.oldKey).toBe("delete-failed");
+  const m = await openaiRotationProvider.mint(ADMIN, { oldValue: OLD_KEY }, { fetch: fn, now: FIXED_NOW });
+  expect(m.newValue).toBe(NEW_KEY);
+  const r = await openaiRotationProvider.retire(ADMIN, { projectId: m.projectId, oldValue: OLD_KEY }, { fetch: fn });
+  expect(r).toBe("delete-failed");
 });
 
 test("no stored old value: deletion skipped", async () => {
   const { fn, calls } = fakeFetch([projectsRoute([{ id: "proj_only" }]), mintRoute()]);
-  const r = await openaiRotationProvider.rotate(ADMIN, { oldValue: null }, { fetch: fn, now: FIXED_NOW });
-  expect(r.oldKey).toBe("skipped");
+  const m = await openaiRotationProvider.mint(ADMIN, { oldValue: null }, { fetch: fn, now: FIXED_NOW });
+  const r = await openaiRotationProvider.retire(ADMIN, { projectId: m.projectId, oldValue: null }, { fetch: fn });
+  expect(r).toBe("skipped");
   expect(calls.some((c) => c.url.includes("/api_keys"))).toBe(false);
 });
 
@@ -155,7 +160,7 @@ test("SECURITY: no thrown error ever contains key material", async () => {
     // auth failure on project list
     () => {
       const { fn } = fakeFetch([{ match: () => true, respond: () => json({}, 401) }]);
-      return openaiRotationProvider.rotate(ADMIN, { oldValue: OLD_KEY }, { fetch: fn });
+      return openaiRotationProvider.mint(ADMIN, { oldValue: OLD_KEY }, { fetch: fn });
     },
     // mint returns a malformed shape that DOES carry a secret-looking field
     () => {
@@ -166,21 +171,21 @@ test("SECURITY: no thrown error ever contains key material", async () => {
           respond: () => json({ oops: NEW_KEY }),
         },
       ]);
-      return openaiRotationProvider.rotate(ADMIN, { oldValue: OLD_KEY }, { fetch: fn, now: FIXED_NOW });
+      return openaiRotationProvider.mint(ADMIN, { oldValue: OLD_KEY }, { fetch: fn, now: FIXED_NOW });
     },
     // network throw
     () => {
       const fn = (async () => {
         throw new Error("connect ECONNREFUSED");
       }) as unknown as typeof fetch;
-      return openaiRotationProvider.rotate(ADMIN, { oldValue: OLD_KEY }, { fetch: fn });
+      return openaiRotationProvider.mint(ADMIN, { oldValue: OLD_KEY }, { fetch: fn });
     },
   ];
   for (const run of attempts) {
     let msg = "";
     try {
       await run();
-      throw new Error("expected rotate to throw");
+      throw new Error("expected mint to throw");
     } catch (e: any) {
       msg = String(e?.message ?? e);
     }
@@ -188,6 +193,48 @@ test("SECURITY: no thrown error ever contains key material", async () => {
     expect(msg.includes(NEW_KEY)).toBe(false);
     expect(msg.includes(OLD_KEY)).toBe(false);
   }
+});
+
+test("DURABILITY: retire never throws, whatever the network does", async () => {
+  // The CLI runs retire AFTER the minted value is already in the keychain, so
+  // a throw here would surface as a failure on an already-successful rotation.
+  // Every failure mode must degrade to a reported outcome instead.
+  const throwingFetch = (async () => {
+    throw new Error("connect ECONNREFUSED");
+  }) as unknown as typeof fetch;
+  await expect(
+    openaiRotationProvider.retire(ADMIN, { projectId: "proj_x", oldValue: OLD_KEY }, { fetch: throwingFetch }),
+  ).resolves.toBe("delete-failed");
+
+  const { fn: err500 } = fakeFetch([{ match: () => true, respond: () => json({}, 500) }]);
+  await expect(
+    openaiRotationProvider.retire(ADMIN, { projectId: "proj_x", oldValue: OLD_KEY }, { fetch: err500 }),
+  ).resolves.toBe("delete-failed");
+
+  const { fn: garbage } = fakeFetch([
+    { match: () => true, respond: () => new Response("<html>not json</html>", { status: 200 }) },
+  ]);
+  await expect(
+    openaiRotationProvider.retire(ADMIN, { projectId: "proj_x", oldValue: OLD_KEY }, { fetch: garbage }),
+  ).resolves.toBe("delete-failed");
+
+  // A missing admin key or missing old value degrades to "skipped", no calls.
+  await expect(
+    openaiRotationProvider.retire("", { projectId: "proj_x", oldValue: OLD_KEY }),
+  ).resolves.toBe("skipped");
+});
+
+test("DURABILITY: mint issues no destructive call, so a mint failure changes nothing", async () => {
+  // Mint must never DELETE. If minting fails the user's existing key has to
+  // still be intact — that is what lets the CLI say "nothing was changed".
+  const { fn, calls } = fakeFetch([
+    projectsRoute([{ id: "proj_only" }]),
+    { match: (u, i) => u.endsWith("/service_accounts") && i?.method === "POST", respond: () => json({}, 500) },
+  ]);
+  await expect(
+    openaiRotationProvider.mint(ADMIN, { oldValue: OLD_KEY }, { fetch: fn, now: FIXED_NOW }),
+  ).rejects.toThrow();
+  expect(calls.some((c) => c.init?.method === "DELETE")).toBe(false);
 });
 
 test("registry: openai resolves, unknown tools do not", () => {

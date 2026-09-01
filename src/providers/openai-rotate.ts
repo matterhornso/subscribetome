@@ -52,23 +52,44 @@ export interface RotateOptions {
   projectId?: string | null;
 }
 
-export interface RotateResult {
+export interface MintResult {
   /** The freshly minted key value. Caller writes it to the keychain and MUST NOT print it. */
   newValue: string;
   projectId: string;
   serviceAccountId: string;
-  /** What happened to the old provider-side key. */
-  oldKey: "deleted" | "not-found" | "ambiguous" | "skipped" | "delete-failed";
 }
 
-/** One provider's rotation surface, keyed like the spend registry. */
+/** What happened to the old provider-side key during `retire`. */
+export type RetireOutcome =
+  | "deleted"
+  | "not-found"
+  | "ambiguous"
+  | "skipped"
+  | "delete-failed";
+
+/**
+ * One provider's rotation surface, keyed like the spend registry.
+ *
+ * Deliberately TWO phases, not one. The caller must land the minted value in
+ * the keychain BEFORE retiring the old key, so a keychain write that fails
+ * can never leave the placeholder pointing at a key that was already deleted
+ * upstream. Worst case with this ordering is an orphaned old key (harmless,
+ * and reported); the reverse ordering's worst case is a dead placeholder.
+ */
 export interface RotationProvider {
   id: string;
   /** Keychain label of the credential that authorizes rotation. */
   adminCredentialLabel: string;
   /** Shown when the admin credential is missing. */
   credentialHint: string;
-  rotate(adminKey: string, opts: RotateOptions, deps?: RotateDeps): Promise<RotateResult>;
+  /** Phase 1: create a new key at the provider. Throws on any failure. */
+  mint(adminKey: string, opts: RotateOptions, deps?: RotateDeps): Promise<MintResult>;
+  /** Phase 2: best-effort delete of the old key. NEVER throws — reports instead. */
+  retire(
+    adminKey: string,
+    opts: { projectId: string; oldValue?: string | null },
+    deps?: RotateDeps,
+  ): Promise<RetireOutcome>;
 }
 
 async function adminGet(f: typeof fetch, adminKey: string, path: string, signal?: AbortSignal): Promise<any> {
@@ -100,7 +121,7 @@ export const openaiRotationProvider: RotationProvider = {
     "(it starts with sk-admin-... and is separate from your runtime API key), then " +
     "store it as openai:admin-key — the same credential spend sync uses.",
 
-  async rotate(adminKey, opts, deps): Promise<RotateResult> {
+  async mint(adminKey, opts, deps): Promise<MintResult> {
     if (!adminKey) throw new Error("missing admin key");
     const f = deps?.fetch ?? fetch;
     const signal = deps?.signal;
@@ -158,36 +179,39 @@ export const openaiRotationProvider: RotationProvider = {
       throw new Error("unexpected response shape from service-account create");
     }
 
-    // 3. Best-effort delete of the old provider-side key. Failure here never
-    //    unwinds the mint — the new key exists and must reach the keychain.
-    let oldKey: RotateResult["oldKey"] = "skipped";
-    const oldValue = opts.oldValue ?? null;
-    if (oldValue && oldValue.length >= 4) {
-      const last4 = oldValue.slice(-4);
-      try {
-        const page = await adminGet(f, adminKey, `/projects/${projectId}/api_keys?limit=100`, signal);
-        const keys: { id: string; redacted_value?: string }[] = Array.isArray(page?.data) ? page.data : [];
-        const matches = keys.filter(
-          (k) => typeof k?.redacted_value === "string" && k.redacted_value.endsWith(last4),
-        );
-        if (matches.length === 0) {
-          oldKey = "not-found";
-        } else if (matches.length > 1) {
-          oldKey = "ambiguous";
-        } else {
-          const del = await f(`${OPENAI_BASE}/projects/${projectId}/api_keys/${matches[0].id}`, {
-            method: "DELETE",
-            headers: { Authorization: `Bearer ${adminKey}`, Accept: "application/json" },
-            signal,
-          });
-          oldKey = del.ok ? "deleted" : "delete-failed";
-        }
-      } catch {
-        oldKey = "delete-failed";
-      }
-    }
+    return { newValue, projectId, serviceAccountId };
+  },
 
-    return { newValue, projectId, serviceAccountId, oldKey };
+  /**
+   * Phase 2 — best-effort retire. Runs only AFTER the caller has stored the
+   * minted value, so every failure path here is non-destructive: the new key
+   * already works, and the worst outcome is an orphaned old key we report.
+   * Never throws.
+   */
+  async retire(adminKey, opts, deps): Promise<RetireOutcome> {
+    const oldValue = opts.oldValue ?? null;
+    if (!adminKey || !oldValue || oldValue.length < 4) return "skipped";
+    const f = deps?.fetch ?? fetch;
+    const signal = deps?.signal;
+    const last4 = oldValue.slice(-4);
+    try {
+      const page = await adminGet(f, adminKey, `/projects/${opts.projectId}/api_keys?limit=100`, signal);
+      const keys: { id: string; redacted_value?: string }[] = Array.isArray(page?.data) ? page.data : [];
+      const matches = keys.filter(
+        (k) => typeof k?.redacted_value === "string" && k.redacted_value.endsWith(last4),
+      );
+      if (matches.length === 0) return "not-found";
+      // Never guess-delete a credential: >1 last-4 match is ambiguous.
+      if (matches.length > 1) return "ambiguous";
+      const del = await f(`${OPENAI_BASE}/projects/${opts.projectId}/api_keys/${matches[0].id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${adminKey}`, Accept: "application/json" },
+        signal,
+      });
+      return del.ok ? "deleted" : "delete-failed";
+    } catch {
+      return "delete-failed";
+    }
   },
 };
 

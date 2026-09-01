@@ -1816,40 +1816,68 @@ async function rotateViaProviderCmd(tool: string, label: string, rest: string[])
         `Placeholder ${existing.placeholder} stays the same; value behind it changes.\n`,
     );
 
-    let result: Awaited<ReturnType<typeof provider.rotate>>;
+    // Phase 1 — mint. Nothing destructive has happened yet, so any failure
+    // here leaves the existing key untouched and working.
+    let minted: Awaited<ReturnType<typeof provider.mint>>;
     try {
-      result = await provider.rotate(adminKey, { oldValue, projectId });
+      minted = await provider.mint(adminKey, { oldValue, projectId });
     } catch (e: any) {
       const msg = String(e?.message ?? e);
       store.recordAudit({ event: "rotate.failed", tool, label, reason: msg.slice(0, 200) });
-      process.stderr.write(`\nstm rotate failed: ${msg}\n`);
+      process.stderr.write(
+        `\nstm rotate failed: ${msg}\n` +
+          `Nothing was changed — ${tool}:${label} still resolves to its current key.\n`,
+      );
       process.exit(1);
     }
 
-    // The mint succeeded — land the new value in the keychain before anything
-    // else can go wrong. Same in-place swap as the manual flow.
-    store.rotateKey({ tool, label, newValue: result.newValue });
+    // Phase 2 — land the new value in the keychain. This must succeed BEFORE
+    // we retire the old key upstream; otherwise a keychain failure would
+    // leave the placeholder pointing at a key we had already deleted.
+    try {
+      store.rotateKey({ tool, label, newValue: minted.newValue });
+    } catch (e: any) {
+      const msg = String(e?.message ?? e);
+      store.recordAudit({
+        event: "rotate.failed",
+        tool,
+        label,
+        reason: `keychain write failed after mint: ${msg}`.slice(0, 200),
+      });
+      process.stderr.write(
+        `\nstm rotate: minted a new key but FAILED to store it: ${msg}\n` +
+          `Your old key is untouched and still works — the placeholder is unchanged.\n` +
+          `A new unused key was left in project ${minted.projectId} (service account\n` +
+          `${minted.serviceAccountId}); delete it in the provider dashboard.\n`,
+      );
+      process.exit(1);
+    }
+
+    // Phase 3 — best-effort retire of the old upstream key. Never throws; the
+    // rotation is already durable at this point whatever the outcome.
+    const outcome = await provider.retire(adminKey, { projectId: minted.projectId, oldValue });
+
     store.recordAudit({
       event: "rotate.issued",
       tool,
       label,
-      reason: `project=${result.projectId} old-key=${result.oldKey}`,
+      reason: `project=${minted.projectId} old-key=${outcome}`,
     });
 
     const oldKeyLine =
-      result.oldKey === "deleted"
+      outcome === "deleted"
         ? `  old provider-side key deleted.\n`
-        : result.oldKey === "not-found"
-          ? `  old provider-side key not found in ${result.projectId} — if it exists elsewhere, delete it in the provider dashboard.\n`
-          : result.oldKey === "ambiguous"
+        : outcome === "not-found"
+          ? `  old provider-side key not found in ${minted.projectId} — if it exists elsewhere, delete it in the provider dashboard.\n`
+          : outcome === "ambiguous"
             ? `  multiple provider-side keys share the old key's last 4 characters — refusing to guess; delete the old one in the provider dashboard.\n`
-            : result.oldKey === "delete-failed"
+            : outcome === "delete-failed"
               ? `  WARN: deleting the old provider-side key failed — delete it in the provider dashboard.\n`
               : `  old provider-side key left in place (no stored old value to match).\n`;
 
     process.stdout.write(
       `\nrotated ${tool}:${label} (provider-side).\n` +
-        `  new key minted in ${result.projectId} (service account ${result.serviceAccountId}) — stored in your keychain, never printed.\n` +
+        `  new key minted in ${minted.projectId} (service account ${minted.serviceAccountId}) — stored in your keychain, never printed.\n` +
         oldKeyLine +
         `  the placeholder ${existing.placeholder} now resolves to the new value.\n`,
     );
