@@ -205,7 +205,8 @@
     border-bottom:1px solid var(--line);
     background:rgba(10,11,13,.72); backdrop-filter:blur(10px);
   }
-  .nav { display:flex; align-items:center; justify-content:space-between; height:62px; }
+  .nav { display:flex; align-items:center; justify-content:space-between; gap:10px; height:62px; flex-wrap:wrap; }
+  .nav-r { display:flex; align-items:center; gap:10px; }
   .brand { display:flex; align-items:center; gap:11px; font-size:14px; }
   .mark {
     height:25px; padding:0 9px; border-radius:7px; flex:none; display:grid; place-items:center;
@@ -219,6 +220,16 @@
     text-decoration:none; transition:border-color .2s var(--ease),background .2s var(--ease);
   }
   .nav-cta:hover { border-color:var(--acc); background:var(--acc-deep); }
+  .nav-cta.primary {
+    border:none; background:linear-gradient(150deg,var(--acc-bright),var(--acc) 55%,#1f8a63);
+    color:#04130c; font-weight:600;
+    transition:filter .2s var(--ease);
+  }
+  .nav-cta.primary:hover { filter:brightness(1.08); background:linear-gradient(150deg,var(--acc-bright),var(--acc) 55%,#1f8a63); }
+  @media (max-width:520px){
+    .brand { font-size:13px; gap:8px; }
+    .nav-cta { padding:6px 10px; font-size:12px; }
+  }
 
   /* reveal */
   .rise { opacity:0; transform:translateY(20px); animation:rise .9s var(--ease) forwards; }
@@ -241,7 +252,7 @@
   .hero-sub b { color:var(--ink); font-weight:500; }
 
   /* ===== three-step section ===== */
-  .steps { padding:60px 0 6px; }
+  .steps { padding:60px 0 6px; scroll-margin-top:62px; }
   .steps-grid {
     display:grid; grid-template-columns:repeat(3,1fr); gap:18px;
   }
@@ -443,6 +454,13 @@
   }
   .strip i { color:var(--acc); font-style:normal; }
   .strip .sep { color:var(--ink-faint); }
+  /* hero placement: the strip is credibility proof at the decision moment,
+     not a footer aside — slightly more presence, tighter top margin. */
+  .strip--hero {
+    margin-top:38px; font-size:13px; padding:16px 0; color:var(--ink);
+  }
+  .strip--hero span:not(.sep) { color:var(--ink-dim); }
+  .strip--hero i { font-weight:500; }
 
   footer { border-top:1px solid var(--line); padding:38px 0 48px; }
   .foot { display:flex; flex-wrap:wrap; gap:22px; justify-content:space-between; align-items:center; }
@@ -466,7 +484,10 @@
 <header>
   <div class="bound nav">
     <div class="brand"><div class="mark">stm</div><b>subscribe<i>tome</i></b></div>
-    <a class="nav-cta" href="https://github.com/matterhornso/subscribetome">GitHub →</a>
+    <div class="nav-r">
+      <a class="nav-cta" href="https://github.com/matterhornso/subscribetome">GitHub →</a>
+      <a class="nav-cta primary" href="#get-started">Get started →</a>
+    </div>
   </div>
 </header>
 
@@ -479,8 +500,19 @@
   </p>
 </div>
 
+<!-- TRUST STRIP -->
+<div class="bound rise d4">
+  <div class="strip strip--hero">
+    <span><i>50</i> services pre-configured</span><span class="sep">/</span>
+    <span>keys never touch the chat</span><span class="sep">/</span>
+    <span>macOS · Linux · Windows</span><span class="sep">/</span>
+    <span>Claude Code &amp; Codex</span><span class="sep">/</span>
+    <span><i>MIT</i> · open source</span>
+  </div>
+</div>
+
 <!-- 3 STEPS -->
-<div class="bound steps">
+<div class="bound steps" id="get-started">
   <div class="steps-grid">
     <div class="step rise d3">
       <span class="n">1</span>
@@ -627,21 +659,10 @@
   </div>
 </div>
 
-<!-- TRUST STRIP -->
-<div class="bound">
-  <div class="strip">
-    <span><i>50</i> services pre-configured</span><span class="sep">/</span>
-    <span>keys never touch the chat</span><span class="sep">/</span>
-    <span>macOS · Linux · Windows</span><span class="sep">/</span>
-    <span>Claude Code &amp; Codex</span><span class="sep">/</span>
-    <span><i>MIT</i> · open source</span>
-  </div>
-</div>
-
 <footer>
   <div class="bound foot">
     <div class="foot-l">
-      <b>subscribetome</b> — open-source AI API key &amp; subscription manager. v1.0.0. MIT licensed.
+      <b>subscribetome</b> — open-source AI API key &amp; subscription manager. v1.8.0. MIT licensed.
     </div>
     <div class="foot-links">
       <a href="https://github.com/matterhornso/subscribetome">GitHub</a>
