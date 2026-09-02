@@ -612,7 +612,7 @@ export function dashboardHTML(): string {
   <section id="browse-services" class="card">
     <div class="card-head" style="cursor:pointer" id="browse-head">
       <h2><span id="browse-caret" style="display:inline-block;width:14px;transition:transform .15s var(--ease)">▸</span> Browse services</h2>
-      <span class="meta">50 pre-configured · click a tile to pre-arm the form above</span>
+      <span class="meta">${CATALOG.length} pre-configured · click a tile to pre-arm the form above</span>
     </div>
     <div id="browse-body" style="display:none">
       <p class="browse-intro">
