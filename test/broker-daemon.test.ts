@@ -153,3 +153,54 @@ t("/api/inject/env: dashboard-token only, returns real values keyed by STM_<TOOL
   const body = await r.json();
   expect(body.values["STM_INJECT_TEST_SVC_DEFAULT"]).toBe("sk-inject-test-FAKE-not-real");
 });
+
+// A consumer that needs the EXACT env-var name a provider library reads
+// (Matterhorn's EnvService is the motivating case) opts a key in via the
+// tool's display name. This must produce that exact name, and must never
+// let two entries collide onto the same output name.
+t("/api/inject/env: a tool's display name is used as the output key when it looks like an env var", async () => {
+  const info = await startDaemon();
+  const base = `http://127.0.0.1:${info.port}`;
+  const hdr = (tok?: string): Record<string, string> => (tok ? { "x-stm-token": tok } : {});
+  const post = (path: string, body: unknown) =>
+    fetch(`${base}${path}`, {
+      method: "POST",
+      headers: { ...hdr(info.token), "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+  // A key added WITH a display name that looks like an env var...
+  await post("/api/keys", {
+    tool: "displayname-test-anthropic",
+    label: "default",
+    value: "sk-displayname-test-FAKE-1",
+    display: "ANTHROPIC_API_KEY",
+  });
+  // ...and one WITHOUT (falls back to STM's own deterministic name).
+  await post("/api/keys", {
+    tool: "displayname-test-plain",
+    label: "default",
+    value: "sk-displayname-test-FAKE-2",
+  });
+  // A second entry that tries to claim the SAME display name — must not
+  // silently steal it or overwrite the first entry's value; falls back to
+  // its own deterministic name instead.
+  await post("/api/keys", {
+    tool: "displayname-test-anthropic-dup",
+    label: "default",
+    value: "sk-displayname-test-FAKE-3",
+    display: "ANTHROPIC_API_KEY",
+  });
+
+  const r = await fetch(`${base}/api/inject/env`, { headers: hdr(info.token) });
+  expect(r.status).toBe(200);
+  const { values } = await r.json();
+
+  expect(values["ANTHROPIC_API_KEY"]).toBe("sk-displayname-test-FAKE-1");
+  expect(values["STM_DISPLAYNAME_TEST_PLAIN_DEFAULT"]).toBe("sk-displayname-test-FAKE-2");
+  // The duplicate never got ANTHROPIC_API_KEY (that value is unchanged
+  // above) and fell back to its own deterministic name instead of vanishing.
+  expect(values["STM_DISPLAYNAME_TEST_ANTHROPIC_DUP_DEFAULT"]).toBe("sk-displayname-test-FAKE-3");
+  // Exactly the entries we expect, no key lost, no key duplicated.
+  expect(Object.keys(values).filter((k) => k.startsWith("STM_DISPLAYNAME") || k === "ANTHROPIC_API_KEY").length).toBe(3);
+});

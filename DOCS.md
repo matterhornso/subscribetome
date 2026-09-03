@@ -154,12 +154,21 @@ curl -H "x-stm-token: <dashboard token>" http://127.0.0.1:<port>/api/inject/env
 ```
 
 Every active key, named deterministically as `STM_<TOOL>_<LABEL>` (same
-mapping `keyEnvName()` uses for Codex). Unlike `/proxy/`, this endpoint's
-whole job is to hand back real values, so it requires the **dashboard**
-token, not the weaker broker token — a caller that can only make brokered API
-calls must not be able to read the inventory out in the clear this way. A
-name collision between two `(tool,label)` pairs (see `stm codex --help`)
-returns `409` instead of silently overwriting one secret with another.
+mapping `keyEnvName()` uses for Codex) — **unless** the tool has a display
+name that looks like a real env-var name (e.g. `ANTHROPIC_API_KEY`), in which
+case that's used instead. This matters when the consuming integration needs
+the *exact* name a provider library reads, not STM's own naming convention —
+set it the same way you'd set any tool's display name:
+`stm add --tool anthropic --display ANTHROPIC_API_KEY`. Two entries can never
+collide onto the same output name (the loser falls back to its own
+deterministic name; a value is never dropped or silently overwritten).
+
+Unlike `/proxy/`, this endpoint's whole job is to hand back real values, so
+it requires the **dashboard** token, not the weaker broker token — a caller
+that can only make brokered API calls must not be able to read the inventory
+out in the clear this way. A name collision between two `(tool,label)` pairs
+(see `stm codex --help`) returns `409` instead of silently overwriting one
+secret with another.
 
 ## STM Teams — self-hosted, zero-knowledge sharing
 

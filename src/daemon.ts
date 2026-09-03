@@ -25,6 +25,15 @@ import { listSupportedAgents, buildInjectionPlan, resolveInjectionValues } from 
 import * as teamsClient from "./teams/client.ts";
 import { hasIdentity as teamHasIdentity, ensureIdentity as teamEnsureIdentity } from "./teams/keypair.ts";
 
+/**
+ * A string that's safe to use as a literal env-var name. Mirrors the shape
+ * every POSIX shell (and Matterhorn's own `ENV_KEY_PATTERN` in
+ * apps/server/src/env-file.ts) requires — used by /api/inject/env to decide
+ * whether a tool's display name is usable as an output key instead of STM's
+ * own STM_<TOOL>_<LABEL> convention.
+ */
+const ENV_VAR_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
 interface DaemonInfo {
   port: number;
   /** Dashboard token — gates GET / and every /api/ call. Browser-only; never
@@ -188,7 +197,37 @@ async function apiRoute(path: string, req: Request, store: Store): Promise<Respo
       );
     }
     try {
-      const values = resolveInjectionValues({ store, plan });
+      const resolved = resolveInjectionValues({ store, plan });
+      // Output naming: prefer a tool's display name over STM's own
+      // STM_<TOOL>_<LABEL> convention when it looks like a real env-var name.
+      // Without this, a consumer that needs the EXACT name a provider
+      // library reads (e.g. ANTHROPIC_API_KEY) would only ever get STM's
+      // internal name — the value would be correct but no library would
+      // find it under that name. `stm add --display ANTHROPIC_API_KEY`
+      // (or an integration setting the same via its own add call) is how a
+      // caller opts a key into this.
+      //
+      // Collision-safe by construction: `deterministic` is every entry's
+      // guaranteed fallback identity, fixed up front, so a display name can
+      // never shadow another entry's fallback; `claimed` stops two entries
+      // from both winning the same display name. Either way a value is
+      // never dropped or silently overwritten — the loser just falls back
+      // to its own deterministic name.
+      const deterministic = new Set(plan.entries.map((e) => e.envName));
+      const claimed = new Set<string>();
+      const values: Record<string, string> = {};
+      for (const e of plan.entries) {
+        const displayName = store.getTool(e.tool)?.display_name?.trim();
+        const canUseDisplayName =
+          !!displayName &&
+          ENV_VAR_NAME_RE.test(displayName) &&
+          displayName !== e.envName &&
+          !claimed.has(displayName) &&
+          !deterministic.has(displayName);
+        const outName = canUseDisplayName ? displayName! : e.envName;
+        if (canUseDisplayName) claimed.add(displayName!);
+        values[outName] = resolved[e.envName];
+      }
       return json({ values });
     } catch (e: any) {
       return json({ error: e?.message ?? String(e) }, 500);

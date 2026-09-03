@@ -15,7 +15,11 @@ change behaviour. Format follows [Keep a Changelog](https://keepachangelog.com).
   the daemon instead of only in-process. Requires the dashboard token (the
   strong one — this route hands back real values, unlike `/proxy/`); a
   `(tool,label)` name collision returns 409 rather than silently overwriting
-  one secret with another.
+  one secret with another. Output is named `STM_<TOOL>_<LABEL>` by default,
+  or a tool's display name when it looks like a real env-var name (e.g.
+  `ANTHROPIC_API_KEY`) — needed so a consumer gets back the exact name a
+  provider library expects, not just STM's own naming convention. Two
+  entries can never collide onto the same output name.
 
 ## [1.9.0] - 2026-09-01
 
