@@ -21,7 +21,7 @@ import { brokerRequest, BROKER_TARGETS } from "./broker.ts";
 import { findExact } from "./grammar.ts";
 import { syncAll, syncProvider } from "./sync.ts";
 import { listProviderIds } from "./providers/index.ts";
-import { listSupportedAgents } from "./agents/codex.ts";
+import { listSupportedAgents, buildInjectionPlan, resolveInjectionValues } from "./agents/codex.ts";
 import * as teamsClient from "./teams/client.ts";
 import { hasIdentity as teamHasIdentity, ensureIdentity as teamEnsureIdentity } from "./teams/keypair.ts";
 
@@ -162,6 +162,37 @@ async function apiRoute(path: string, req: Request, store: Store): Promise<Respo
       keystore,
       agents: listSupportedAgents(),
     });
+  }
+  // Bulk env-var resolution for a trusted local integration (e.g. Matterhorn
+  // Desks' EnvService) that needs real values to inject into a child process
+  // it is about to spawn — the same trust boundary `stm codex`'s launcher
+  // already extends to itself, exposed over the daemon instead of only
+  // in-process. Gated on the dashboard token (enforced generically above,
+  // NOT the weaker broker token) because — unlike /proxy/, which never
+  // returns a key value to the caller — this endpoint's entire job is to
+  // hand back real values.
+  //
+  // No `cwd` is asked of the caller: env.json-style secrets are explicitly
+  // user/machine-scoped, not workspace-scoped (see Matterhorn's own
+  // env-file.ts header), so this always takes the "no project matched" path
+  // through buildInjectionPlan and returns every active key.
+  if (path === "/api/inject/env" && req.method === "GET") {
+    const plan = buildInjectionPlan({ store, cwd: "" });
+    if (plan.collisions.length > 0) {
+      return json(
+        {
+          error: "env var name collisions — two (tool,label) pairs map to the same name",
+          collisions: plan.collisions,
+        },
+        409,
+      );
+    }
+    try {
+      const values = resolveInjectionValues({ store, plan });
+      return json({ values });
+    } catch (e: any) {
+      return json({ error: e?.message ?? String(e) }, 500);
+    }
   }
   if (path === "/api/keys" && req.method === "POST") {
     const b: any = await req.json().catch(() => ({}));

@@ -140,6 +140,27 @@ environment, or output. Invariants:
 stm broker [tool] [label]   print the base URL, capability token, and a ready curl
 ```
 
+### Bulk env-var injection — for a trusted local integration
+
+Some integrations don't make an HTTP call through stm — they need real values
+to set as environment variables on a child process they're about to spawn
+themselves (this is exactly what `stm codex`'s session-env launcher does for
+Codex). `GET /api/inject/env` exposes that same logic to any other trusted
+local caller:
+
+```
+curl -H "x-stm-token: <dashboard token>" http://127.0.0.1:<port>/api/inject/env
+# -> { "values": { "STM_OPENAI_DEFAULT": "sk-...", ... } }
+```
+
+Every active key, named deterministically as `STM_<TOOL>_<LABEL>` (same
+mapping `keyEnvName()` uses for Codex). Unlike `/proxy/`, this endpoint's
+whole job is to hand back real values, so it requires the **dashboard**
+token, not the weaker broker token — a caller that can only make brokered API
+calls must not be able to read the inventory out in the clear this way. A
+name collision between two `(tool,label)` pairs (see `stm codex --help`)
+returns `409` instead of silently overwriting one secret with another.
+
 ## STM Teams — self-hosted, zero-knowledge sharing
 
 Run your own sync server; it stores **only ciphertext it cannot decrypt**.

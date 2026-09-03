@@ -5,6 +5,18 @@ change behaviour. Format follows [Keep a Changelog](https://keepachangelog.com).
 
 ## [Unreleased]
 
+### Added
+
+- **`GET /api/inject/env`.** Bulk env-var resolution for a trusted local
+  integration that needs real values to inject into a child process it's
+  about to spawn — the first consumer is Matterhorn Desks' `EnvService`,
+  replacing its plaintext `env.json` store. Reuses `stm codex`'s existing
+  `keyEnvName`/`buildInjectionPlan`/`resolveInjectionValues`, exposed over
+  the daemon instead of only in-process. Requires the dashboard token (the
+  strong one — this route hands back real values, unlike `/proxy/`); a
+  `(tool,label)` name collision returns 409 rather than silently overwriting
+  one secret with another.
+
 ## [1.9.0] - 2026-09-01
 
 Rotation, one-shot Codex setup, and a fail-open fix in the hook runtime.

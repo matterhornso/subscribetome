@@ -113,3 +113,43 @@ t("broker token gates /proxy only; dashboard token gates everything", async () =
   expect(usage.length).toBeGreaterThan(0);
   expect(usage.some((u) => u.label === "default" && typeof u.status === "number")).toBe(true);
 });
+
+// /api/inject/env — bulk env-var resolution for a trusted local integration
+// (Matterhorn's EnvService is the first consumer). Same dashboard-token-only
+// boundary as every other /api/ route; the load-bearing new property is that
+// it returns real values, unlike everything else under /api/.
+t("/api/inject/env: dashboard-token only, returns real values keyed by STM_<TOOL>_<LABEL>", async () => {
+  const info = await startDaemon();
+  const base = `http://127.0.0.1:${info.port}`;
+  const hdr = (tok?: string): Record<string, string> =>
+    tok ? { "x-stm-token": tok } : {};
+
+  // No token -> 401, same as the rest of /api/.
+  let r = await fetch(`${base}/api/inject/env`, { headers: hdr() });
+  expect(r.status).toBe(401);
+
+  // Broker token -> 401. This route hands back real values, so it must sit
+  // behind the STRONG token exactly like /api/inventory, never the weaker
+  // one that only authorizes /proxy.
+  r = await fetch(`${base}/api/inject/env`, { headers: hdr(info.brokerToken) });
+  expect(r.status).toBe(401);
+
+  // Dashboard token, no keys yet -> 200, empty map (not an error).
+  r = await fetch(`${base}/api/inject/env`, { headers: hdr(info.token) });
+  expect(r.status).toBe(200);
+  expect(await r.json()).toEqual({ values: {} });
+
+  // Add a fake key via the existing /api/keys route, then confirm the real
+  // value comes back under the deterministic STM_<TOOL>_<LABEL> name.
+  r = await fetch(`${base}/api/keys`, {
+    method: "POST",
+    headers: { ...hdr(info.token), "content-type": "application/json" },
+    body: JSON.stringify({ tool: "inject-test-svc", label: "default", value: "sk-inject-test-FAKE-not-real" }),
+  });
+  expect(r.status).toBe(200);
+
+  r = await fetch(`${base}/api/inject/env`, { headers: hdr(info.token) });
+  expect(r.status).toBe(200);
+  const body = await r.json();
+  expect(body.values["STM_INJECT_TEST_SVC_DEFAULT"]).toBe("sk-inject-test-FAKE-not-real");
+});
