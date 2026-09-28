@@ -4,12 +4,13 @@
 // pointer. The real secret is in the OS keychain (keychain.ts). The DB is the
 // inventory; the keychain is the vault.
 import { Database } from "bun:sqlite";
-import { chmodSync } from "node:fs";
-import { randomUUID } from "node:crypto";
+import { chmodSync, mkdirSync } from "node:fs";
+import { randomUUID, createHash } from "node:crypto";
 import { homedir } from "node:os";
-import { resolve } from "node:path";
-import { DB_PATH, ensureDataDir } from "./paths.ts";
+import { resolve, dirname } from "node:path";
+import { DATA_DIR, DB_PATH, ensureDataDir } from "./paths.ts";
 import { keychainSet, keychainGet, keychainDelete } from "./keychain.ts";
+import type { KeyStore } from "./keystores/types.ts";
 import { makePlaceholder, normalizeSegment } from "./grammar.ts";
 import type { PolicyAction, PolicyRule } from "./policy.ts";
 
@@ -92,6 +93,30 @@ export interface KeyView {
   /** Team scope (M4): 'shared' | 'personal' | null (unset). Only 'shared' keys
    *  are included in `stm teams push`. */
   team_scope: string | null;
+}
+
+export interface SelectedKeyMetadata {
+  tool: string;
+  label: string;
+  status: string;
+  updatedAt: string;
+  revision: string;
+}
+
+type SelectedKeyRow = { tool: string; label: string; status: string; created_at: string; keychain_ref: string };
+
+// Revision is derived from random storage identity + state, NEVER secret bytes.
+// A native/dashboard rotation or revocation also changes this revision.
+function credentialRevision(ref: string, status: string): string {
+  return createHash("sha256").update(ref).update("\0").update(status).digest("hex");
+}
+
+function selectedMetadata(row: SelectedKeyRow): SelectedKeyMetadata {
+  return { tool: row.tool, label: row.label, status: row.status, updatedAt: row.created_at, revision: credentialRevision(row.keychain_ref, row.status) };
+}
+
+export class CredentialRevisionError extends Error {
+  constructor() { super("credential_revision_conflict"); }
 }
 
 const SCHEMA = `
@@ -294,9 +319,16 @@ const KEY_VIEW_SELECT = `
 
 export class Store {
   readonly db: Database;
+  private readonly keyStore: Pick<KeyStore, "get" | "set" | "delete">;
 
-  constructor(path: string = DB_PATH) {
-    ensureDataDir();
+  constructor(path: string = DB_PATH, keyStore: Pick<KeyStore, "get" | "set" | "delete"> = { get: keychainGet, set: keychainSet, delete: keychainDelete }) {
+    this.keyStore = keyStore;
+    // Isolated stores must not create/chmod the real user's STM directory.
+    if (path !== ":memory:") {
+      const parent = dirname(resolve(path));
+      if (parent === DATA_DIR) ensureDataDir();
+      else mkdirSync(parent, { recursive: true, mode: 0o700 });
+    }
     this.db = new Database(path, { create: true });
     // The DB holds no key values, but it does hold card last-4, card
     // nicknames, and audit-log command text — restrict it to the owner
@@ -699,7 +731,7 @@ export class Store {
     }
 
     const ref = randomUUID();
-    keychainSet(ref, input.value);
+    this.keyStore.set(ref, input.value);
     try {
       this.db
         .query(
@@ -708,7 +740,7 @@ export class Store {
         )
         .run(toolRow.id, label, ref, input.source ?? "manual", new Date().toISOString());
     } catch (e) {
-      keychainDelete(ref);
+      this.keyStore.delete(ref);
       throw e;
     }
     return this.viewKey(tool, label)!;
@@ -729,7 +761,7 @@ export class Store {
       | { ref: string; status: string }
       | null;
     if (!row || row.status !== "active") return null;
-    return keychainGet(row.ref);
+    return this.keyStore.get(row.ref);
   }
 
   /**
@@ -757,6 +789,7 @@ export class Store {
     tool: string;
     label: string;
     newValue: string;
+    expectedRevision?: string;
   }): { newRef: string; oldRefDeleted: boolean } {
     const tool = normalizeSegment(input.tool);
     const label = normalizeSegment(input.label);
@@ -764,30 +797,33 @@ export class Store {
 
     const row = this.db
       .query(
-        `SELECT k.id AS id, k.keychain_ref AS oldRef
+        `SELECT k.id AS id, k.keychain_ref AS oldRef, k.status AS status
            FROM keys k JOIN tools t ON t.id = k.tool_id
           WHERE t.name = ? AND k.label = ?`,
       )
-      .get(tool, label) as { id: number; oldRef: string } | null;
+      .get(tool, label) as { id: number; oldRef: string; status: string } | null;
     if (!row) {
+      if (input.expectedRevision !== undefined) throw new CredentialRevisionError();
       throw new Error(
         `no key labelled "${label}" exists for "${tool}" — use \`stm add\` first`,
       );
     }
+    if (input.expectedRevision !== undefined && (row.status !== "active" || credentialRevision(row.oldRef, row.status) !== input.expectedRevision)) throw new CredentialRevisionError();
 
     const newRef = randomUUID();
-    keychainSet(newRef, input.newValue);
+    this.keyStore.set(newRef, input.newValue);
     try {
-      this.db
+      const result = this.db
         .query(
-          `UPDATE keys SET keychain_ref = ?, status = 'active', created_at = ? WHERE id = ?`,
+          `UPDATE keys SET keychain_ref = ?, status = 'active', created_at = ? WHERE id = ? AND keychain_ref = ? AND status = ?`,
         )
-        .run(newRef, new Date().toISOString(), row.id);
+        .run(newRef, new Date().toISOString(), row.id, row.oldRef, row.status);
+      if (result.changes !== 1) throw new CredentialRevisionError();
     } catch (e) {
       // Inventory write failed — undo the keystore write so we don't
       // leak an orphan value.
       try {
-        keychainDelete(newRef);
+        this.keyStore.delete(newRef);
       } catch {
         /* best-effort */
       }
@@ -796,7 +832,7 @@ export class Store {
 
     let oldRefDeleted = false;
     try {
-      keychainDelete(row.oldRef);
+      this.keyStore.delete(row.oldRef);
       oldRefDeleted = true;
     } catch {
       // Old keystore entry already missing (e.g. user wiped the
@@ -804,6 +840,57 @@ export class Store {
       // repointed at newRef already.
     }
     return { newRef, oldRefDeleted };
+  }
+
+  listSelectedKeys(): SelectedKeyMetadata[] {
+    return this.db.query<SelectedKeyRow, []>(
+      `SELECT t.name AS tool, k.label, k.status, k.created_at, k.keychain_ref
+       FROM keys k JOIN tools t ON t.id = k.tool_id ORDER BY t.name, k.label`,
+    ).all().map(selectedMetadata);
+  }
+
+  viewSelectedKey(tool: string, label: string): SelectedKeyMetadata | null {
+    const row = this.db.query<SelectedKeyRow, [string, string]>(
+      `SELECT t.name AS tool, k.label, k.status, k.created_at, k.keychain_ref
+       FROM keys k JOIN tools t ON t.id = k.tool_id WHERE t.name = ? AND k.label = ?`,
+    ).get(normalizeSegment(tool), normalizeSegment(label));
+    return row ? selectedMetadata(row) : null;
+  }
+
+  // Capture revision from the same inventory row whose keystore reference is
+  // read. Listing metadata before/after a separate resolve can falsely attribute
+  // a rotated value to the wrong revision. This is a per-key snapshot, not a
+  // cross-key transaction or a promise to erase already-started processes.
+  resolveSelectedKey(tool: string, label: string): { value: string; revision: string } | null {
+    const row = this.db.query<SelectedKeyRow, [string, string]>(
+      `SELECT t.name AS tool, k.label, k.status, k.created_at, k.keychain_ref
+       FROM keys k JOIN tools t ON t.id = k.tool_id WHERE t.name = ? AND k.label = ?`,
+    ).get(normalizeSegment(tool), normalizeSegment(label));
+    if (!row || row.status !== "active") return null;
+    const value = this.keyStore.get(row.keychain_ref);
+    return value ? { value, revision: selectedMetadata(row).revision } : null;
+  }
+
+  /** Explicit create (null precondition) or compare-and-swap replacement.
+   * No automatic write retries: after a lost response, fetch metadata and ask
+   * for a new explicit decision. The opaque keystore reference never escapes.
+   */
+  putSelectedKey(input: { tool: string; label: string; value: string; expectedRevision: string | null }): { key: SelectedKeyMetadata; oldValueCleanupPending: boolean } {
+    const current = this.viewSelectedKey(input.tool, input.label);
+    let cleanupPending = false;
+    if (input.expectedRevision === null) {
+      if (current) throw new CredentialRevisionError();
+      try { this.addKey({ tool: input.tool, label: input.label, value: input.value }); }
+      catch (error) {
+        if (this.viewSelectedKey(input.tool, input.label)) throw new CredentialRevisionError();
+        throw error;
+      }
+    } else {
+      cleanupPending = !this.rotateKey({ tool: input.tool, label: input.label, newValue: input.value, expectedRevision: input.expectedRevision }).oldRefDeleted;
+    }
+    const key = this.viewSelectedKey(input.tool, input.label);
+    if (!key) throw new Error("credential_update_failed");
+    return { key, oldValueCleanupPending: cleanupPending };
   }
 
   /** Mark a key revoked (v1: a metadata flag — no provider API call). */
@@ -873,7 +960,7 @@ export class Store {
       .all() as { keychain_ref: string }[];
     const out: string[] = [];
     for (const { keychain_ref } of refs) {
-      const v = keychainGet(keychain_ref);
+      const v = this.keyStore.get(keychain_ref);
       if (v) out.push(v);
     }
     return out;

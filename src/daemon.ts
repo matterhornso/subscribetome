@@ -13,6 +13,7 @@ import { join } from "node:path";
 import { randomBytes } from "node:crypto";
 import { Store } from "./store.ts";
 import { activeKeyStore } from "./keychain.ts";
+import { selectedSecretsRoute } from "./selected-secrets.ts";
 import { DAEMON_FILE, ensureDataDir } from "./paths.ts";
 import { dashboardHTML } from "./dashboard.ts";
 import { importSelected, scanEnv } from "./import.ts";
@@ -767,6 +768,9 @@ export async function runDaemon(): Promise<void> {
             ...SEC_HEADERS,
           },
         });
+      }
+      if (path.startsWith("/api/integrations/v1/")) {
+        return selectedSecretsRoute(req, token, store, () => activeKeyStore().describe());
       }
       if (path.startsWith("/api/")) {
         if (!authed) return json({ error: "unauthorized" }, 401);
