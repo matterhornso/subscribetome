@@ -8,7 +8,7 @@ All three new endpoints require the dashboard token in `x-stm-token`, a literal
 use these endpoints. Responses are `Cache-Control: no-store`.
 
 - GET `/api/integrations/v1/capabilities`: `{version:1, selectedResolution:true,
-  revisionedWrites:true, revisionedResolution:true, backend:string}`. Backend describes configured storage,
+  revisionedWrites:true, revisionedResolution:true, backendId:string, backend:string}`. Backend describes configured storage,
   not an unlock guarantee.
 - GET `/api/integrations/v1/keys`: `{version:1, keys:[{tool,label,status,updatedAt,revision}]}`.
   No secret resolution, keystore references, billing or token fields.
@@ -49,3 +49,27 @@ consumer permission and host-only control-plane boundary.
 Tests use an in-memory store. Real keychain/compiled daemon acceptance and
 scoped integration credentials remain release gates. No real credentials have
 been changed. No migration or brokered HTTP integration is introduced by this patch.
+
+## Keystore compatibility
+
+`backendId` is an additive machine-readable field on this unreleased v1 contract.
+STM translates its existing exact implementation descriptions into
+`macos-keychain`, `encrypted-file`, `linux-secret-service`, `linux-pass` or
+`windows-credential`. Unknown/custom descriptions, including the resolver's
+unsupported store, produce `unsupported` and the fixed label `Unsupported
+keystore`; native failure reasons are not echoed. This lookup performs no
+keystore read, write, unlock or probe. It does not claim OS acceptance.
+
+Matterhorn's macOS-only pilot requires an explicit compatible ID and permits
+`macos-keychain` or `encrypted-file`. It rejects missing/malformed IDs as an
+incompatible daemon, and unknown/other-platform IDs as an unsupported keystore.
+The display label alone cannot enable pairing. An already-paired backend change
+is rechecked before bound reads/writes; rejection keeps metadata available and
+never restores a plaintext credential. EncryptedFile is not labelled Keychain.
+
+The contract fixtures advertise a macOS identity to test this handshake, but use
+only injected in-memory keystores. Selected/lifecycle/cross-repository suites:
+**28 passed / 141 assertions** after this addition, including a backend becoming
+unsupported after pairing without another secret read. Run the three suites with
+`MATTERHORN_STM_ADAPTER_PATH` pointing to the companion adapter as documented in
+Matterhorn's worklog. Real keystore acceptance remains separately gated.

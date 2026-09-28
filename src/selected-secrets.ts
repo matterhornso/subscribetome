@@ -12,6 +12,16 @@ export interface SelectedSecretStore {
 }
 
 export const SELECTED_SECRETS_VERSION = 1;
+// The existing keystore interface exposes descriptions, not stable identifiers.
+// Translate its exact known labels here; unknown/custom backends are not silently
+// declared compatible. This is configuration identity, not an unlock probe.
+const backendIds = new Map([
+  ["macOS Keychain", "macos-keychain"],
+  ["EncryptedFile (0600, PBKDF2-SHA512)", "encrypted-file"],
+  ["Linux Secret Service (libsecret)", "linux-secret-service"],
+  ["Linux Pass (pass + GPG)", "linux-pass"],
+  ["Windows Credential Manager (DPAPI)", "windows-credential"],
+]);
 const MAX_BODY = 32_768;
 const MAX_VALUE = 16_384;
 const forbidden = /^(MATTERHORN_WORK_|OPENWORK_|OPENCODE_|STM_|LD_|DYLD_|NODE_|BUN_|PYTHON|RUBY|PERL|GIT_|npm_)/i;
@@ -60,7 +70,10 @@ export async function selectedSecretsRoute(req: Request, dashboardToken: string,
   if (!dashboardToken || req.headers.get("x-stm-token") !== dashboardToken || url.search) return response({ error: "unauthorized" }, 401);
   if (url.pathname === "/api/integrations/v1/capabilities" && req.method === "GET") {
     try {
-      return response({ version: SELECTED_SECRETS_VERSION, selectedResolution: true, revisionedWrites: typeof store.putSelectedKey === "function", revisionedResolution: typeof store.resolveSelectedKey === "function", backend: backend() });
+      const description = backend();
+      const backendId = backendIds.get(description) ?? "unsupported";
+      return response({ version: SELECTED_SECRETS_VERSION, selectedResolution: true, revisionedWrites: typeof store.putSelectedKey === "function", revisionedResolution: typeof store.resolveSelectedKey === "function",
+        backendId, backend: backendId === "unsupported" ? "Unsupported keystore" : description });
     } catch { return response({ error: "keystore_unavailable" }, 503); }
   }
   if (url.pathname === "/api/integrations/v1/keys" && req.method === "GET") {

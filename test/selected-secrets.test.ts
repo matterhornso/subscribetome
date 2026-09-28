@@ -28,6 +28,28 @@ test("empty selection never means all keys", async () => {
   expect(f.reads).toEqual([]);
 });
 
+test("capabilities identify only known keystore implementations without resolving or exposing failure details", async () => {
+  const f = fixture();
+  for (const [label, id] of [
+    ["macOS Keychain", "macos-keychain"],
+    ["EncryptedFile (0600, PBKDF2-SHA512)", "encrypted-file"],
+    ["Linux Secret Service (libsecret)", "linux-secret-service"],
+    ["Linux Pass (pass + GPG)", "linux-pass"],
+    ["Windows Credential Manager (DPAPI)", "windows-credential"],
+    ["unsupported (sensitive-native-reason)", "unsupported"],
+    ["custom-vault", "unsupported"],
+  ]) {
+    const req = new Request("http://127.0.0.1:4321/api/integrations/v1/capabilities", {
+      headers: { host: "127.0.0.1:4321", "x-stm-token": "test-dashboard" },
+    });
+    const body = await (await selectedSecretsRoute(req, "test-dashboard", f.store, () => label)).json();
+    expect(body.backendId).toBe(id);
+    expect(body.backend).toBe(id === "unsupported" ? "Unsupported keystore" : label);
+    expect(JSON.stringify(body)).not.toContain("sensitive-native-reason");
+  }
+  expect(f.reads).toEqual([]);
+});
+
 for (const name of ["PATH", "NODE_OPTIONS", "LD_PRELOAD", "MATTERHORN_WORK_TOKEN", "STM_TOKEN", "__proto__", "9KEY", "HTTPS_PROXY"]) {
   test(`rejects unsafe name ${name} without resolution`, async () => {
     const f = fixture();

@@ -14,6 +14,7 @@ test.skipIf(!adapterPath)("Matterhorn adapter interoperates over loopback with s
   const { StmCredentials, spawnStmConsumer } = await import(pathToFileURL(adapterPath).href);
   const dir = await mkdtemp(join(tmpdir(), "stm-matterhorn-contract-"));
   const token = "b".repeat(48);
+  let backend = "macOS Keychain";
   const reads: string[] = [];
   const store = {
     listSelectedKeys: () => [{ tool: "fixture", label: "default", status: "active", updatedAt: "2026-09-28", revision: "d".repeat(64) }],
@@ -22,13 +23,14 @@ test.skipIf(!adapterPath)("Matterhorn adapter interoperates over loopback with s
     resolve: (tool: string) => { reads.push(tool); return "disposable-contract-value"; },
   };
   const server = Bun.serve({ hostname: "127.0.0.1", port: 0,
-    fetch: req => selectedSecretsRoute(req, token, store, () => "in-memory contract fixture"),
+    // Advertise the macOS protocol identity; storage remains entirely fake.
+    fetch: req => selectedSecretsRoute(req, token, store, () => backend),
   });
   try {
     const descriptorPath = join(dir, "daemon.json");
     await writeFile(descriptorPath, JSON.stringify({ port: server.port, pid: process.pid, token }), { mode: 0o600 });
     const adapter = new StmCredentials({ enabled: true, localDesktop: true, platform: "darwin", descriptorPath, registryPath: join(dir, "bindings.json") });
-    expect(await adapter.connect({ consent: true })).toEqual({ state: "connected", version: 1, backend: "in-memory contract fixture" });
+    expect(await adapter.connect({ consent: true })).toEqual({ state: "connected", version: 1, backend: "macOS Keychain" });
     await adapter.link({ envName: "FIXTURE_API_KEY", tool: "fixture", label: "default", consumer: "mcp:fixture", consent: true });
     expect(reads).toEqual([]);
     const child = await spawnStmConsumer({ credentials: adapter, consumer: "mcp:fixture", command: process.execPath,
@@ -40,6 +42,11 @@ test.skipIf(!adapterPath)("Matterhorn adapter interoperates over loopback with s
     await new Promise<void>((resolve, reject) => { child.on("error", reject); child.on("close", (code: number) => code === 0 ? resolve() : reject(new Error("fixture failed"))); });
     expect(output).toBe("accepted");
     expect(reads).toEqual(["fixture"]);
+    backend = "unsupported (disposable test reason)";
+    expect(await adapter.status()).toEqual({ state: "unavailable", code: "unsupported_keystore" });
+    await expect(adapter.resolveForConsumer("mcp:fixture")).rejects.toThrow("unsupported_keystore");
+    expect(reads).toEqual(["fixture"]);
+    expect(await adapter.listBindings()).toHaveLength(1);
     server.stop(true);
     await expect(adapter.resolveForConsumer("mcp:fixture")).rejects.toThrow("connection_failed");
     expect(await adapter.listBindings()).toHaveLength(1);
@@ -54,7 +61,7 @@ test.skipIf(!adapterPath)("Matterhorn revisioned writes interoperate with real S
   const values = new Map<string, string>();
   let keyReads = 0;
   const store = new Store(":memory:", { get: ref => { keyReads++; return values.get(ref) ?? null; }, set: (ref, value) => { values.set(ref, value); }, delete: ref => { values.delete(ref); } });
-  const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: req => selectedSecretsRoute(req, token, store, () => "in-memory contract fixture") });
+  const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: req => selectedSecretsRoute(req, token, store, () => "macOS Keychain") });
   try {
     const descriptorPath = join(dir, "daemon.json");
     await writeFile(descriptorPath, JSON.stringify({ port: server.port, pid: process.pid, token }), { mode: 0o600 });
