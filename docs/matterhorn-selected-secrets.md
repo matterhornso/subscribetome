@@ -8,11 +8,18 @@ All three new endpoints require the dashboard token in `x-stm-token`, a literal
 use these endpoints. Responses are `Cache-Control: no-store`.
 
 - GET `/api/integrations/v1/capabilities`: `{version:1, selectedResolution:true,
-  backend:string}`. Backend describes configured storage, not an unlock guarantee.
-- GET `/api/integrations/v1/keys`: `{version:1, keys:[{tool,label,status,updatedAt}]}`.
+  revisionedWrites:true, backend:string}`. Backend describes configured storage,
+  not an unlock guarantee.
+- GET `/api/integrations/v1/keys`: `{version:1, keys:[{tool,label,status,updatedAt,revision}]}`.
   No secret resolution, keystore references, billing or token fields.
 - POST `/api/integrations/v1/resolve`: body `{version:1, bindings:[{envName,tool,label}]}`;
   response `{version:1, values:{ENV_NAME:value}}`.
+- POST `/api/integrations/v1/keys`: `{version:1,tool,label,value,expectedRevision}`.
+  `expectedRevision:null` creates only if absent; a current opaque revision
+  replaces only an active matching key. Returns metadata and
+  `oldValueCleanupPending`, never values or storage references. Stale revisions,
+  revoked keys and conflicting creates return 412. Invalid bodies return 400;
+  storage failures return a fixed 503 response. Do not automatically retry writes.
 
 An empty array returns no keys. Maximum 32 selected bindings, 32 KiB request,
 16 KiB per value. POSIX aliases preserve exact casing; case-folding collisions,
@@ -20,12 +27,20 @@ reserved prefixes, process-control names, unknown/revoked keys and invalid
 segments are rejected. The full selection is validated before values are read.
 Keystore errors return fixed codes, never native errors or partial values.
 
-References currently use STM's canonical tool/label identity. Rotation retains
+Revisions hash random storage identity and state, not secret bytes. The inventory
+schema and legacy key-list response are unchanged. Native rotation and revocation
+also change the revision. Rotation uses compare-and-swap against the observed
+storage reference and status, so another writer cannot be silently overwritten.
+An inventory failure rolls back the new storage entry; old-entry deletion failure
+is reported without claiming the old bytes were erased. Cross-store crash recovery
+and real keystore acceptance remain separate gates.
+
+References use STM's canonical tool/label identity. Rotation retains
 that identity and affects future resolutions. Changing tool/label requires
 explicit relinking. This API is NOT a scoped capability: a dashboard-authorized
 caller can choose other keys. Matterhorn must enforce its own explicit binding,
 consumer permission and host-only control-plane boundary.
 
 Tests use an in-memory store. Real keychain/compiled daemon acceptance and
-scoped integration credentials remain release gates. No secret-write, replacement,
-migration or brokered HTTP integration is introduced by this patch.
+scoped integration credentials remain release gates. No real credentials have
+been changed. No migration or brokered HTTP integration is introduced by this patch.

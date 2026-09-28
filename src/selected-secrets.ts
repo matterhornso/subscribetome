@@ -1,9 +1,13 @@
 // Versioned, dashboard-authorized local integration. Never resolve the whole vault.
 // Consumer permissions belong to the calling host; this is NOT a scoped token.
+import { CredentialRevisionError, type SelectedKeyMetadata } from "./store.ts";
+
 export interface SelectedSecretStore {
   listKeys(): Array<{ tool: string; label: string; status: string; created_at: string }>;
   viewKey(tool: string, label: string): { status: string } | null;
   resolve(tool: string, label: string): string | null;
+  listSelectedKeys?(): SelectedKeyMetadata[];
+  putSelectedKey?(input: { tool: string; label: string; value: string; expectedRevision: string | null }): { key: SelectedKeyMetadata; oldValueCleanupPending: boolean };
 }
 
 export const SELECTED_SECRETS_VERSION = 1;
@@ -55,12 +59,31 @@ export async function selectedSecretsRoute(req: Request, dashboardToken: string,
   if (!dashboardToken || req.headers.get("x-stm-token") !== dashboardToken || url.search) return response({ error: "unauthorized" }, 401);
   if (url.pathname === "/api/integrations/v1/capabilities" && req.method === "GET") {
     try {
-      return response({ version: SELECTED_SECRETS_VERSION, selectedResolution: true, backend: backend() });
+      return response({ version: SELECTED_SECRETS_VERSION, selectedResolution: true, revisionedWrites: typeof store.putSelectedKey === "function", backend: backend() });
     } catch { return response({ error: "keystore_unavailable" }, 503); }
   }
   if (url.pathname === "/api/integrations/v1/keys" && req.method === "GET") {
     // Explicit projection: never return keystore references, billing or values.
-    return response({ version: 1, keys: store.listKeys().map(({ tool, label, status, created_at }) => ({ tool, label, status, updatedAt: created_at })) });
+    try {
+      return response({ version: 1, keys: store.listSelectedKeys ? store.listSelectedKeys() : store.listKeys().map(({ tool, label, status, created_at }) => ({ tool, label, status, updatedAt: created_at })) });
+    } catch { return response({ error: "inventory_unavailable" }, 503); }
+  }
+  if (url.pathname === "/api/integrations/v1/keys" && req.method === "POST") {
+    if (!store.putSelectedKey) return response({ error: "unsupported_operation" }, 409);
+    let input: unknown;
+    try { input = await readBody(req); } catch { return response({ error: "invalid_credential_update" }, 400); }
+    if (!record(input) || input.version !== 1 || !segment(input.tool) || !segment(input.label)
+      || typeof input.value !== "string" || !input.value || input.value.includes("\0") || Buffer.byteLength(input.value) > MAX_VALUE
+      || !(input.expectedRevision === null || (typeof input.expectedRevision === "string" && /^[a-f0-9]{64}$/.test(input.expectedRevision)))
+      || Object.keys(input).some(k => !["version", "tool", "label", "value", "expectedRevision"].includes(k))) return response({ error: "invalid_credential_update" }, 400);
+    try {
+      const result = store.putSelectedKey({ tool: input.tool, label: input.label, value: input.value, expectedRevision: input.expectedRevision });
+      return response({ version: 1, ...result }, input.expectedRevision === null ? 201 : 200);
+    } catch (error) {
+      return error instanceof CredentialRevisionError
+        ? response({ error: "credential_revision_conflict" }, 412)
+        : response({ error: "credential_update_failed" }, 503);
+    }
   }
   if (url.pathname !== "/api/integrations/v1/resolve" || req.method !== "POST") return response({ error: "not_found" }, 404);
   let input: unknown;
