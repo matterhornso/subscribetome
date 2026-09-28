@@ -52,7 +52,8 @@ test.skipIf(!adapterPath)("Matterhorn revisioned writes interoperate with real S
   const dir = await mkdtemp(join(tmpdir(), "stm-matterhorn-lifecycle-"));
   const token = "b".repeat(48);
   const values = new Map<string, string>();
-  const store = new Store(":memory:", { get: ref => values.get(ref) ?? null, set: (ref, value) => { values.set(ref, value); }, delete: ref => { values.delete(ref); } });
+  let keyReads = 0;
+  const store = new Store(":memory:", { get: ref => { keyReads++; return values.get(ref) ?? null; }, set: (ref, value) => { values.set(ref, value); }, delete: ref => { values.delete(ref); } });
   const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: req => selectedSecretsRoute(req, token, store, () => "in-memory contract fixture") });
   try {
     const descriptorPath = join(dir, "daemon.json");
@@ -71,7 +72,22 @@ test.skipIf(!adapterPath)("Matterhorn revisioned writes interoperate with real S
     const [binding] = await adapter.listBindings();
     expect(binding.credentialRevision).toBe(replaced.key.revision);
     expect(binding.restartRequired).toBe(true);
+    await adapter.acknowledgeMcpStart("mcp:fixture", [binding.id], { FIXTURE_API_KEY: replaced.key.revision });
+    expect((await adapter.refreshBindings()).items[0].restartRequired).toBe(false);
+    store.rotateKey({ tool: "fixture", label: "default", newValue: "native-rotation-fixture" });
+    const beforeRefresh = keyReads;
+    const refreshed = await adapter.refreshBindings();
+    expect(keyReads).toBe(beforeRefresh);
+    expect(refreshed.items[0].credentialState).toBe("available");
+    expect(refreshed.items[0].credentialRevision).not.toBe(replaced.key.revision);
+    expect(refreshed.items[0].appliedRevision).toBe(replaced.key.revision);
+    expect(refreshed.items[0].restartRequired).toBe(true);
+    expect(JSON.stringify(refreshed)).not.toContain("native-rotation-fixture");
     store.revokeKey("fixture", "default");
+    const revoked = await adapter.refreshBindings();
+    expect(revoked.items[0].credentialState).toBe("revoked");
+    expect(revoked.items[0].restartRequired).toBe(true);
+    expect(keyReads).toBe(beforeRefresh);
     await expect(adapter.resolveForConsumer("mcp:fixture")).rejects.toThrow("request_failed");
   } finally { server.stop(true); store.close(); await rm(dir, { recursive: true, force: true }); }
 });
