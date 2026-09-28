@@ -15,6 +15,23 @@ function fakeKeystore() {
 }
 const create = { tool: "fixture", label: "default", value: "disposable-value-1", expectedRevision: null };
 
+test("selected resolution couples value to the exact stored revision", async () => {
+  const ks = fakeKeystore(); const s = new Store(":memory:", ks);
+  try {
+    const first = s.putSelectedKey(create);
+    expect(s.resolveSelectedKey("fixture", "default")).toEqual({ value: create.value, revision: first.key.revision });
+    const second = s.putSelectedKey({ ...create, value: "rotated-fixture", expectedRevision: first.key.revision });
+    const req = new Request("http://127.0.0.1:4321/api/integrations/v1/resolve", {
+      method: "POST", headers: { host: "127.0.0.1:4321", "x-stm-token": "test-dashboard" },
+      body: JSON.stringify({ version: 1, includeRevisions: true, bindings: [{ envName: "FIXTURE_KEY", tool: "fixture", label: "default" }] }),
+    });
+    const response = await selectedSecretsRoute(req, "test-dashboard", s, () => "fixture");
+    expect(await response.json()).toEqual({ version: 1, values: { FIXTURE_KEY: "rotated-fixture" }, revisions: { FIXTURE_KEY: second.key.revision } });
+    s.revokeKey("fixture", "default");
+    expect(s.resolveSelectedKey("fixture", "default")).toBeNull();
+  } finally { s.close(); }
+});
+
 test("revisioned create and replace return metadata only; metadata does not resolve", () => {
   const ks = fakeKeystore(); const s = new Store(":memory:", ks);
   try {

@@ -857,6 +857,20 @@ export class Store {
     return row ? selectedMetadata(row) : null;
   }
 
+  // Capture revision from the same inventory row whose keystore reference is
+  // read. Listing metadata before/after a separate resolve can falsely attribute
+  // a rotated value to the wrong revision. This is a per-key snapshot, not a
+  // cross-key transaction or a promise to erase already-started processes.
+  resolveSelectedKey(tool: string, label: string): { value: string; revision: string } | null {
+    const row = this.db.query<SelectedKeyRow, [string, string]>(
+      `SELECT t.name AS tool, k.label, k.status, k.created_at, k.keychain_ref
+       FROM keys k JOIN tools t ON t.id = k.tool_id WHERE t.name = ? AND k.label = ?`,
+    ).get(normalizeSegment(tool), normalizeSegment(label));
+    if (!row || row.status !== "active") return null;
+    const value = this.keyStore.get(row.keychain_ref);
+    return value ? { value, revision: selectedMetadata(row).revision } : null;
+  }
+
   /** Explicit create (null precondition) or compare-and-swap replacement.
    * No automatic write retries: after a lost response, fetch metadata and ask
    * for a new explicit decision. The opaque keystore reference never escapes.

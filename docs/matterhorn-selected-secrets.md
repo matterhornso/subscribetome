@@ -8,12 +8,17 @@ All three new endpoints require the dashboard token in `x-stm-token`, a literal
 use these endpoints. Responses are `Cache-Control: no-store`.
 
 - GET `/api/integrations/v1/capabilities`: `{version:1, selectedResolution:true,
-  revisionedWrites:true, backend:string}`. Backend describes configured storage,
+  revisionedWrites:true, revisionedResolution:true, backend:string}`. Backend describes configured storage,
   not an unlock guarantee.
 - GET `/api/integrations/v1/keys`: `{version:1, keys:[{tool,label,status,updatedAt,revision}]}`.
   No secret resolution, keystore references, billing or token fields.
 - POST `/api/integrations/v1/resolve`: body `{version:1, bindings:[{envName,tool,label}]}`;
   response `{version:1, values:{ENV_NAME:value}}`.
+  Optional `includeRevisions:true` also returns `revisions:{ENV_NAME:revision}`.
+  Each revision comes from the same inventory row whose keystore reference was
+  read, not a separate list-before/after request. This is a per-key snapshot, not
+  cross-key atomic rotation or revocation of existing process memory. A backend
+  without snapshot support refuses this option rather than guessing revisions.
 - POST `/api/integrations/v1/keys`: `{version:1,tool,label,value,expectedRevision}`.
   `expectedRevision:null` creates only if absent; a current opaque revision
   replaces only an active matching key. Returns metadata and

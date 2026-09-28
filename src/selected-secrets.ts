@@ -7,6 +7,7 @@ export interface SelectedSecretStore {
   viewKey(tool: string, label: string): { status: string } | null;
   resolve(tool: string, label: string): string | null;
   listSelectedKeys?(): SelectedKeyMetadata[];
+  resolveSelectedKey?(tool: string, label: string): { value: string; revision: string } | null;
   putSelectedKey?(input: { tool: string; label: string; value: string; expectedRevision: string | null }): { key: SelectedKeyMetadata; oldValueCleanupPending: boolean };
 }
 
@@ -59,7 +60,7 @@ export async function selectedSecretsRoute(req: Request, dashboardToken: string,
   if (!dashboardToken || req.headers.get("x-stm-token") !== dashboardToken || url.search) return response({ error: "unauthorized" }, 401);
   if (url.pathname === "/api/integrations/v1/capabilities" && req.method === "GET") {
     try {
-      return response({ version: SELECTED_SECRETS_VERSION, selectedResolution: true, revisionedWrites: typeof store.putSelectedKey === "function", backend: backend() });
+      return response({ version: SELECTED_SECRETS_VERSION, selectedResolution: true, revisionedWrites: typeof store.putSelectedKey === "function", revisionedResolution: typeof store.resolveSelectedKey === "function", backend: backend() });
     } catch { return response({ error: "keystore_unavailable" }, 503); }
   }
   if (url.pathname === "/api/integrations/v1/keys" && req.method === "GET") {
@@ -88,7 +89,8 @@ export async function selectedSecretsRoute(req: Request, dashboardToken: string,
   if (url.pathname !== "/api/integrations/v1/resolve" || req.method !== "POST") return response({ error: "not_found" }, 404);
   let input: unknown;
   try { input = await readBody(req); } catch { return response({ error: "invalid_selection" }, 400); }
-  if (!record(input) || input.version !== 1 || !Array.isArray(input.bindings) || input.bindings.length > 32 || Object.keys(input).some(k => !["version", "bindings"].includes(k))) return response({ error: "invalid_selection" }, 400);
+  if (!record(input) || input.version !== 1 || !Array.isArray(input.bindings) || input.bindings.length > 32 || (input.includeRevisions !== undefined && typeof input.includeRevisions !== "boolean") || Object.keys(input).some(k => !["version", "bindings", "includeRevisions"].includes(k))) return response({ error: "invalid_selection" }, 400);
+  if (input.includeRevisions && !store.resolveSelectedKey) return response({ error: "unsupported_operation" }, 409);
   const bindings: Array<{ envName: string; tool: string; label: string }> = [];
   const names = new Set<string>();
   for (const entry of input.bindings) {
@@ -100,11 +102,14 @@ export async function selectedSecretsRoute(req: Request, dashboardToken: string,
     // Validate the entire selection before reading even one value.
     for (const entry of bindings) if (store.viewKey(entry.tool, entry.label)?.status !== "active") return response({ error: "key_unavailable" }, 409);
     const values: Record<string, string> = {};
+    const revisions: Record<string, string> = {};
     for (const entry of bindings) {
-      const value = store.resolve(entry.tool, entry.label);
+      const snapshot = input.includeRevisions ? store.resolveSelectedKey?.(entry.tool, entry.label) : undefined;
+      const value = input.includeRevisions ? snapshot?.value : store.resolve(entry.tool, entry.label);
       if (!value || value.includes("\0") || Buffer.byteLength(value) > MAX_VALUE) return response({ error: "key_unavailable" }, 409);
       values[entry.envName] = value;
+      if (snapshot) revisions[entry.envName] = snapshot.revision;
     }
-    return response({ version: 1, values });
+    return response({ version: 1, values, ...(input.includeRevisions ? { revisions } : {}) });
   } catch { return response({ error: "keystore_unavailable" }, 503); }
 }
